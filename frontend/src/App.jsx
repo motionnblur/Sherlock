@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTelemetry } from './hooks/useTelemetry';
 import Header from './components/Header';
 import TelemetryPanel from './components/TelemetryPanel';
@@ -7,6 +8,7 @@ import StatusBar from './components/StatusBar';
 
 export default function App() {
   const { telemetry, connected, history } = useTelemetry();
+  const [lowPerf, setLowPerf] = useState(false);
 
   return (
     <div className="h-screen flex flex-col bg-surface font-mono text-neon overflow-hidden select-none">
@@ -16,13 +18,13 @@ export default function App() {
         <TelemetryPanel telemetry={telemetry} />
 
         <main className="flex-1 relative min-w-0">
-          <MapComponent telemetry={telemetry} history={history} />
+          <MapComponent telemetry={telemetry} history={history} lowPerf={lowPerf} />
         </main>
 
         <SystemPanel telemetry={telemetry} history={history} connected={connected} />
       </div>
 
-      <StatusBar telemetry={telemetry} connected={connected} />
+      <StatusBar telemetry={telemetry} connected={connected} lowPerf={lowPerf} onToggleLowPerf={() => setLowPerf((v) => !v)} />
     </div>
   );
 }

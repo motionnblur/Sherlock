@@ -1,4 +1,4 @@
-export default function StatusBar({ telemetry: t, connected }) {
+export default function StatusBar({ telemetry: t, connected, lowPerf, onToggleLowPerf }) {
   const battery = t?.battery ?? null;
   const isBatteryLow = battery != null && battery < 20;
   const isBatteryCritical = battery != null && battery < 10;
@@ -32,6 +32,14 @@ export default function StatusBar({ telemetry: t, connected }) {
             </div>
           </>
         )}
+
+        <span className="text-line">|</span>
+        <button
+          onClick={onToggleLowPerf}
+          className={`font-bold tracking-widest px-2 py-0.5 border border-line ${lowPerf ? 'text-caution bg-panel' : 'text-muted hover:text-neon'}`}
+        >
+          LOW PERF {lowPerf ? 'ON' : 'OFF'}
+        </button>
       </div>
 
       {/* Center: Alerts */}

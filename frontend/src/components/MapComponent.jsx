@@ -97,7 +97,7 @@ async function addOsmBuildings(viewer) {
   return buildings;
 }
 
-export default function MapComponent({ telemetry }) {
+export default function MapComponent({ telemetry, lowPerf }) {
   const containerRef = useRef(null);
   const viewerRef    = useRef(null);
   const droneRef     = useRef(null);
@@ -159,6 +159,64 @@ export default function MapComponent({ telemetry }) {
 
     applyImageryBrightness(viewer, isMapDimmed ? MAP_BRIGHTNESS : 1);
   }, [isMapDimmed]);
+
+  // Low performance mode — strip everything except ground tiles
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+
+    const scene = viewer.scene;
+    const globe = scene.globe;
+
+    if (lowPerf) {
+      // Slash render resolution to quarter
+      viewer.resolutionScale = 0.5;
+
+      // Limit tile detail — higher value = fewer tiles loaded
+      globe.maximumScreenSpaceError = 8;
+
+      // Disable lighting and effects
+      globe.enableLighting = false;
+      scene.fog.enabled = false;
+      scene.fxaa = false;
+
+      // Remove all 3D tilesets (buildings, etc.) — only ground remains
+      const primitives = scene.primitives;
+      for (let i = primitives.length - 1; i >= 0; i--) {
+        const p = primitives.get(i);
+        if (p instanceof Cesium.Cesium3DTileset) {
+          primitives.remove(p);
+        }
+      }
+
+      // Cap imagery layer detail
+      for (let i = 0; i < viewer.imageryLayers.length; i++) {
+        const layer = viewer.imageryLayers.get(i);
+        if (layer.imageryProvider?.maximumLevel !== undefined) {
+          layer._maximumLevelBeforeLowPerf = layer.imageryProvider.maximumLevel;
+        }
+      }
+
+      // Use request render mode — only re-render when something changes
+      scene.requestRenderMode = true;
+      scene.maximumRenderTimeChange = 0.5;
+    } else {
+      viewer.resolutionScale = 1;
+      globe.maximumScreenSpaceError = 2;
+      scene.fog.enabled = false;
+      scene.fxaa = true;
+      scene.requestRenderMode = false;
+
+      // Re-add 3D buildings if Ion token available
+      if (HAS_TOKEN) {
+        addOsmBuildings(viewer).catch((err) =>
+          console.warn('[Sherlock] OSM Buildings reload failed:', err)
+        );
+      }
+    }
+
+    scene.requestRender();
+  }, [lowPerf]);
 
   // Update drone position on every telemetry tick
   useEffect(() => {
