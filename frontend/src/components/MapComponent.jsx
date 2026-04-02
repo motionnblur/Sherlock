@@ -1,9 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
+import mapSettings from '../../configs/map-settings.json';
 
 const ION_TOKEN = import.meta.env.VITE_CESIUM_TOKEN;
 const HAS_TOKEN = !!ION_TOKEN;
+const MAP_DARKEN_PERCENT = Number.isFinite(mapSettings?.darkenPercent)
+  ? Math.max(0, Math.min(100, mapSettings.darkenPercent))
+  : 50;
+const MAP_BRIGHTNESS = 1 - MAP_DARKEN_PERCENT / 100;
 
 if (HAS_TOKEN) {
   Cesium.Ion.defaultAccessToken = ION_TOKEN;
@@ -74,6 +79,12 @@ function createViewer(container) {
   return viewer;
 }
 
+function applyImageryBrightness(viewer, brightness) {
+  for (let i = 0; i < viewer.imageryLayers.length; i += 1) {
+    viewer.imageryLayers.get(i).brightness = brightness;
+  }
+}
+
 async function addOsmBuildings(viewer) {
   // Cesium Ion asset 96188 — OpenStreetMap Buildings (free tier)
   const buildings = await Cesium.createOsmBuildingsAsync({
@@ -93,6 +104,7 @@ export default function MapComponent({ telemetry }) {
   const pathRef      = useRef(null);
   const positionsRef = useRef([]);
   const initialFlown = useRef(false);
+  const [isMapDimmed, setIsMapDimmed] = useState(false);
 
   // Initialize viewer once
   useEffect(() => {
@@ -100,6 +112,7 @@ export default function MapComponent({ telemetry }) {
 
     const viewer = createViewer(containerRef.current);
     viewerRef.current = viewer;
+    applyImageryBrightness(viewer, 1);
 
     // Add 3D OSM buildings when Ion token is present
     if (HAS_TOKEN) {
@@ -119,6 +132,33 @@ export default function MapComponent({ telemetry }) {
       initialFlown.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.repeat || event.key.toLowerCase() !== 'd') return;
+
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) {
+        return;
+      }
+
+      setIsMapDimmed((current) => !current);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+
+    applyImageryBrightness(viewer, isMapDimmed ? MAP_BRIGHTNESS : 1);
+  }, [isMapDimmed]);
 
   // Update drone position on every telemetry tick
   useEffect(() => {
@@ -218,6 +258,13 @@ export default function MapComponent({ telemetry }) {
       <div className="absolute top-2 right-2 w-5 h-5 border-t border-r border-neon opacity-40 pointer-events-none" />
       <div className="absolute bottom-2 left-2 w-5 h-5 border-b border-l border-neon opacity-40 pointer-events-none" />
       <div className="absolute bottom-2 right-2 w-5 h-5 border-b border-r border-neon opacity-40 pointer-events-none" />
+
+      {/* Map dimming state */}
+      <div className="absolute top-3 right-3 pointer-events-none">
+        <span className="text-[9px] tracking-widest text-muted">
+          {isMapDimmed ? `MAP DIMMED ${MAP_DARKEN_PERCENT}%` : 'MAP NORMAL'}
+        </span>
+      </div>
 
       {/* 3D mode badge */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none">
