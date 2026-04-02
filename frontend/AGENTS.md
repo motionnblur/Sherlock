@@ -24,6 +24,8 @@ src/
 ├── App.jsx                      # Root layout shell, passes telemetry state down
 ├── main.jsx                     # ReactDOM.createRoot entry point
 ├── index.css                    # Tailwind directives + Cesium widget overrides
+├── configs/
+│   └── map-settings.json        # Map-only dimming config for Cesium imagery
 │
 ├── hooks/
 │   └── useTelemetry.js          # STOMP client, auto-reconnect, history state
@@ -124,6 +126,8 @@ const { telemetry, connected, history } = useTelemetry();
 `src/components/MapComponent.jsx` owns the Cesium `Viewer` instance.
 
 **Imagery:** `UrlTemplateImageryProvider` (OpenStreetMap) is used by default — no Cesium Ion token required. If `VITE_CESIUM_TOKEN` is set in `.env`, Ion features (World Terrain, premium imagery) unlock automatically.
+
+**Map dimming:** pressing `D` toggles map-only dimming for the Cesium imagery layer. The dim level is data-driven from `frontend/configs/map-settings.json` via `darkenPercent` (0-100), and the component applies `brightness = 1 - darkenPercent / 100` to imagery layers only. Do not dim the surrounding React layout.
 
 **Drone entity:** rendered as a billboard using an inline SVG data URI. To replace with a 3D model:
 ```js
