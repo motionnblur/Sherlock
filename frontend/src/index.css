@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Cesium widget overrides ──────────────────────────────────────────────── */
+.cesium-widget-credits,
+.cesium-credit-logoContainer,
+.cesium-credit-textContainer {
+  display: none !important;
+}
+
+.cesium-viewer-toolbar,
+.cesium-toolbar-button {
+  display: none !important;
+}
+
+/* Scrollbar: dark military style */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #0d1117;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e2a3a;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00FF41;
+}

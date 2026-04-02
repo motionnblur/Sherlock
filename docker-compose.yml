@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sherlock-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-sherlock}
+      POSTGRES_USER:     ${DB_USER:-sherlock}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sherlock}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U ${DB_USER:-sherlock}"]
+      interval: 5s
+      timeout:  5s
+      retries:  10
+    networks:
+      - sherlock-net
+
+  # ── Spring Boot Backend ──────────────────────────────────────────────────────
+  backend:
+    build:
+      context:    ./backend
+      dockerfile: Dockerfile
+    container_name: sherlock-backend
+    restart: on-failure
+    environment:
+      DB_HOST:     postgres
+      DB_PORT:     5432
+      DB_NAME:     ${DB_NAME:-sherlock}
+      DB_USER:     ${DB_USER:-sherlock}
+      DB_PASSWORD: ${DB_PASSWORD:-sherlock}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sherlock-net
+
+  # ── React Frontend (nginx) ───────────────────────────────────────────────────
+  frontend:
+    build:
+      context:    ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_WS_URL:      ""          # empty → nginx proxies /ws-skytrack to backend
+        VITE_CESIUM_TOKEN: ${VITE_CESIUM_TOKEN:-}
+    container_name: sherlock-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - sherlock-net
+
+# ── Shared network ────────────────────────────────────────────────────────────
+networks:
+  sherlock-net:
+    driver: bridge
+
+# ── Persistent volumes ────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
