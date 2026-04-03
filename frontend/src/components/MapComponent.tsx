@@ -2,22 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import mapSettings from '../../configs/map-settings.json';
-import type { DroneId, TelemetryPoint } from '../types/telemetry';
-
-interface MapSettings {
-  darkenPercent?: number;
-}
-
-interface MapComponentProps {
-  telemetry: TelemetryPoint | null;
-  lowPerf: boolean;
-  selectedDrone: DroneId | null;
-  onSelectDrone: (id: DroneId) => void;
-}
+import type { MapComponentProps, MapSettingsConfig } from '../interfaces/components';
+import type { TelemetryPoint } from '../interfaces/telemetry';
 
 const ION_TOKEN = import.meta.env.VITE_CESIUM_TOKEN;
 const HAS_TOKEN = Boolean(ION_TOKEN);
-const typedMapSettings = mapSettings as MapSettings;
+const typedMapSettings = mapSettings as MapSettingsConfig;
 const MAP_DARKEN_PERCENT = Number.isFinite(typedMapSettings.darkenPercent)
   ? Math.max(0, Math.min(100, typedMapSettings.darkenPercent ?? 50))
   : 50;

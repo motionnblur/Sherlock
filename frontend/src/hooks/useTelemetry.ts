@@ -1,16 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Client, type IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import type { TelemetryPoint } from '../types/telemetry';
+import type { UseTelemetryResult } from '../interfaces/hooks';
+import type { TelemetryPoint } from '../interfaces/telemetry';
 
 const WS_URL = import.meta.env.VITE_WS_URL || '/ws-skytrack';
 const MAX_HISTORY = 150;
-
-interface UseTelemetryResult {
-  telemetry: TelemetryPoint | null;
-  connected: boolean;
-  history: TelemetryPoint[];
-}
 
 /**
  * Manages the STOMP/SockJS WebSocket connection and exposes live telemetry state.

@@ -5,7 +5,7 @@ import TelemetryPanel from './components/TelemetryPanel';
 import MapComponent from './components/MapComponent';
 import SystemPanel from './components/SystemPanel';
 import StatusBar from './components/StatusBar';
-import type { DroneId } from './types/telemetry';
+import type { DroneId } from './interfaces/telemetry';
 
 export default function App() {
   const [selectedDrone, setSelectedDrone] = useState<DroneId | null>(null);

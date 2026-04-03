@@ -8,7 +8,7 @@
 
 | Component     | Library / Version                      |
 |---------------|----------------------------------------|
-| Language      | JavaScript (JSX)                       |
+| Language      | TypeScript (TS/TSX)                    |
 | Framework     | React 18 + Vite 5                      |
 | Styling       | Tailwind CSS 3 — **only styling method** |
 | 3D Globe      | CesiumJS 1.116 via `vite-plugin-cesium` |
@@ -24,6 +24,11 @@ src/
 ├── App.tsx                      # Root layout shell, drone selection state, passes telemetry down
 ├── main.tsx                     # ReactDOM.createRoot entry point
 ├── index.css                    # Tailwind directives + Cesium widget overrides
+├── interfaces/
+│   ├── telemetry.ts             # Shared domain models (TelemetryPoint, DroneId)
+│   ├── components.ts            # Component prop interfaces and map settings interface
+│   ├── hooks.ts                 # Hook return interfaces
+│   └── index.ts                 # Barrel exports
 ├── configs/
 │   └── map-settings.json        # Map-only dimming config for Cesium imagery
 │
@@ -86,8 +91,13 @@ All tokens are defined in `tailwind.config.js`. **Always use these class names �
 3. Use only Tailwind utility classes for styling
 4. Mount it in `App.tsx` and pass the relevant props
 
+Define any reusable interfaces in `src/interfaces/`:
+- Domain data models in `src/interfaces/telemetry.ts`
+- Component props in `src/interfaces/components.ts`
+- Hook contracts in `src/interfaces/hooks.ts`
+
 Pattern to follow for a data row:
-```jsx
+```tsx
 // label left, value right, consistent spacing
 <div className="flex items-baseline justify-between py-1.5 border-b border-line">
   <span className="text-[10px] text-muted tracking-widest uppercase">{label}</span>
@@ -96,7 +106,7 @@ Pattern to follow for a data row:
 ```
 
 Pattern for a section header inside a panel:
-```jsx
+```tsx
 <div className="flex items-center gap-2 py-1.5">
   <span className="text-[9px] text-neon tracking-widest font-bold">{title}</span>
   <div className="flex-1 h-px bg-line" />
@@ -109,7 +119,7 @@ Pattern for a section header inside a panel:
 
 `src/hooks/useTelemetry.ts` — the single source of truth for live data.
 
-```js
+```ts
 const { telemetry, connected, history } = useTelemetry(enabled);
 ```
 
@@ -119,9 +129,9 @@ const { telemetry, connected, history } = useTelemetry(enabled);
 
 | Return value | Type              | Description                              |
 |--------------|-------------------|------------------------------------------|
-| `telemetry`  | `Object \| null`  | Latest telemetry packet (null until first message) |
+| `telemetry`  | `TelemetryPoint \| null`  | Latest telemetry packet (null until first message) |
 | `connected`  | `boolean`         | STOMP link status                        |
-| `history`    | `Array`           | Last 150 telemetry objects (oldest first)|
+| `history`    | `TelemetryPoint[]`| Last 150 telemetry objects (oldest first)|
 
 Pass `enabled={selectedDrone !== null}` from `App.tsx` — this is the gate that prevents any backend connection until a drone is selected.
 
@@ -148,7 +158,7 @@ Pass `enabled={selectedDrone !== null}` from `App.tsx` — this is the gate that
 Whenever `selectedDrone` changes (select or deselect), all Cesium entities (`droneRef`, `pathRef`) are removed and `positionsRef` / `initialFlown` are reset before the new mode sets up its own entities.
 
 **Drone entity:** rendered as a billboard using an inline SVG data URI. To replace with a 3D model:
-```js
+```ts
 // In MapComponent.tsx, replace the billboard block with:
 model: {
   uri:              '/models/drone.glb',  // place in frontend/public/models/

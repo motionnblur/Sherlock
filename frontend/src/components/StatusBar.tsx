@@ -1,12 +1,4 @@
-import type { DroneId, TelemetryPoint } from '../types/telemetry';
-
-interface StatusBarProps {
-  telemetry: TelemetryPoint | null;
-  connected: boolean;
-  selectedDrone: DroneId | null;
-  lowPerf: boolean;
-  onToggleLowPerf: () => void;
-}
+import type { StatusBarProps } from '../interfaces/components';
 
 export default function StatusBar({
   telemetry: t,

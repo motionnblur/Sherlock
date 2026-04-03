@@ -1,11 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { DroneId } from '../types/telemetry';
-
-interface HeaderProps {
-  connected: boolean;
-  selectedDrone: DroneId | null;
-  onDeselect: () => void;
-}
+import type { HeaderProps } from '../interfaces/components';
 
 function UtcClock() {
   const [time, setTime] = useState('');

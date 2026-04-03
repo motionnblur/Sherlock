@@ -1,34 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import type { TelemetryPoint } from '../types/telemetry';
+import type {
+  AltitudeTrendProps,
+  CompassRoseProps,
+  LogEntryProps,
+  MissionClockProps,
+  SystemPanelProps,
+  SystemSectionHeaderProps,
+} from '../interfaces/components';
 
 const BLANK = '---';
-
-interface SystemPanelProps {
-  telemetry: TelemetryPoint | null;
-  history: TelemetryPoint[];
-  connected: boolean;
-}
-
-interface MissionClockProps {
-  started: boolean;
-}
-
-interface AltitudeTrendProps {
-  history: TelemetryPoint[];
-}
-
-interface CompassRoseProps {
-  heading: number | null | undefined;
-}
-
-interface SectionHeaderProps {
-  title: string;
-}
-
-interface LogEntryProps {
-  entry: TelemetryPoint;
-  index: number;
-}
 
 function MissionClock({ started }: MissionClockProps) {
   const [elapsed, setElapsed] = useState(0);
@@ -93,7 +73,7 @@ function CompassRose({ heading }: CompassRoseProps) {
   );
 }
 
-function SectionHeader({ title }: SectionHeaderProps) {
+function SectionHeader({ title }: SystemSectionHeaderProps) {
   return (
     <div className="flex items-center gap-2 py-1.5">
       <span className="text-[9px] text-neon tracking-widest font-bold">{title}</span>

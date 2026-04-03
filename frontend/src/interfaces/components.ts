@@ -1,0 +1,74 @@
+import type { ReactNode } from 'react';
+import type { DroneId, TelemetryPoint } from './telemetry';
+
+export interface HeaderProps {
+  connected: boolean;
+  selectedDrone: DroneId | null;
+  onDeselect: () => void;
+}
+
+export interface MapSettingsConfig {
+  darkenPercent?: number;
+}
+
+export interface MapComponentProps {
+  telemetry: TelemetryPoint | null;
+  lowPerf: boolean;
+  selectedDrone: DroneId | null;
+  onSelectDrone: (id: DroneId) => void;
+}
+
+export interface StatusBarProps {
+  telemetry: TelemetryPoint | null;
+  connected: boolean;
+  selectedDrone: DroneId | null;
+  lowPerf: boolean;
+  onToggleLowPerf: () => void;
+}
+
+export interface SystemPanelProps {
+  telemetry: TelemetryPoint | null;
+  history: TelemetryPoint[];
+  connected: boolean;
+}
+
+export interface MissionClockProps {
+  started: boolean;
+}
+
+export interface AltitudeTrendProps {
+  history: TelemetryPoint[];
+}
+
+export interface CompassRoseProps {
+  heading: number | null | undefined;
+}
+
+export interface SystemSectionHeaderProps {
+  title: string;
+}
+
+export interface LogEntryProps {
+  entry: TelemetryPoint;
+  index: number;
+}
+
+export interface TelemetryPanelProps {
+  telemetry: TelemetryPoint | null;
+}
+
+export interface BatteryBarProps {
+  value: number | null | undefined;
+}
+
+export interface TelemetryDataRowProps {
+  label: string;
+  value: ReactNode;
+  unit?: string;
+  accent?: boolean;
+  critical?: boolean;
+}
+
+export interface TelemetrySectionHeaderProps {
+  title: string;
+}

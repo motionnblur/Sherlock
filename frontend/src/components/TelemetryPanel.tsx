@@ -1,27 +1,11 @@
-import type { ReactNode } from 'react';
-import type { TelemetryPoint } from '../types/telemetry';
+import type {
+  BatteryBarProps,
+  TelemetryDataRowProps,
+  TelemetryPanelProps,
+  TelemetrySectionHeaderProps,
+} from '../interfaces/components';
 
 const BLANK = '---';
-
-interface TelemetryPanelProps {
-  telemetry: TelemetryPoint | null;
-}
-
-interface BatteryBarProps {
-  value: number | null | undefined;
-}
-
-interface DataRowProps {
-  label: string;
-  value: ReactNode;
-  unit?: string;
-  accent?: boolean;
-  critical?: boolean;
-}
-
-interface SectionHeaderProps {
-  title: string;
-}
 
 function fmt(val: number | null | undefined, decimals = 2): string {
   if (val == null) return BLANK;
@@ -70,7 +54,7 @@ function BatteryBar({ value }: BatteryBarProps) {
   );
 }
 
-function DataRow({ label, value, unit = '', accent = false, critical = false }: DataRowProps) {
+function DataRow({ label, value, unit = '', accent = false, critical = false }: TelemetryDataRowProps) {
   const valueColor = critical ? 'text-danger' : accent ? 'text-caution' : 'text-neon';
   return (
     <div className="flex items-baseline justify-between py-1.5 border-b border-line last:border-0">
@@ -83,7 +67,7 @@ function DataRow({ label, value, unit = '', accent = false, critical = false }: 
   );
 }
 
-function SectionHeader({ title }: SectionHeaderProps) {
+function SectionHeader({ title }: TelemetrySectionHeaderProps) {
   return (
     <div className="flex items-center gap-2 py-1.5 mb-0.5">
       <span className="text-[9px] text-neon tracking-widest font-bold">{title}</span>
