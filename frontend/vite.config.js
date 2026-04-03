@@ -4,6 +4,9 @@ import cesium from 'vite-plugin-cesium';
 
 export default defineConfig({
   plugins: [react(), cesium()],
+  define: {
+    global: 'globalThis',
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
