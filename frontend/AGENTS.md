@@ -36,9 +36,10 @@ src/
 │   └── useTelemetry.ts          # STOMP client, auto-reconnect, history state; gated by `enabled`
 │
 └── components/
+    ├── Drone.tsx                # Drone entity/path lifecycle: static marker, live tracking, history fetch
     ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, deselect button
     ├── TelemetryPanel.tsx       # Left sidebar: lat/lon/alt/speed/battery (hidden when no drone selected)
-    ├── MapComponent.tsx         # CesiumJS 3D globe — static preview + selection overlay + live tracking
+    ├── MapComponent.tsx         # CesiumJS 3D globe shell, viewer setup, overlays, passes state to <Drone />
     ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, log (hidden when no drone selected)
     └── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
 ```
@@ -141,7 +142,8 @@ Pass `enabled={selectedDrone !== null}` from `App.tsx` — this is the gate that
 
 ## MapComponent — CesiumJS Notes
 
-`src/components/MapComponent.tsx` owns the Cesium `Viewer` instance.
+`src/components/MapComponent.tsx` owns the Cesium `Viewer` instance and map UI overlays.  
+`src/components/Drone.tsx` owns drone entity/path lifecycle and last-known history fetch.
 
 **Props:** `{ telemetry, lowPerf, selectedDrone, onSelectDrone }`
 
@@ -155,7 +157,7 @@ Pass `enabled={selectedDrone !== null}` from `App.tsx` — this is the gate that
 - **Unselected** — a dimmed/muted drone icon is placed at the last known position (REST fetch). No flight path. Label uses `text-muted` color.
 - **Selected** — full-brightness live icon + glowing flight path polyline updated each telemetry tick.
 
-Whenever `selectedDrone` changes (select or deselect), all Cesium entities (`droneRef`, `pathRef`) are removed and `positionsRef` / `initialFlown` are reset before the new mode sets up its own entities.
+Whenever `selectedDrone` changes (select or deselect), `Drone.tsx` removes all drone entities (`droneRef`, `pathRef`) and resets `positionsRef` / `initialFlown` before the new mode sets up its own entities.
 
 **Drone entity:** rendered as a billboard using an inline SVG data URI. To replace with a 3D model:
 ```ts
@@ -172,10 +174,11 @@ model: {
 **Camera:** flies to the drone's position on first fix (either static last-known or first live packet). Do not remove `initialFlown.current` guard — it prevents re-flying on every render. The guard is reset on every `selectedDrone` change.
 
 **Cesium refs lifecycle:**
-- `viewerRef` — the `Cesium.Viewer` instance (created once, destroyed on unmount)
-- `droneRef` — the drone `Entity` (static when unselected, live when selected; null between transitions)
-- `pathRef` — the polyline `Entity` (only exists when a drone is selected)
-- `positionsRef` — `Cartesian3[]` array (mutable, not React state — intentional for perf)
+- `MapComponent.viewerRef` — the `Cesium.Viewer` instance (created once, destroyed on unmount)
+- `Drone.droneRef` — the drone `Entity` (static when unselected, live when selected; null between transitions)
+- `Drone.pathRef` — the polyline `Entity` (only exists when a drone is selected)
+- `Drone.positionsRef` — `Cartesian3[]` array (mutable, not React state — intentional for perf)
+- `Drone.initialFlown` — first-fix camera guard, reset on selection transitions
 
 Do not put Cesium objects into React state (`useState`). They are mutable and do not need to trigger re-renders.
 

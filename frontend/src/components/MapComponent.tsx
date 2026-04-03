@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import mapSettings from '../../configs/map-settings.json';
+import Drone from './Drone';
 import type { MapComponentProps, MapSettingsConfig } from '../interfaces/components';
 import type { TelemetryPoint } from '../interfaces/telemetry';
 
@@ -16,22 +17,6 @@ const MAP_BRIGHTNESS = 1 - MAP_DARKEN_PERCENT / 100;
 if (HAS_TOKEN) {
   Cesium.Ion.defaultAccessToken = ION_TOKEN;
 }
-
-const DRONE_ICON = (() => {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
-    <line x1="10" y1="10" x2="18" y2="18" stroke="#00FF41" stroke-width="1.5"/>
-    <line x1="26" y1="10" x2="18" y2="18" stroke="#00FF41" stroke-width="1.5"/>
-    <line x1="10" y1="26" x2="18" y2="18" stroke="#00FF41" stroke-width="1.5"/>
-    <line x1="26" y1="26" x2="18" y2="18" stroke="#00FF41" stroke-width="1.5"/>
-    <circle cx="18" cy="18" r="4" fill="#00FF41" opacity="0.9"/>
-    <circle cx="18" cy="18" r="6" fill="none" stroke="#00FF41" stroke-width="0.8" opacity="0.4"/>
-    <circle cx="10" cy="10" r="4" fill="none" stroke="#00FF41" stroke-width="1.5"/>
-    <circle cx="26" cy="10" r="4" fill="none" stroke="#00FF41" stroke-width="1.5"/>
-    <circle cx="10" cy="26" r="4" fill="none" stroke="#00FF41" stroke-width="1.5"/>
-    <circle cx="26" cy="26" r="4" fill="none" stroke="#00FF41" stroke-width="1.5"/>
-  </svg>`;
-  return `data:image/svg+xml;base64,${btoa(svg)}`;
-})();
 
 function createViewer(container: HTMLElement): Cesium.Viewer {
   const options: Cesium.Viewer.ConstructorOptions = {
@@ -114,11 +99,8 @@ export default function MapComponent({
 }: MapComponentProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
-  const droneRef = useRef<Cesium.Entity | null>(null);
-  const pathRef = useRef<Cesium.Entity | null>(null);
-  const positionsRef = useRef<Cesium.Cartesian3[]>([]);
-  const initialFlown = useRef(false);
 
+  const [viewer, setViewer] = useState<Cesium.Viewer | null>(null);
   const [isMapDimmed, setIsMapDimmed] = useState(false);
   const [lastKnown, setLastKnown] = useState<TelemetryPoint | null>(null);
 
@@ -127,6 +109,7 @@ export default function MapComponent({
 
     const viewer = createViewer(containerRef.current);
     viewerRef.current = viewer;
+    setViewer(viewer);
     applyImageryBrightness(viewer, 1);
 
     if (HAS_TOKEN) {
@@ -142,10 +125,7 @@ export default function MapComponent({
         viewerRef.current.destroy();
       }
       viewerRef.current = null;
-      droneRef.current = null;
-      pathRef.current = null;
-      positionsRef.current = [];
-      initialFlown.current = false;
+      setViewer(null);
     };
   }, []);
 
@@ -218,186 +198,16 @@ export default function MapComponent({
     scene.requestRender();
   }, [lowPerf]);
 
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || viewer.isDestroyed()) return;
-
-    if (droneRef.current) {
-      viewer.entities.remove(droneRef.current);
-      droneRef.current = null;
-    }
-
-    if (pathRef.current) {
-      viewer.entities.remove(pathRef.current);
-      pathRef.current = null;
-    }
-
-    positionsRef.current = [];
-    initialFlown.current = false;
-    viewer.scene.requestRender();
-  }, [selectedDrone]);
-
-  useEffect(() => {
-    if (selectedDrone) return;
-
-    let cancelled = false;
-
-    const loadLastKnown = async () => {
-      try {
-        const response = await fetch('/api/telemetry/history');
-        const data = (await response.json()) as unknown;
-        if (!cancelled && Array.isArray(data) && data.length > 0) {
-          setLastKnown(data[data.length - 1] as TelemetryPoint);
-        }
-      } catch {
-        // no-op: map can still render without last known point
-      }
-    };
-
-    loadLastKnown();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedDrone]);
-
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || viewer.isDestroyed() || selectedDrone || !lastKnown) return;
-
-    const cartesian = Cesium.Cartesian3.fromDegrees(
-      lastKnown.longitude,
-      lastKnown.latitude,
-      lastKnown.altitude,
-    );
-
-    droneRef.current = viewer.entities.add({
-      name: 'SHERLOCK-01',
-      position: cartesian,
-      billboard: {
-        image: DRONE_ICON,
-        scale: 0.9,
-        verticalOrigin: Cesium.VerticalOrigin.CENTER,
-        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-        heightReference: Cesium.HeightReference.NONE,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        color: Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.45),
-      },
-      label: {
-        text: '◆ SHERLOCK-01',
-        font: '11px "JetBrains Mono", monospace',
-        fillColor: Cesium.Color.fromCssColorString('#3d4f63'),
-        outlineColor: Cesium.Color.BLACK,
-        outlineWidth: 2,
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-        pixelOffset: new Cesium.Cartesian2(0, -22),
-        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 600000),
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      },
-    });
-
-    if (!initialFlown.current) {
-      initialFlown.current = true;
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(
-          lastKnown.longitude,
-          lastKnown.latitude,
-          8000,
-        ),
-        duration: 2.5,
-        orientation: {
-          heading: Cesium.Math.toRadians(0),
-          pitch: Cesium.Math.toRadians(-35),
-          roll: 0,
-        },
-      });
-    }
-
-    viewer.scene.requestRender();
-  }, [selectedDrone, lastKnown]);
-
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || !telemetry || !selectedDrone) return;
-
-    const cartesian = Cesium.Cartesian3.fromDegrees(
-      telemetry.longitude,
-      telemetry.latitude,
-      telemetry.altitude,
-    );
-
-    positionsRef.current.push(cartesian);
-    if (positionsRef.current.length > 200) {
-      positionsRef.current.shift();
-    }
-
-    if (!droneRef.current) {
-      droneRef.current = viewer.entities.add({
-        name: 'SHERLOCK-01',
-        position: cartesian,
-        billboard: {
-          image: DRONE_ICON,
-          scale: 0.9,
-          verticalOrigin: Cesium.VerticalOrigin.CENTER,
-          horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-          heightReference: Cesium.HeightReference.NONE,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        label: {
-          text: '◆ SHERLOCK-01',
-          font: '11px "JetBrains Mono", monospace',
-          fillColor: Cesium.Color.fromCssColorString('#00FF41'),
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -22),
-          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 600000),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-      });
-
-      pathRef.current = viewer.entities.add({
-        name: 'flight-path',
-        polyline: {
-          positions: new Cesium.CallbackProperty(() => [...positionsRef.current], false),
-          width: 1.5,
-          material: new Cesium.PolylineGlowMaterialProperty({
-            glowPower: 0.15,
-            color: Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.65),
-          }),
-          clampToGround: false,
-          arcType: Cesium.ArcType.NONE,
-        },
-      });
-
-      if (!initialFlown.current) {
-        initialFlown.current = true;
-        viewer.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(
-            telemetry.longitude,
-            telemetry.latitude,
-            8000,
-          ),
-          duration: 2.5,
-          orientation: {
-            heading: Cesium.Math.toRadians(0),
-            pitch: Cesium.Math.toRadians(-35),
-            roll: 0,
-          },
-        });
-      }
-    } else {
-      droneRef.current.position = new Cesium.ConstantPositionProperty(cartesian);
-    }
-
-    viewer.scene.requestRender();
-  }, [telemetry, selectedDrone]);
-
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full" />
+      <Drone
+        viewer={viewer}
+        telemetry={telemetry}
+        selectedDrone={selectedDrone}
+        lastKnown={lastKnown}
+        onLastKnownChange={setLastKnown}
+      />
 
       <div
         className="absolute inset-0 pointer-events-none"

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type * as Cesium from 'cesium';
 import type { DroneId, TelemetryPoint } from './telemetry';
 
 export interface HeaderProps {
@@ -16,6 +17,14 @@ export interface MapComponentProps {
   lowPerf: boolean;
   selectedDrone: DroneId | null;
   onSelectDrone: (id: DroneId) => void;
+}
+
+export interface DroneProps {
+  viewer: Cesium.Viewer | null;
+  telemetry: TelemetryPoint | null;
+  selectedDrone: DroneId | null;
+  lastKnown: TelemetryPoint | null;
+  onLastKnownChange: (point: TelemetryPoint | null) => void;
 }
 
 export interface StatusBarProps {
