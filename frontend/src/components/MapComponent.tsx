@@ -101,6 +101,7 @@ export default function MapComponent({
   freeMode,
   onSelectDrone,
 }: MapComponentProps) {
+  const shouldRenderMap = selectedDrone !== null;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
 
@@ -109,20 +110,29 @@ export default function MapComponent({
   const [lastKnown, setLastKnown] = useState<TelemetryPoint | null>(null);
 
   useEffect(() => {
+    if (!shouldRenderMap) {
+      if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+        viewerRef.current.destroy();
+      }
+      viewerRef.current = null;
+      setViewer(null);
+      return;
+    }
+
     if (!containerRef.current || viewerRef.current) return;
 
-    const viewer = createViewer(containerRef.current);
-    viewerRef.current = viewer;
-    setViewer(viewer);
-    applyImageryBrightness(viewer, 1);
+    const nextViewer = createViewer(containerRef.current);
+    viewerRef.current = nextViewer;
+    setViewer(nextViewer);
+    applyImageryBrightness(nextViewer, 1);
 
     if (HAS_TOKEN) {
-      addOsmBuildings(viewer).catch((err) =>
+      addOsmBuildings(nextViewer).catch((err) =>
         console.warn('[Sherlock] OSM Buildings failed to load:', err),
       );
     }
 
-    viewer.scene.requestRender();
+    nextViewer.scene.requestRender();
 
     return () => {
       if (viewerRef.current && !viewerRef.current.isDestroyed()) {
@@ -131,7 +141,7 @@ export default function MapComponent({
       viewerRef.current = null;
       setViewer(null);
     };
-  }, []);
+  }, [shouldRenderMap]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -203,8 +213,8 @@ export default function MapComponent({
   }, [lowPerf]);
 
   return (
-    <div className="relative w-full h-full">
-      <div ref={containerRef} className="w-full h-full" />
+    <div className="relative w-full h-full bg-surface">
+      {shouldRenderMap && <div ref={containerRef} className="w-full h-full" />}
       <Drone
         viewer={viewer}
         telemetry={telemetry}
@@ -214,32 +224,36 @@ export default function MapComponent({
         onLastKnownChange={setLastKnown}
       />
 
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(0,255,65,0.025) 1px, transparent 1px), '
-            + 'linear-gradient(90deg, rgba(0,255,65,0.025) 1px, transparent 1px)',
-          backgroundSize: '60px 60px',
-        }}
-      />
+      {shouldRenderMap && (
+        <>
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(0,255,65,0.025) 1px, transparent 1px), '
+                + 'linear-gradient(90deg, rgba(0,255,65,0.025) 1px, transparent 1px)',
+              backgroundSize: '60px 60px',
+            }}
+          />
 
-      <div className="absolute top-2 left-2 w-5 h-5 border-t border-l border-neon opacity-40 pointer-events-none" />
-      <div className="absolute top-2 right-2 w-5 h-5 border-t border-r border-neon opacity-40 pointer-events-none" />
-      <div className="absolute bottom-2 left-2 w-5 h-5 border-b border-l border-neon opacity-40 pointer-events-none" />
-      <div className="absolute bottom-2 right-2 w-5 h-5 border-b border-r border-neon opacity-40 pointer-events-none" />
+          <div className="absolute top-2 left-2 w-5 h-5 border-t border-l border-neon opacity-40 pointer-events-none" />
+          <div className="absolute top-2 right-2 w-5 h-5 border-t border-r border-neon opacity-40 pointer-events-none" />
+          <div className="absolute bottom-2 left-2 w-5 h-5 border-b border-l border-neon opacity-40 pointer-events-none" />
+          <div className="absolute bottom-2 right-2 w-5 h-5 border-b border-r border-neon opacity-40 pointer-events-none" />
 
-      <div className="absolute top-3 right-3 pointer-events-none">
-        <span className="text-[9px] tracking-widest text-muted">
-          {isMapDimmed ? `MAP DIMMED ${MAP_DARKEN_PERCENT}%` : 'MAP NORMAL'}
-        </span>
-      </div>
+          <div className="absolute top-3 right-3 pointer-events-none">
+            <span className="text-[9px] tracking-widest text-muted">
+              {isMapDimmed ? `MAP DIMMED ${MAP_DARKEN_PERCENT}%` : 'MAP NORMAL'}
+            </span>
+          </div>
 
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none">
-        <span className="text-[9px] text-muted tracking-widest">
-          {HAS_TOKEN ? '3D TERRAIN + OSM BUILDINGS' : 'FLAT MAP MODE - ADD CESIUM TOKEN FOR 3D'}
-        </span>
-      </div>
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none">
+            <span className="text-[9px] text-muted tracking-widest">
+              {HAS_TOKEN ? '3D TERRAIN + OSM BUILDINGS' : 'FLAT MAP MODE - ADD CESIUM TOKEN FOR 3D'}
+            </span>
+          </div>
+        </>
+      )}
 
       {telemetry && selectedDrone && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-panel bg-opacity-80 border border-line px-3 py-1 text-[10px] tracking-widest pointer-events-none">
@@ -255,10 +269,7 @@ export default function MapComponent({
       )}
 
       {!selectedDrone && (
-        <div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none"
-          style={{ background: 'rgba(5,5,5,0.55)' }}
-        >
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-surface">
           <div className="bg-panel border border-line w-64 pointer-events-auto">
             <div className="px-3 py-2 bg-elevated border-b border-line">
               <span className="text-[10px] font-bold tracking-widest text-neon uppercase">
