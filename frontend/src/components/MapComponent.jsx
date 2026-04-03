@@ -101,7 +101,7 @@ async function addOsmBuildings(viewer) {
   return buildings;
 }
 
-export default function MapComponent({ telemetry, lowPerf }) {
+export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSelectDrone }) {
   const containerRef = useRef(null);
   const viewerRef    = useRef(null);
   const droneRef     = useRef(null);
@@ -109,6 +109,7 @@ export default function MapComponent({ telemetry, lowPerf }) {
   const positionsRef = useRef([]);
   const initialFlown = useRef(false);
   const [isMapDimmed, setIsMapDimmed] = useState(false);
+  const [lastKnown, setLastKnown] = useState(null);
 
   // Initialize viewer once
   useEffect(() => {
@@ -218,10 +219,100 @@ export default function MapComponent({ telemetry, lowPerf }) {
     scene.requestRender();
   }, [lowPerf]);
 
-  // Update drone position on every telemetry tick
+  // Clean up all Cesium entities whenever the selected drone changes.
+  // This resets state cleanly for both selection and deselection transitions.
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer || !telemetry) return;
+    if (!viewer || viewer.isDestroyed()) return;
+
+    if (droneRef.current) {
+      viewer.entities.remove(droneRef.current);
+      droneRef.current = null;
+    }
+    if (pathRef.current) {
+      viewer.entities.remove(pathRef.current);
+      pathRef.current = null;
+    }
+    positionsRef.current = [];
+    initialFlown.current = false;
+    viewer.scene.requestRender();
+  }, [selectedDrone]);
+
+  // Fetch last known position once when no drone is selected (for static display).
+  useEffect(() => {
+    if (selectedDrone) return;
+
+    fetch('/api/telemetry/history')
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setLastKnown(data[data.length - 1]);
+        }
+      })
+      .catch(() => {});
+  }, [selectedDrone]);
+
+  // Show static (non-live) drone icon at last known position when no drone is selected.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed() || selectedDrone || !lastKnown) return;
+
+    const cartesian = Cesium.Cartesian3.fromDegrees(
+      lastKnown.longitude,
+      lastKnown.latitude,
+      lastKnown.altitude,
+    );
+
+    droneRef.current = viewer.entities.add({
+      name: 'SHERLOCK-01',
+      position: cartesian,
+      billboard: {
+        image:            DRONE_ICON,
+        scale:            0.9,
+        verticalOrigin:   Cesium.VerticalOrigin.CENTER,
+        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+        heightReference:  Cesium.HeightReference.NONE,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        color:            Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.45),
+      },
+      label: {
+        text:             '◆ SHERLOCK-01',
+        font:             '11px "JetBrains Mono", monospace',
+        fillColor:        Cesium.Color.fromCssColorString('#3d4f63'),
+        outlineColor:     Cesium.Color.BLACK,
+        outlineWidth:     2,
+        style:            Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin:   Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset:      new Cesium.Cartesian2(0, -22),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 600000),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    });
+
+    if (!initialFlown.current) {
+      initialFlown.current = true;
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(
+          lastKnown.longitude,
+          lastKnown.latitude,
+          8000,
+        ),
+        duration: 2.5,
+        orientation: {
+          heading: Cesium.Math.toRadians(0),
+          pitch:   Cesium.Math.toRadians(-35),
+          roll:    0,
+        },
+      });
+    }
+
+    viewer.scene.requestRender();
+  }, [selectedDrone, lastKnown]);
+
+  // Update live drone position on every telemetry tick (only when tracking)
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !telemetry || !selectedDrone) return;
 
     const cartesian = Cesium.Cartesian3.fromDegrees(
       telemetry.longitude,
@@ -281,7 +372,7 @@ export default function MapComponent({ telemetry, lowPerf }) {
           destination: Cesium.Cartesian3.fromDegrees(
             telemetry.longitude,
             telemetry.latitude,
-            8000,                          // closer to see buildings
+            8000,
           ),
           duration: 2.5,
           orientation: {
@@ -297,7 +388,7 @@ export default function MapComponent({ telemetry, lowPerf }) {
 
     // Explicit render — requestRenderMode won't auto-repaint for entity property changes
     viewer.scene.requestRender();
-  }, [telemetry]);
+  }, [telemetry, selectedDrone]);
 
   return (
     <div className="relative w-full h-full">
@@ -334,8 +425,8 @@ export default function MapComponent({ telemetry, lowPerf }) {
         </span>
       </div>
 
-      {/* Position overlay */}
-      {telemetry && (
+      {/* Position overlay — only shown when tracking a drone */}
+      {telemetry && selectedDrone && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-panel bg-opacity-80 border border-line px-3 py-1 text-[10px] tracking-widest pointer-events-none">
           <span className="text-muted">LAT </span>
           <span className="text-neon tabular-nums">{telemetry.latitude?.toFixed(5)}</span>
@@ -345,6 +436,58 @@ export default function MapComponent({ telemetry, lowPerf }) {
           <span className="text-line mx-2">|</span>
           <span className="text-muted">ALT </span>
           <span className="text-neon tabular-nums">{telemetry.altitude?.toFixed(0)}m</span>
+        </div>
+      )}
+
+      {/* Asset selection overlay — shown when no drone is selected */}
+      {!selectedDrone && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
+             style={{ background: 'rgba(5,5,5,0.55)' }}>
+          <div className="bg-panel border border-line w-64 pointer-events-auto">
+            {/* Header */}
+            <div className="px-3 py-2 bg-elevated border-b border-line">
+              <span className="text-[10px] font-bold tracking-widest text-neon uppercase">
+                ◈ SELECT ASSET
+              </span>
+            </div>
+
+            {/* Drone entry */}
+            <div className="px-3 py-3">
+              <button
+                onClick={() => onSelectDrone('SHERLOCK-01')}
+                className="w-full text-left border border-line px-3 py-2.5 hover:bg-elevated hover:border-neon transition-colors"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-neon tracking-widest">SHERLOCK-01</span>
+                  <span className="text-[9px] text-muted tracking-widest">▸ TRACK</span>
+                </div>
+
+                {lastKnown ? (
+                  <div className="text-[9px] text-muted space-y-0.5 tracking-wider">
+                    <div className="tabular-nums">
+                      {Math.abs(lastKnown.latitude)?.toFixed(4)}°{lastKnown.latitude >= 0 ? 'N' : 'S'}{' '}
+                      {Math.abs(lastKnown.longitude)?.toFixed(4)}°{lastKnown.longitude >= 0 ? 'E' : 'W'}
+                    </div>
+                    <div className="tabular-nums">
+                      ALT {lastKnown.altitude?.toFixed(0)}m
+                      <span className="mx-1.5 text-line">·</span>
+                      BAT {lastKnown.battery?.toFixed(1)}%
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-[9px] text-muted tracking-wider animate-pulse-fast">
+                    FETCHING LAST POSITION...
+                  </div>
+                )}
+              </button>
+            </div>
+
+            <div className="px-3 pb-2">
+              <span className="text-[8px] text-muted tracking-widest">
+                SELECT AN ASSET TO BEGIN TRACKING
+              </span>
+            </div>
+          </div>
         </div>
       )}
     </div>

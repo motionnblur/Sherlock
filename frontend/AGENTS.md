@@ -21,21 +21,21 @@
 
 ```
 src/
-├── App.jsx                      # Root layout shell, passes telemetry state down
+├── App.jsx                      # Root layout shell, drone selection state, passes telemetry down
 ├── main.jsx                     # ReactDOM.createRoot entry point
 ├── index.css                    # Tailwind directives + Cesium widget overrides
 ├── configs/
 │   └── map-settings.json        # Map-only dimming config for Cesium imagery
 │
 ├── hooks/
-│   └── useTelemetry.js          # STOMP client, auto-reconnect, history state
+│   └── useTelemetry.js          # STOMP client, auto-reconnect, history state; gated by `enabled`
 │
 └── components/
-    ├── Header.jsx               # Top bar: branding, UTC clock, link status
-    ├── TelemetryPanel.jsx       # Left sidebar: lat/lon/alt/speed/battery
-    ├── MapComponent.jsx         # CesiumJS 3D globe with drone entity + flight path
-    ├── SystemPanel.jsx          # Right sidebar: compass, mission clock, log
-    └── StatusBar.jsx            # Bottom bar: alerts and mission status
+    ├── Header.jsx               # Top bar: branding, UTC clock, link/offline status, deselect button
+    ├── TelemetryPanel.jsx       # Left sidebar: lat/lon/alt/speed/battery (hidden when no drone selected)
+    ├── MapComponent.jsx         # CesiumJS 3D globe — static preview + selection overlay + live tracking
+    ├── SystemPanel.jsx          # Right sidebar: compass, mission clock, log (hidden when no drone selected)
+    └── StatusBar.jsx            # Bottom bar: alerts, mission status, asset name
 ```
 
 ---
@@ -46,14 +46,16 @@ src/
 <App>                          full height, flex-col, bg-surface
 ├── <Header>                   h-11, bg-panel, border-b border-line
 ├── <div class="flex flex-1">  main content row
-│   ├── <TelemetryPanel>       w-64, bg-panel, border-r border-line
+│   ├── <TelemetryPanel>       w-64, bg-panel, border-r border-line  ← only when drone selected
 │   ├── <main class="flex-1">  CesiumJS canvas fills this
 │   │   └── <MapComponent>
-│   └── <SystemPanel>          w-52, bg-panel, border-l border-line
+│   └── <SystemPanel>          w-52, bg-panel, border-l border-line  ← only when drone selected
 └── <StatusBar>                h-7, bg-elevated, border-t border-line
 ```
 
 **Do not change this structural layout** unless asked. Widths (`w-64`, `w-52`) are intentional for data density.
+
+`TelemetryPanel` and `SystemPanel` are conditionally mounted — they only appear when `selectedDrone` is non-null. Do not render them unconditionally.
 
 ---
 
@@ -108,14 +110,20 @@ Pattern for a section header inside a panel:
 `src/hooks/useTelemetry.js` — the single source of truth for live data.
 
 ```js
-const { telemetry, connected, history } = useTelemetry();
+const { telemetry, connected, history } = useTelemetry(enabled);
 ```
+
+| Parameter    | Type      | Description                                               |
+|--------------|-----------|-----------------------------------------------------------|
+| `enabled`    | `boolean` | When `false`, STOMP client is deactivated and state is cleared. Defaults to `true`. |
 
 | Return value | Type              | Description                              |
 |--------------|-------------------|------------------------------------------|
 | `telemetry`  | `Object \| null`  | Latest telemetry packet (null until first message) |
 | `connected`  | `boolean`         | STOMP link status                        |
 | `history`    | `Array`           | Last 150 telemetry objects (oldest first)|
+
+Pass `enabled={selectedDrone !== null}` from `App.jsx` — this is the gate that prevents any backend connection until a drone is selected.
 
 **Do not create a second STOMP client.** If a new component needs telemetry data, pass `telemetry` / `history` as props from `App.jsx`, or use React Context if the prop chain becomes deep.
 
@@ -125,9 +133,19 @@ const { telemetry, connected, history } = useTelemetry();
 
 `src/components/MapComponent.jsx` owns the Cesium `Viewer` instance.
 
+**Props:** `{ telemetry, lowPerf, selectedDrone, onSelectDrone }`
+
 **Imagery:** `UrlTemplateImageryProvider` (OpenStreetMap) is used by default — no Cesium Ion token required. If `VITE_CESIUM_TOKEN` is set in `.env`, Ion features (World Terrain, premium imagery) unlock automatically.
 
 **Map dimming:** pressing `D` toggles map-only dimming for the Cesium imagery layer. The dim level is data-driven from `frontend/configs/map-settings.json` via `darkenPercent` (0-100), and the component applies `brightness = 1 - darkenPercent / 100` to imagery layers only. Do not dim the surrounding React layout.
+
+**Drone selection overlay:** when `selectedDrone` is null, a centred overlay panel is rendered over the map listing available assets. Clicking an entry calls `onSelectDrone(id)`. The overlay also shows the drone's last known position fetched via a single `GET /api/telemetry/history` REST call — no WebSocket is open at this point.
+
+**Static vs live drone entity:** there are two display modes:
+- **Unselected** — a dimmed/muted drone icon is placed at the last known position (REST fetch). No flight path. Label uses `text-muted` color.
+- **Selected** — full-brightness live icon + glowing flight path polyline updated each telemetry tick.
+
+Whenever `selectedDrone` changes (select or deselect), all Cesium entities (`droneRef`, `pathRef`) are removed and `positionsRef` / `initialFlown` are reset before the new mode sets up its own entities.
 
 **Drone entity:** rendered as a billboard using an inline SVG data URI. To replace with a 3D model:
 ```js
@@ -139,14 +157,14 @@ model: {
 },
 ```
 
-**Flight path:** a `CallbackProperty` returns `positionsRef.current` (last 200 `Cartesian3` points). It updates automatically as `positionsRef` is mutated.
+**Flight path:** a `CallbackProperty` returns `positionsRef.current` (last 200 `Cartesian3` points). It updates automatically as `positionsRef` is mutated. Only created when a drone is selected.
 
-**Camera:** flies to the drone's position on first telemetry fix. Do not remove `initialFlown.current` guard — it prevents re-flying on every render.
+**Camera:** flies to the drone's position on first fix (either static last-known or first live packet). Do not remove `initialFlown.current` guard — it prevents re-flying on every render. The guard is reset on every `selectedDrone` change.
 
 **Cesium refs lifecycle:**
 - `viewerRef` — the `Cesium.Viewer` instance (created once, destroyed on unmount)
-- `droneRef` — the drone `Entity` (created on first telemetry, updated each tick)
-- `pathRef` — the polyline `Entity`
+- `droneRef` — the drone `Entity` (static when unselected, live when selected; null between transitions)
+- `pathRef` — the polyline `Entity` (only exists when a drone is selected)
 - `positionsRef` — `Cartesian3[]` array (mutable, not React state — intentional for perf)
 
 Do not put Cesium objects into React state (`useState`). They are mutable and do not need to trigger re-renders.

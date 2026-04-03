@@ -19,7 +19,7 @@ function UtcClock() {
   return <span className="tabular-nums">{time}</span>;
 }
 
-export default function Header({ connected }) {
+export default function Header({ connected, selectedDrone, onDeselect }) {
   return (
     <header className="flex items-center justify-between px-4 h-11 bg-panel border-b border-line shrink-0">
       {/* Left: Branding */}
@@ -52,22 +52,40 @@ export default function Header({ connected }) {
 
         <div className="w-px h-5 bg-line" />
 
-        <div className="flex items-center gap-2 text-xs">
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              connected ? 'bg-neon animate-pulse-fast' : 'bg-danger animate-blink'
-            }`}
-          />
-          <span className={`font-bold tracking-wider ${connected ? 'text-neon' : 'text-danger'}`}>
-            {connected ? 'LINK ACTIVE' : 'NO SIGNAL'}
-          </span>
-        </div>
+        {selectedDrone ? (
+          <>
+            <div className="flex items-center gap-2 text-xs">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  connected ? 'bg-neon animate-pulse-fast' : 'bg-caution animate-blink'
+                }`}
+              />
+              <span className={`font-bold tracking-wider ${connected ? 'text-neon' : 'text-caution'}`}>
+                {connected ? 'LINK ACTIVE' : 'CONNECTING...'}
+              </span>
+            </div>
 
-        <div className="w-px h-5 bg-line" />
+            <div className="w-px h-5 bg-line" />
 
-        <div className="text-xs text-muted tracking-wider">
-          SHERLOCK<span className="text-neon">-01</span>
-        </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted tracking-wider">
+                SHERLOCK<span className="text-neon">-01</span>
+              </span>
+              <button
+                onClick={onDeselect}
+                className="text-[9px] text-muted tracking-widest border border-line px-1.5 py-0.5 hover:text-danger hover:border-danger transition-colors"
+                title="Deselect drone"
+              >
+                ✕
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="w-1.5 h-1.5 bg-muted" />
+            <span className="font-bold tracking-wider text-muted">OFFLINE</span>
+          </div>
+        )}
       </div>
     </header>
   );

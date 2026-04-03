@@ -7,15 +7,26 @@ const MAX_HISTORY = 150;
 
 /**
  * Manages the STOMP/SockJS WebSocket connection and exposes live telemetry state.
- * Automatically reconnects on disconnect.
+ * Only connects when `enabled` is true — pass false to disconnect and suppress all data.
  */
-export function useTelemetry() {
+export function useTelemetry(enabled = true) {
   const [telemetry, setTelemetry] = useState(null);
   const [connected, setConnected] = useState(false);
   const [history, setHistory] = useState([]);
   const clientRef = useRef(null);
 
   useEffect(() => {
+    if (!enabled) {
+      if (clientRef.current) {
+        clientRef.current.deactivate();
+        clientRef.current = null;
+      }
+      setConnected(false);
+      setTelemetry(null);
+      setHistory([]);
+      return;
+    }
+
     const client = new Client({
       webSocketFactory: () => new SockJS(WS_URL),
       reconnectDelay: 3000,
@@ -47,8 +58,9 @@ export function useTelemetry() {
 
     return () => {
       client.deactivate();
+      clientRef.current = null;
     };
-  }, []);
+  }, [enabled]);
 
   return { telemetry, connected, history };
 }

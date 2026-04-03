@@ -1,4 +1,4 @@
-export default function StatusBar({ telemetry: t, connected, lowPerf, onToggleLowPerf }) {
+export default function StatusBar({ telemetry: t, connected, selectedDrone, lowPerf, onToggleLowPerf }) {
   const battery = t?.battery ?? null;
   const isBatteryLow = battery != null && battery < 20;
   const isBatteryCritical = battery != null && battery < 10;
@@ -18,7 +18,9 @@ export default function StatusBar({ telemetry: t, connected, lowPerf, onToggleLo
 
         <div className="flex items-center gap-1.5">
           <span className="text-muted">PLATFORM</span>
-          <span className="text-neon font-bold">SHERLOCK-01</span>
+          <span className={`font-bold ${selectedDrone ? 'text-neon' : 'text-muted'}`}>
+            {selectedDrone ?? 'NO ASSET'}
+          </span>
         </div>
 
         {connected && t && (
@@ -53,7 +55,10 @@ export default function StatusBar({ telemetry: t, connected, lowPerf, onToggleLo
         {!isBatteryLow && connected && t && (
           <span className="text-muted">ALL SYSTEMS NOMINAL</span>
         )}
-        {!connected && (
+        {!selectedDrone && (
+          <span className="text-muted">SELECT AN ASSET TO BEGIN MISSION</span>
+        )}
+        {selectedDrone && !connected && (
           <span className="text-danger font-bold animate-blink">⚠ DATALINK LOST — ATTEMPTING RECONNECT</span>
         )}
       </div>
@@ -62,7 +67,9 @@ export default function StatusBar({ telemetry: t, connected, lowPerf, onToggleLo
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-1.5">
           <span className="text-muted">PKT RATE</span>
-          <span className="text-neon">2 Hz</span>
+          <span className={selectedDrone ? 'text-neon' : 'text-muted'}>
+            {selectedDrone ? '2 Hz' : '─'}
+          </span>
         </div>
         <span className="text-line">|</span>
         <div className="flex items-center gap-1.5">
