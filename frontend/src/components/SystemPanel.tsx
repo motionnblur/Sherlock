@@ -1,10 +1,38 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { TelemetryPoint } from '../types/telemetry';
 
 const BLANK = '---';
 
-function MissionClock({ started }) {
+interface SystemPanelProps {
+  telemetry: TelemetryPoint | null;
+  history: TelemetryPoint[];
+  connected: boolean;
+}
+
+interface MissionClockProps {
+  started: boolean;
+}
+
+interface AltitudeTrendProps {
+  history: TelemetryPoint[];
+}
+
+interface CompassRoseProps {
+  heading: number | null | undefined;
+}
+
+interface SectionHeaderProps {
+  title: string;
+}
+
+interface LogEntryProps {
+  entry: TelemetryPoint;
+  index: number;
+}
+
+function MissionClock({ started }: MissionClockProps) {
   const [elapsed, setElapsed] = useState(0);
-  const startRef = useRef(null);
+  const startRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (started && !startRef.current) {
@@ -14,9 +42,11 @@ function MissionClock({ started }) {
 
   useEffect(() => {
     if (!startRef.current) return;
+
     const id = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+      setElapsed(Math.floor((Date.now() - startRef.current!) / 1000));
     }, 1000);
+
     return () => clearInterval(id);
   }, [started]);
 
@@ -31,20 +61,24 @@ function MissionClock({ started }) {
   );
 }
 
-function AltitudeTrend({ history }) {
+function AltitudeTrend({ history }: AltitudeTrendProps) {
   if (history.length < 2) return <span className="text-muted">─</span>;
+
   const last = history[history.length - 1]?.altitude ?? 0;
   const prev = history[history.length - 2]?.altitude ?? 0;
   const delta = last - prev;
-  if (delta > 0.5)  return <span className="text-neon">↑</span>;
+
+  if (delta > 0.5) return <span className="text-neon">↑</span>;
   if (delta < -0.5) return <span className="text-caution">↓</span>;
   return <span className="text-muted">→</span>;
 }
 
-function CompassRose({ heading }) {
+function CompassRose({ heading }: CompassRoseProps) {
   if (heading == null) return null;
+
   const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   const active = dirs[Math.round(heading / 45) % 8];
+
   return (
     <div className="grid grid-cols-3 gap-0.5 w-16 text-center text-[9px] font-bold">
       {['NW', 'N', 'NE', 'W', '·', 'E', 'SW', 'S', 'SE'].map((d) => (
@@ -59,7 +93,7 @@ function CompassRose({ heading }) {
   );
 }
 
-function SectionHeader({ title }) {
+function SectionHeader({ title }: SectionHeaderProps) {
   return (
     <div className="flex items-center gap-2 py-1.5">
       <span className="text-[9px] text-neon tracking-widest font-bold">{title}</span>
@@ -68,10 +102,11 @@ function SectionHeader({ title }) {
   );
 }
 
-function LogEntry({ entry, index }) {
-  const time = entry?.timestamp
+function LogEntry({ entry, index }: LogEntryProps) {
+  const time = entry.timestamp
     ? new Date(entry.timestamp).toISOString().slice(11, 19)
     : BLANK;
+
   return (
     <div
       className={`flex items-center justify-between py-0.5 text-[9px] border-b border-line last:border-0 ${
@@ -79,18 +114,17 @@ function LogEntry({ entry, index }) {
       }`}
     >
       <span className="tabular-nums">{time}</span>
-      <span className="tabular-nums">{entry?.altitude?.toFixed(0) ?? BLANK}m</span>
-      <span className="tabular-nums">{entry?.speed?.toFixed(0) ?? BLANK}km/h</span>
+      <span className="tabular-nums">{entry.altitude?.toFixed(0) ?? BLANK}m</span>
+      <span className="tabular-nums">{entry.speed?.toFixed(0) ?? BLANK}km/h</span>
     </div>
   );
 }
 
-export default function SystemPanel({ telemetry: t, history, connected }) {
+export default function SystemPanel({ telemetry: t, history, connected }: SystemPanelProps) {
   const recentLog = [...history].reverse().slice(0, 8);
 
   return (
     <aside className="w-52 bg-panel border-l border-line flex flex-col shrink-0 overflow-y-auto">
-      {/* Panel header */}
       <div className="px-3 py-2 border-b border-line bg-elevated">
         <span className="text-[10px] font-bold tracking-widest text-neon uppercase">
           ◈ System Status
@@ -98,13 +132,11 @@ export default function SystemPanel({ telemetry: t, history, connected }) {
       </div>
 
       <div className="px-3 py-2 flex flex-col gap-0.5">
-        {/* Mission timer */}
         <SectionHeader title="MISSION CLOCK" />
         <div className="py-1 text-sm">
           <MissionClock started={connected && !!t} />
         </div>
 
-        {/* Heading / compass */}
         <SectionHeader title="HEADING" />
         <div className="flex items-center gap-3 py-1">
           <CompassRose heading={t?.heading} />
@@ -115,7 +147,6 @@ export default function SystemPanel({ telemetry: t, history, connected }) {
           </div>
         </div>
 
-        {/* Altitude trend */}
         <SectionHeader title="ALT TREND" />
         <div className="flex items-center gap-2 py-1">
           <span className="text-xl">
@@ -127,7 +158,6 @@ export default function SystemPanel({ telemetry: t, history, connected }) {
           </div>
         </div>
 
-        {/* Signal */}
         <SectionHeader title="DATALINK" />
         <div className="py-1 space-y-1">
           <div className="flex items-center justify-between text-xs">
@@ -146,7 +176,6 @@ export default function SystemPanel({ telemetry: t, history, connected }) {
           </div>
         </div>
 
-        {/* Flight log */}
         <SectionHeader title="FLIGHT LOG" />
         <div className="py-0.5">
           <div className="flex items-center justify-between text-[8px] text-muted pb-0.5 border-b border-line mb-0.5">
@@ -155,7 +184,7 @@ export default function SystemPanel({ telemetry: t, history, connected }) {
             <span>SPD</span>
           </div>
           {recentLog.length > 0
-            ? recentLog.map((entry, i) => <LogEntry key={i} entry={entry} index={i} />)
+            ? recentLog.map((entry, index) => <LogEntry key={index} entry={entry} index={index} />)
             : <span className="text-[9px] text-muted">AWAITING DATA...</span>
           }
         </div>

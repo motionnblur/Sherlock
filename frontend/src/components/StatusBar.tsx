@@ -1,11 +1,26 @@
-export default function StatusBar({ telemetry: t, connected, selectedDrone, lowPerf, onToggleLowPerf }) {
+import type { DroneId, TelemetryPoint } from '../types/telemetry';
+
+interface StatusBarProps {
+  telemetry: TelemetryPoint | null;
+  connected: boolean;
+  selectedDrone: DroneId | null;
+  lowPerf: boolean;
+  onToggleLowPerf: () => void;
+}
+
+export default function StatusBar({
+  telemetry: t,
+  connected,
+  selectedDrone,
+  lowPerf,
+  onToggleLowPerf,
+}: StatusBarProps) {
   const battery = t?.battery ?? null;
   const isBatteryLow = battery != null && battery < 20;
   const isBatteryCritical = battery != null && battery < 10;
 
   return (
     <footer className="flex items-center justify-between px-4 h-7 bg-elevated border-t border-line text-[10px] tracking-wider shrink-0">
-      {/* Left: Mission status */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-1.5">
           <span className="text-muted">MISSION</span>
@@ -44,13 +59,12 @@ export default function StatusBar({ telemetry: t, connected, selectedDrone, lowP
         </button>
       </div>
 
-      {/* Center: Alerts */}
       <div className="flex items-center gap-3">
         {isBatteryCritical && (
-          <span className="text-danger font-bold animate-blink">⚠ CRITICAL BATTERY — RTB IMMEDIATELY</span>
+          <span className="text-danger font-bold animate-blink">⚠ CRITICAL BATTERY - RTB IMMEDIATELY</span>
         )}
         {isBatteryLow && !isBatteryCritical && (
-          <span className="text-caution font-bold animate-pulse-fast">⚠ LOW BATTERY — {battery?.toFixed(1)}%</span>
+          <span className="text-caution font-bold animate-pulse-fast">⚠ LOW BATTERY - {battery?.toFixed(1)}%</span>
         )}
         {!isBatteryLow && connected && t && (
           <span className="text-muted">ALL SYSTEMS NOMINAL</span>
@@ -59,11 +73,10 @@ export default function StatusBar({ telemetry: t, connected, selectedDrone, lowP
           <span className="text-muted">SELECT AN ASSET TO BEGIN MISSION</span>
         )}
         {selectedDrone && !connected && (
-          <span className="text-danger font-bold animate-blink">⚠ DATALINK LOST — ATTEMPTING RECONNECT</span>
+          <span className="text-danger font-bold animate-blink">⚠ DATALINK LOST - ATTEMPTING RECONNECT</span>
         )}
       </div>
 
-      {/* Right: System info */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-1.5">
           <span className="text-muted">PKT RATE</span>

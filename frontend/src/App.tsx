@@ -5,9 +5,10 @@ import TelemetryPanel from './components/TelemetryPanel';
 import MapComponent from './components/MapComponent';
 import SystemPanel from './components/SystemPanel';
 import StatusBar from './components/StatusBar';
+import type { DroneId } from './types/telemetry';
 
 export default function App() {
-  const [selectedDrone, setSelectedDrone] = useState(null);
+  const [selectedDrone, setSelectedDrone] = useState<DroneId | null>(null);
   const { telemetry, connected, history } = useTelemetry(selectedDrone !== null);
   const [lowPerf, setLowPerf] = useState(false);
 
@@ -23,7 +24,7 @@ export default function App() {
             telemetry={telemetry}
             lowPerf={lowPerf}
             selectedDrone={selectedDrone}
-            onSelectDrone={setSelectedDrone}
+            onSelectDrone={(id) => setSelectedDrone(id)}
           />
         </main>
 
@@ -35,7 +36,7 @@ export default function App() {
         connected={connected}
         selectedDrone={selectedDrone}
         lowPerf={lowPerf}
-        onToggleLowPerf={() => setLowPerf((v) => !v)}
+        onToggleLowPerf={() => setLowPerf((value) => !value)}
       />
     </div>
   );

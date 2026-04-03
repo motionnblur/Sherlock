@@ -1,19 +1,26 @@
-import { useState, useEffect, useRef } from 'react';
-import { Client } from '@stomp/stompjs';
+import { useEffect, useRef, useState } from 'react';
+import { Client, type IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
+import type { TelemetryPoint } from '../types/telemetry';
 
 const WS_URL = import.meta.env.VITE_WS_URL || '/ws-skytrack';
 const MAX_HISTORY = 150;
+
+interface UseTelemetryResult {
+  telemetry: TelemetryPoint | null;
+  connected: boolean;
+  history: TelemetryPoint[];
+}
 
 /**
  * Manages the STOMP/SockJS WebSocket connection and exposes live telemetry state.
  * Only connects when `enabled` is true — pass false to disconnect and suppress all data.
  */
-export function useTelemetry(enabled = true) {
-  const [telemetry, setTelemetry] = useState(null);
+export function useTelemetry(enabled = true): UseTelemetryResult {
+  const [telemetry, setTelemetry] = useState<TelemetryPoint | null>(null);
   const [connected, setConnected] = useState(false);
-  const [history, setHistory] = useState([]);
-  const clientRef = useRef(null);
+  const [history, setHistory] = useState<TelemetryPoint[]>([]);
+  const clientRef = useRef<Client | null>(null);
 
   useEffect(() => {
     if (!enabled) {
@@ -28,15 +35,15 @@ export function useTelemetry(enabled = true) {
     }
 
     const client = new Client({
-      webSocketFactory: () => new SockJS(WS_URL),
+      webSocketFactory: () => new SockJS(WS_URL) as WebSocket,
       reconnectDelay: 3000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
 
       onConnect: () => {
         setConnected(true);
-        client.subscribe('/topic/telemetry', (message) => {
-          const data = JSON.parse(message.body);
+        client.subscribe('/topic/telemetry', (message: IMessage) => {
+          const data = JSON.parse(message.body) as TelemetryPoint;
           setTelemetry(data);
           setHistory((prev) => {
             const next = [...prev, data];

@@ -2,11 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import mapSettings from '../../configs/map-settings.json';
+import type { DroneId, TelemetryPoint } from '../types/telemetry';
+
+interface MapSettings {
+  darkenPercent?: number;
+}
+
+interface MapComponentProps {
+  telemetry: TelemetryPoint | null;
+  lowPerf: boolean;
+  selectedDrone: DroneId | null;
+  onSelectDrone: (id: DroneId) => void;
+}
 
 const ION_TOKEN = import.meta.env.VITE_CESIUM_TOKEN;
-const HAS_TOKEN = !!ION_TOKEN;
-const MAP_DARKEN_PERCENT = Number.isFinite(mapSettings?.darkenPercent)
-  ? Math.max(0, Math.min(100, mapSettings.darkenPercent))
+const HAS_TOKEN = Boolean(ION_TOKEN);
+const typedMapSettings = mapSettings as MapSettings;
+const MAP_DARKEN_PERCENT = Number.isFinite(typedMapSettings.darkenPercent)
+  ? Math.max(0, Math.min(100, typedMapSettings.darkenPercent ?? 50))
   : 50;
 const MAP_BRIGHTNESS = 1 - MAP_DARKEN_PERCENT / 100;
 
@@ -14,7 +27,6 @@ if (HAS_TOKEN) {
   Cesium.Ion.defaultAccessToken = ION_TOKEN;
 }
 
-// SVG quadcopter icon encoded as a data URI
 const DRONE_ICON = (() => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
     <line x1="10" y1="10" x2="18" y2="18" stroke="#00FF41" stroke-width="1.5"/>
@@ -31,87 +43,95 @@ const DRONE_ICON = (() => {
   return `data:image/svg+xml;base64,${btoa(svg)}`;
 })();
 
-function createViewer(container) {
-  const options = {
-    animation:                              false,
-    baseLayerPicker:                        false,
-    fullscreenButton:                       false,
-    geocoder:                               false,
-    homeButton:                             false,
-    infoBox:                                false,
-    sceneModePicker:                        false,
-    selectionIndicator:                     false,
-    timeline:                               false,
-    navigationHelpButton:                   false,
+function createViewer(container: HTMLElement): Cesium.Viewer {
+  const options: Cesium.Viewer.ConstructorOptions = {
+    animation: false,
+    baseLayerPicker: false,
+    fullscreenButton: false,
+    geocoder: false,
+    homeButton: false,
+    infoBox: false,
+    sceneModePicker: false,
+    selectionIndicator: false,
+    timeline: false,
+    navigationHelpButton: false,
     navigationInstructionsInitiallyVisible: false,
-    scene3DOnly:                            true,
-    // Per Cesium perf guide: only render when scene changes (camera, data, explicit)
-    // Drops idle CPU from ~25% to ~3%
-    requestRenderMode:                      true,
-    // Infinity = never re-render just because sim time advanced (we have no clock-driven anims)
-    maximumRenderTimeChange:                Infinity,
+    scene3DOnly: true,
+    requestRenderMode: true,
+    maximumRenderTimeChange: Infinity,
   };
 
   if (HAS_TOKEN) {
-    // Cesium Ion: Bing Maps satellite imagery (default) + World Terrain
     options.terrain = Cesium.Terrain.fromWorldTerrain();
   } else {
-    // No token: OpenStreetMap flat tiles as fallback
     options.baseLayer = new Cesium.ImageryLayer(
       new Cesium.UrlTemplateImageryProvider({
-        url:          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-        credit:       '© OpenStreetMap contributors',
+        url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        credit: '© OpenStreetMap contributors',
         maximumLevel: 19,
-      })
+      }),
     );
   }
 
   const viewer = new Cesium.Viewer(container, options);
 
-  // Atmosphere & sky — disabled for clean dark military aesthetic
-  viewer.scene.globe.showGroundAtmosphere    = false;
-  viewer.scene.skyAtmosphere.show            = false;
-  viewer.scene.skyBox.show                   = false;
-  viewer.scene.sun.show                      = false;
-  viewer.scene.moon.show                     = false;
-  viewer.scene.backgroundColor               = Cesium.Color.fromCssColorString('#050505');
-  viewer.scene.globe.baseColor               = Cesium.Color.fromCssColorString('#0a1628');
-
-  // Depth test so the drone label always renders on top of terrain
+  viewer.scene.globe.showGroundAtmosphere = false;
+  if (viewer.scene.skyAtmosphere) {
+    viewer.scene.skyAtmosphere.show = false;
+  }
+  const skyBox = viewer.scene.skyBox as unknown as { show?: boolean } | undefined;
+  if (skyBox) {
+    skyBox.show = false;
+  }
+  if (viewer.scene.sun) {
+    viewer.scene.sun.show = false;
+  }
+  if (viewer.scene.moon) {
+    viewer.scene.moon.show = false;
+  }
+  viewer.scene.backgroundColor = Cesium.Color.fromCssColorString('#050505');
+  viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a1628');
   viewer.scene.globe.depthTestAgainstTerrain = true;
 
   return viewer;
 }
 
-function applyImageryBrightness(viewer, brightness) {
+function applyImageryBrightness(viewer: Cesium.Viewer, brightness: number): void {
   for (let i = 0; i < viewer.imageryLayers.length; i += 1) {
-    viewer.imageryLayers.get(i).brightness = brightness;
+    const layer = viewer.imageryLayers.get(i);
+    if (layer) {
+      layer.brightness = brightness;
+    }
   }
 }
 
-async function addOsmBuildings(viewer) {
-  // Cesium Ion asset 96188 — OpenStreetMap Buildings (free tier)
+async function addOsmBuildings(viewer: Cesium.Viewer): Promise<Cesium.Cesium3DTileset> {
   const buildings = await Cesium.createOsmBuildingsAsync({
     style: new Cesium.Cesium3DTileStyle({
-      // Dark navy tint to blend with the military dark theme
       color: "color('#0d2a45', 0.85)",
     }),
   });
+
   viewer.scene.primitives.add(buildings);
   return buildings;
 }
 
-export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSelectDrone }) {
-  const containerRef = useRef(null);
-  const viewerRef    = useRef(null);
-  const droneRef     = useRef(null);
-  const pathRef      = useRef(null);
-  const positionsRef = useRef([]);
+export default function MapComponent({
+  telemetry,
+  lowPerf,
+  selectedDrone,
+  onSelectDrone,
+}: MapComponentProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const viewerRef = useRef<Cesium.Viewer | null>(null);
+  const droneRef = useRef<Cesium.Entity | null>(null);
+  const pathRef = useRef<Cesium.Entity | null>(null);
+  const positionsRef = useRef<Cesium.Cartesian3[]>([]);
   const initialFlown = useRef(false);
-  const [isMapDimmed, setIsMapDimmed] = useState(false);
-  const [lastKnown, setLastKnown] = useState(null);
 
-  // Initialize viewer once
+  const [isMapDimmed, setIsMapDimmed] = useState(false);
+  const [lastKnown, setLastKnown] = useState<TelemetryPoint | null>(null);
+
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) return;
 
@@ -119,10 +139,9 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
     viewerRef.current = viewer;
     applyImageryBrightness(viewer, 1);
 
-    // Add 3D OSM buildings when Ion token is present
     if (HAS_TOKEN) {
       addOsmBuildings(viewer).catch((err) =>
-        console.warn('[Sherlock] OSM Buildings failed to load:', err)
+        console.warn('[Sherlock] OSM Buildings failed to load:', err),
       );
     }
 
@@ -133,22 +152,21 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
         viewerRef.current.destroy();
       }
       viewerRef.current = null;
-      droneRef.current  = null;
-      pathRef.current   = null;
+      droneRef.current = null;
+      pathRef.current = null;
       positionsRef.current = [];
       initialFlown.current = false;
     };
   }, []);
 
   useEffect(() => {
-    const onKeyDown = (event) => {
+    const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat || event.key.toLowerCase() !== 'd') return;
 
       const target = event.target;
       if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+        target instanceof HTMLElement
+        && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
       ) {
         return;
       }
@@ -168,7 +186,6 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
     viewer.scene.requestRender();
   }, [isMapDimmed]);
 
-  // Low performance mode — strip everything except ground tiles
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
@@ -177,27 +194,20 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
     const globe = scene.globe;
 
     if (lowPerf) {
-      // Halve render resolution — 1/4 pixel count
       viewer.resolutionScale = 0.5;
-
-      // Coarser globe tiles — higher value = fewer tiles loaded
       globe.maximumScreenSpaceError = 8;
-
-      // Kill post-processing
       globe.enableLighting = false;
       scene.fog.enabled = false;
-      scene.fxaa = false;
+      (scene as unknown as { fxaa: boolean }).fxaa = false;
 
-      // Remove all 3D tilesets (buildings, etc.) — only ground remains
       const primitives = scene.primitives;
-      for (let i = primitives.length - 1; i >= 0; i--) {
-        const p = primitives.get(i);
-        if (p instanceof Cesium.Cesium3DTileset) {
-          primitives.remove(p);
+      for (let i = primitives.length - 1; i >= 0; i -= 1) {
+        const primitive = primitives.get(i);
+        if (primitive instanceof Cesium.Cesium3DTileset) {
+          primitives.remove(primitive);
         }
       }
 
-      // Disable terrain (flat ellipsoid is cheaper) when no Ion token
       if (!HAS_TOKEN) {
         globe.depthTestAgainstTerrain = false;
       }
@@ -205,13 +215,12 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
       viewer.resolutionScale = 1;
       globe.maximumScreenSpaceError = 2;
       scene.fog.enabled = false;
-      scene.fxaa = true;
+      (scene as unknown as { fxaa: boolean }).fxaa = true;
       globe.depthTestAgainstTerrain = true;
 
-      // Re-add 3D buildings if Ion token available
       if (HAS_TOKEN) {
         addOsmBuildings(viewer).catch((err) =>
-          console.warn('[Sherlock] OSM Buildings reload failed:', err)
+          console.warn('[Sherlock] OSM Buildings reload failed:', err),
         );
       }
     }
@@ -219,8 +228,6 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
     scene.requestRender();
   }, [lowPerf]);
 
-  // Clean up all Cesium entities whenever the selected drone changes.
-  // This resets state cleanly for both selection and deselection transitions.
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed()) return;
@@ -229,30 +236,41 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
       viewer.entities.remove(droneRef.current);
       droneRef.current = null;
     }
+
     if (pathRef.current) {
       viewer.entities.remove(pathRef.current);
       pathRef.current = null;
     }
+
     positionsRef.current = [];
     initialFlown.current = false;
     viewer.scene.requestRender();
   }, [selectedDrone]);
 
-  // Fetch last known position once when no drone is selected (for static display).
   useEffect(() => {
     if (selectedDrone) return;
 
-    fetch('/api/telemetry/history')
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setLastKnown(data[data.length - 1]);
+    let cancelled = false;
+
+    const loadLastKnown = async () => {
+      try {
+        const response = await fetch('/api/telemetry/history');
+        const data = (await response.json()) as unknown;
+        if (!cancelled && Array.isArray(data) && data.length > 0) {
+          setLastKnown(data[data.length - 1] as TelemetryPoint);
         }
-      })
-      .catch(() => {});
+      } catch {
+        // no-op: map can still render without last known point
+      }
+    };
+
+    loadLastKnown();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedDrone]);
 
-  // Show static (non-live) drone icon at last known position when no drone is selected.
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed() || selectedDrone || !lastKnown) return;
@@ -267,23 +285,23 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
       name: 'SHERLOCK-01',
       position: cartesian,
       billboard: {
-        image:            DRONE_ICON,
-        scale:            0.9,
-        verticalOrigin:   Cesium.VerticalOrigin.CENTER,
+        image: DRONE_ICON,
+        scale: 0.9,
+        verticalOrigin: Cesium.VerticalOrigin.CENTER,
         horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-        heightReference:  Cesium.HeightReference.NONE,
+        heightReference: Cesium.HeightReference.NONE,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        color:            Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.45),
+        color: Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.45),
       },
       label: {
-        text:             '◆ SHERLOCK-01',
-        font:             '11px "JetBrains Mono", monospace',
-        fillColor:        Cesium.Color.fromCssColorString('#3d4f63'),
-        outlineColor:     Cesium.Color.BLACK,
-        outlineWidth:     2,
-        style:            Cesium.LabelStyle.FILL_AND_OUTLINE,
-        verticalOrigin:   Cesium.VerticalOrigin.BOTTOM,
-        pixelOffset:      new Cesium.Cartesian2(0, -22),
+        text: '◆ SHERLOCK-01',
+        font: '11px "JetBrains Mono", monospace',
+        fillColor: Cesium.Color.fromCssColorString('#3d4f63'),
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -22),
         distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 600000),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },
@@ -300,8 +318,8 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
         duration: 2.5,
         orientation: {
           heading: Cesium.Math.toRadians(0),
-          pitch:   Cesium.Math.toRadians(-35),
-          roll:    0,
+          pitch: Cesium.Math.toRadians(-35),
+          roll: 0,
         },
       });
     }
@@ -309,7 +327,6 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
     viewer.scene.requestRender();
   }, [selectedDrone, lastKnown]);
 
-  // Update live drone position on every telemetry tick (only when tracking)
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || !telemetry || !selectedDrone) return;
@@ -321,51 +338,50 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
     );
 
     positionsRef.current.push(cartesian);
-    if (positionsRef.current.length > 200) positionsRef.current.shift();
+    if (positionsRef.current.length > 200) {
+      positionsRef.current.shift();
+    }
 
     if (!droneRef.current) {
-      // ── Drone entity ──────────────────────────────────────────────────────
       droneRef.current = viewer.entities.add({
         name: 'SHERLOCK-01',
         position: cartesian,
         billboard: {
-          image:            DRONE_ICON,
-          scale:            0.9,
-          verticalOrigin:   Cesium.VerticalOrigin.CENTER,
+          image: DRONE_ICON,
+          scale: 0.9,
+          verticalOrigin: Cesium.VerticalOrigin.CENTER,
           horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-          heightReference:  Cesium.HeightReference.NONE,
+          heightReference: Cesium.HeightReference.NONE,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         label: {
-          text:             '◆ SHERLOCK-01',
-          font:             '11px "JetBrains Mono", monospace',
-          fillColor:        Cesium.Color.fromCssColorString('#00FF41'),
-          outlineColor:     Cesium.Color.BLACK,
-          outlineWidth:     2,
-          style:            Cesium.LabelStyle.FILL_AND_OUTLINE,
-          verticalOrigin:   Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset:      new Cesium.Cartesian2(0, -22),
+          text: '◆ SHERLOCK-01',
+          font: '11px "JetBrains Mono", monospace',
+          fillColor: Cesium.Color.fromCssColorString('#00FF41'),
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          pixelOffset: new Cesium.Cartesian2(0, -22),
           distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 600000),
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       });
 
-      // ── Flight path polyline ──────────────────────────────────────────────
       pathRef.current = viewer.entities.add({
         name: 'flight-path',
         polyline: {
           positions: new Cesium.CallbackProperty(() => [...positionsRef.current], false),
-          width:     1.5,
-          material:  new Cesium.PolylineGlowMaterialProperty({
+          width: 1.5,
+          material: new Cesium.PolylineGlowMaterialProperty({
             glowPower: 0.15,
-            color:     Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.65),
+            color: Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.65),
           }),
           clampToGround: false,
-          arcType:       Cesium.ArcType.NONE,
+          arcType: Cesium.ArcType.NONE,
         },
       });
 
-      // ── Initial camera fly-to ─────────────────────────────────────────────
       if (!initialFlown.current) {
         initialFlown.current = true;
         viewer.camera.flyTo({
@@ -377,8 +393,8 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
           duration: 2.5,
           orientation: {
             heading: Cesium.Math.toRadians(0),
-            pitch:   Cesium.Math.toRadians(-35),
-            roll:    0,
+            pitch: Cesium.Math.toRadians(-35),
+            roll: 0,
           },
         });
       }
@@ -386,7 +402,6 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
       droneRef.current.position = new Cesium.ConstantPositionProperty(cartesian);
     }
 
-    // Explicit render — requestRenderMode won't auto-repaint for entity property changes
     viewer.scene.requestRender();
   }, [telemetry, selectedDrone]);
 
@@ -394,38 +409,33 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Subtle scan-line grid overlay */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(0,255,65,0.025) 1px, transparent 1px), ' +
-            'linear-gradient(90deg, rgba(0,255,65,0.025) 1px, transparent 1px)',
+            'linear-gradient(rgba(0,255,65,0.025) 1px, transparent 1px), '
+            + 'linear-gradient(90deg, rgba(0,255,65,0.025) 1px, transparent 1px)',
           backgroundSize: '60px 60px',
         }}
       />
 
-      {/* Corner brackets */}
       <div className="absolute top-2 left-2 w-5 h-5 border-t border-l border-neon opacity-40 pointer-events-none" />
       <div className="absolute top-2 right-2 w-5 h-5 border-t border-r border-neon opacity-40 pointer-events-none" />
       <div className="absolute bottom-2 left-2 w-5 h-5 border-b border-l border-neon opacity-40 pointer-events-none" />
       <div className="absolute bottom-2 right-2 w-5 h-5 border-b border-r border-neon opacity-40 pointer-events-none" />
 
-      {/* Map dimming state */}
       <div className="absolute top-3 right-3 pointer-events-none">
         <span className="text-[9px] tracking-widest text-muted">
           {isMapDimmed ? `MAP DIMMED ${MAP_DARKEN_PERCENT}%` : 'MAP NORMAL'}
         </span>
       </div>
 
-      {/* 3D mode badge */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none">
         <span className="text-[9px] text-muted tracking-widest">
-          {HAS_TOKEN ? '3D TERRAIN + OSM BUILDINGS' : 'FLAT MAP MODE — ADD CESIUM TOKEN FOR 3D'}
+          {HAS_TOKEN ? '3D TERRAIN + OSM BUILDINGS' : 'FLAT MAP MODE - ADD CESIUM TOKEN FOR 3D'}
         </span>
       </div>
 
-      {/* Position overlay — only shown when tracking a drone */}
       {telemetry && selectedDrone && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-panel bg-opacity-80 border border-line px-3 py-1 text-[10px] tracking-widest pointer-events-none">
           <span className="text-muted">LAT </span>
@@ -439,19 +449,18 @@ export default function MapComponent({ telemetry, lowPerf, selectedDrone, onSele
         </div>
       )}
 
-      {/* Asset selection overlay — shown when no drone is selected */}
       {!selectedDrone && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
-             style={{ background: 'rgba(5,5,5,0.55)' }}>
+        <div
+          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          style={{ background: 'rgba(5,5,5,0.55)' }}
+        >
           <div className="bg-panel border border-line w-64 pointer-events-auto">
-            {/* Header */}
             <div className="px-3 py-2 bg-elevated border-b border-line">
               <span className="text-[10px] font-bold tracking-widest text-neon uppercase">
                 ◈ SELECT ASSET
               </span>
             </div>
 
-            {/* Drone entry */}
             <div className="px-3 py-3">
               <button
                 onClick={() => onSelectDrone('SHERLOCK-01')}

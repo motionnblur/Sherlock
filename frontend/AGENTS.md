@@ -21,21 +21,21 @@
 
 ```
 src/
-├── App.jsx                      # Root layout shell, drone selection state, passes telemetry down
-├── main.jsx                     # ReactDOM.createRoot entry point
+├── App.tsx                      # Root layout shell, drone selection state, passes telemetry down
+├── main.tsx                     # ReactDOM.createRoot entry point
 ├── index.css                    # Tailwind directives + Cesium widget overrides
 ├── configs/
 │   └── map-settings.json        # Map-only dimming config for Cesium imagery
 │
 ├── hooks/
-│   └── useTelemetry.js          # STOMP client, auto-reconnect, history state; gated by `enabled`
+│   └── useTelemetry.ts          # STOMP client, auto-reconnect, history state; gated by `enabled`
 │
 └── components/
-    ├── Header.jsx               # Top bar: branding, UTC clock, link/offline status, deselect button
-    ├── TelemetryPanel.jsx       # Left sidebar: lat/lon/alt/speed/battery (hidden when no drone selected)
-    ├── MapComponent.jsx         # CesiumJS 3D globe — static preview + selection overlay + live tracking
-    ├── SystemPanel.jsx          # Right sidebar: compass, mission clock, log (hidden when no drone selected)
-    └── StatusBar.jsx            # Bottom bar: alerts, mission status, asset name
+    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, deselect button
+    ├── TelemetryPanel.tsx       # Left sidebar: lat/lon/alt/speed/battery (hidden when no drone selected)
+    ├── MapComponent.tsx         # CesiumJS 3D globe — static preview + selection overlay + live tracking
+    ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, log (hidden when no drone selected)
+    └── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
 ```
 
 ---
@@ -81,10 +81,10 @@ All tokens are defined in `tailwind.config.js`. **Always use these class names �
 
 ## Adding a New UI Component
 
-1. Create `src/components/YourComponent.jsx`
-2. Accept data via props (all data flows from `useTelemetry` → `App.jsx` → props)
+1. Create `src/components/YourComponent.tsx`
+2. Accept data via props (all data flows from `useTelemetry` → `App.tsx` → props)
 3. Use only Tailwind utility classes for styling
-4. Mount it in `App.jsx` and pass the relevant props
+4. Mount it in `App.tsx` and pass the relevant props
 
 Pattern to follow for a data row:
 ```jsx
@@ -107,7 +107,7 @@ Pattern for a section header inside a panel:
 
 ## useTelemetry Hook
 
-`src/hooks/useTelemetry.js` — the single source of truth for live data.
+`src/hooks/useTelemetry.ts` — the single source of truth for live data.
 
 ```js
 const { telemetry, connected, history } = useTelemetry(enabled);
@@ -123,15 +123,15 @@ const { telemetry, connected, history } = useTelemetry(enabled);
 | `connected`  | `boolean`         | STOMP link status                        |
 | `history`    | `Array`           | Last 150 telemetry objects (oldest first)|
 
-Pass `enabled={selectedDrone !== null}` from `App.jsx` — this is the gate that prevents any backend connection until a drone is selected.
+Pass `enabled={selectedDrone !== null}` from `App.tsx` — this is the gate that prevents any backend connection until a drone is selected.
 
-**Do not create a second STOMP client.** If a new component needs telemetry data, pass `telemetry` / `history` as props from `App.jsx`, or use React Context if the prop chain becomes deep.
+**Do not create a second STOMP client.** If a new component needs telemetry data, pass `telemetry` / `history` as props from `App.tsx`, or use React Context if the prop chain becomes deep.
 
 ---
 
 ## MapComponent — CesiumJS Notes
 
-`src/components/MapComponent.jsx` owns the Cesium `Viewer` instance.
+`src/components/MapComponent.tsx` owns the Cesium `Viewer` instance.
 
 **Props:** `{ telemetry, lowPerf, selectedDrone, onSelectDrone }`
 
@@ -149,7 +149,7 @@ Whenever `selectedDrone` changes (select or deselect), all Cesium entities (`dro
 
 **Drone entity:** rendered as a billboard using an inline SVG data URI. To replace with a 3D model:
 ```js
-// In MapComponent.jsx, replace the billboard block with:
+// In MapComponent.tsx, replace the billboard block with:
 model: {
   uri:              '/models/drone.glb',  // place in frontend/public/models/
   scale:            50,
@@ -192,7 +192,7 @@ npm install
 npm run dev        # → http://localhost:5173
 ```
 
-The dev server proxies `/api` and `/ws-skytrack` to `http://localhost:8080` (see `vite.config.js`). The backend must be running for the map to receive data.
+The dev server proxies `/api` and `/ws-skytrack` to `http://localhost:8080` (see `vite.config.ts`). The backend must be running for the map to receive data.
 
 ---
 

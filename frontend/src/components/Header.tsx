@@ -1,4 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import type { DroneId } from '../types/telemetry';
+
+interface HeaderProps {
+  connected: boolean;
+  selectedDrone: DroneId | null;
+  onDeselect: () => void;
+}
 
 function UtcClock() {
   const [time, setTime] = useState('');
@@ -11,6 +18,7 @@ function UtcClock() {
       const s = String(now.getUTCSeconds()).padStart(2, '0');
       setTime(`${h}:${m}:${s}`);
     };
+
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -19,10 +27,9 @@ function UtcClock() {
   return <span className="tabular-nums">{time}</span>;
 }
 
-export default function Header({ connected, selectedDrone, onDeselect }) {
+export default function Header({ connected, selectedDrone, onDeselect }: HeaderProps) {
   return (
     <header className="flex items-center justify-between px-4 h-11 bg-panel border-b border-line shrink-0">
-      {/* Left: Branding */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-neon text-xs font-bold tracking-widest">▌▌▌</span>
@@ -36,12 +43,10 @@ export default function Header({ connected, selectedDrone, onDeselect }) {
         </span>
       </div>
 
-      {/* Center: Classification */}
       <div className="text-caution text-xs font-bold tracking-widest uppercase animate-blink">
         ◈ TRAINING MODE ◈
       </div>
 
-      {/* Right: Status indicators */}
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2 text-xs">
           <span className="text-muted tracking-wider">UTC</span>
