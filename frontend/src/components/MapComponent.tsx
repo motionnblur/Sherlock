@@ -168,7 +168,7 @@ export default function MapComponent({
     const globe = scene.globe;
 
     if (lowPerf) {
-      viewer.resolutionScale = 0.5;
+      viewer.resolutionScale = 1;
       globe.maximumScreenSpaceError = 8;
       globe.enableLighting = false;
       scene.fog.enabled = false;
