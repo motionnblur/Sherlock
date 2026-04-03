@@ -5,6 +5,8 @@ import type { DroneId, TelemetryPoint } from './telemetry';
 export interface HeaderProps {
   connected: boolean;
   selectedDrone: DroneId | null;
+  freeMode: boolean;
+  onToggleFreeMode: () => void;
   onDeselect: () => void;
 }
 
@@ -16,6 +18,7 @@ export interface MapComponentProps {
   telemetry: TelemetryPoint | null;
   lowPerf: boolean;
   selectedDrone: DroneId | null;
+  freeMode: boolean;
   onSelectDrone: (id: DroneId) => void;
 }
 
@@ -23,6 +26,7 @@ export interface DroneProps {
   viewer: Cesium.Viewer | null;
   telemetry: TelemetryPoint | null;
   selectedDrone: DroneId | null;
+  freeMode: boolean;
   lastKnown: TelemetryPoint | null;
   onLastKnownChange: (point: TelemetryPoint | null) => void;
 }

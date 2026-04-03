@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { HeaderProps } from '../interfaces/components';
 
 function UtcClock() {
@@ -21,7 +21,34 @@ function UtcClock() {
   return <span className="tabular-nums">{time}</span>;
 }
 
-export default function Header({ connected, selectedDrone, onDeselect }: HeaderProps) {
+export default function Header({
+  connected,
+  selectedDrone,
+  freeMode,
+  onToggleFreeMode,
+  onDeselect,
+}: HeaderProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!selectedDrone) {
+      setSettingsOpen(false);
+    }
+  }, [selectedDrone]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!settingsRef.current || settingsRef.current.contains(event.target as Node)) return;
+      setSettingsOpen(false);
+    };
+
+    window.addEventListener('mousedown', onPointerDown);
+    return () => window.removeEventListener('mousedown', onPointerDown);
+  }, [settingsOpen]);
+
   return (
     <header className="flex items-center justify-between px-4 h-11 bg-panel border-b border-line shrink-0">
       <div className="flex items-center gap-4">
@@ -70,20 +97,42 @@ export default function Header({ connected, selectedDrone, onDeselect }: HeaderP
               <span className="text-muted tracking-wider">
                 SHERLOCK<span className="text-neon">-01</span>
               </span>
-              <button
-                type="button"
-                className="text-[9px] text-muted tracking-widest border border-line px-1.5 py-0.5 hover:text-neon hover:border-neon transition-colors"
-                title="Settings"
-              >
-                SETTINGS
-              </button>
-              <button
-                onClick={onDeselect}
-                className="text-[9px] text-muted tracking-widest border border-line px-1.5 py-0.5 hover:text-danger hover:border-danger transition-colors"
-                title="Deselect drone"
-              >
-                ✕
-              </button>
+              <div ref={settingsRef} className="relative flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen((open) => !open)}
+                  className={`text-[9px] tracking-widest border px-1.5 py-0.5 transition-colors ${
+                    settingsOpen ? 'text-neon border-neon' : 'text-muted border-line hover:text-neon hover:border-neon'
+                  }`}
+                  title="Settings"
+                >
+                  SETTINGS
+                </button>
+                <button
+                  type="button"
+                  onClick={onDeselect}
+                  className="text-[9px] text-muted tracking-widest border border-line px-1.5 py-0.5 hover:text-danger hover:border-danger transition-colors"
+                  title="Deselect drone"
+                >
+                  ✕
+                </button>
+
+                {settingsOpen && (
+                  <div className="absolute right-0 top-6 w-32 bg-panel border border-line p-2 z-20">
+                    <button
+                      type="button"
+                      onClick={onToggleFreeMode}
+                      className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
+                        freeMode
+                          ? 'text-neon border-neon bg-elevated'
+                          : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
+                      }`}
+                    >
+                      FREE MODE: {freeMode ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </>
         ) : (

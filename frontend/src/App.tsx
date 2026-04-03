@@ -11,10 +11,20 @@ export default function App() {
   const [selectedDrone, setSelectedDrone] = useState<DroneId | null>(null);
   const { telemetry, connected, history } = useTelemetry(selectedDrone !== null);
   const [lowPerf, setLowPerf] = useState(false);
+  const [freeMode, setFreeMode] = useState(false);
 
   return (
     <div className="h-screen flex flex-col bg-surface font-mono text-neon overflow-hidden select-none">
-      <Header connected={connected} selectedDrone={selectedDrone} onDeselect={() => setSelectedDrone(null)} />
+      <Header
+        connected={connected}
+        selectedDrone={selectedDrone}
+        freeMode={freeMode}
+        onToggleFreeMode={() => setFreeMode((value) => !value)}
+        onDeselect={() => {
+          setSelectedDrone(null);
+          setFreeMode(false);
+        }}
+      />
 
       <div className="flex flex-1 min-h-0 border-t border-line">
         {selectedDrone && <TelemetryPanel telemetry={telemetry} />}
@@ -24,6 +34,7 @@ export default function App() {
             telemetry={telemetry}
             lowPerf={lowPerf}
             selectedDrone={selectedDrone}
+            freeMode={freeMode}
             onSelectDrone={(id) => setSelectedDrone(id)}
           />
         </main>

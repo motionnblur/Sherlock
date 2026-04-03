@@ -94,6 +94,7 @@ export default function Drone({
   viewer,
   telemetry,
   selectedDrone,
+  freeMode,
   lastKnown,
   onLastKnownChange,
 }: DroneProps) {
@@ -102,7 +103,11 @@ export default function Drone({
   const positionsRef = useRef<Cesium.Cartesian3[]>([]);
   const initialFlown = useRef(false);
 
-  const ensureLiveTrackingEntities = (mapViewer: Cesium.Viewer, position: Cesium.Cartesian3): void => {
+  const ensureLiveTrackingEntities = (
+    mapViewer: Cesium.Viewer,
+    position: Cesium.Cartesian3,
+    shouldTrack: boolean,
+  ): void => {
     if (!droneRef.current) {
       droneRef.current = addLiveDroneEntity(mapViewer, position);
     } else {
@@ -125,7 +130,7 @@ export default function Drone({
       });
     }
 
-    if (mapViewer.trackedEntity !== droneRef.current) {
+    if (shouldTrack && mapViewer.trackedEntity !== droneRef.current) {
       mapViewer.trackedEntity = droneRef.current;
     }
   };
@@ -203,7 +208,7 @@ export default function Drone({
       positionsRef.current.push(position);
     }
 
-    ensureLiveTrackingEntities(viewer, position);
+    ensureLiveTrackingEntities(viewer, position, !freeMode);
 
     if (!initialFlown.current) {
       initialFlown.current = true;
@@ -211,7 +216,7 @@ export default function Drone({
     }
 
     viewer.scene.requestRender();
-  }, [viewer, selectedDrone, lastKnown]);
+  }, [viewer, selectedDrone, lastKnown, freeMode]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed() || !telemetry || !selectedDrone) return;
@@ -222,7 +227,7 @@ export default function Drone({
       positionsRef.current.shift();
     }
 
-    ensureLiveTrackingEntities(viewer, position);
+    ensureLiveTrackingEntities(viewer, position, !freeMode);
 
     if (!initialFlown.current) {
       initialFlown.current = true;
@@ -230,7 +235,14 @@ export default function Drone({
     }
 
     viewer.scene.requestRender();
-  }, [viewer, telemetry, selectedDrone]);
+  }, [viewer, telemetry, selectedDrone, freeMode]);
+
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed() || !selectedDrone || !droneRef.current) return;
+
+    viewer.trackedEntity = freeMode ? undefined : droneRef.current;
+    viewer.scene.requestRender();
+  }, [viewer, selectedDrone, freeMode]);
 
   useEffect(() => {
     return () => {

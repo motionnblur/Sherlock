@@ -98,6 +98,7 @@ export default function MapComponent({
   telemetry,
   lowPerf,
   selectedDrone,
+  freeMode,
   onSelectDrone,
 }: MapComponentProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -208,6 +209,7 @@ export default function MapComponent({
         viewer={viewer}
         telemetry={telemetry}
         selectedDrone={selectedDrone}
+        freeMode={freeMode}
         lastKnown={lastKnown}
         onLastKnownChange={setLastKnown}
       />
