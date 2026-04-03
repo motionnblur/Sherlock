@@ -71,6 +71,13 @@ export default function Header({ connected, selectedDrone, onDeselect }: HeaderP
                 SHERLOCK<span className="text-neon">-01</span>
               </span>
               <button
+                type="button"
+                className="text-[9px] text-muted tracking-widest border border-line px-1.5 py-0.5 hover:text-neon hover:border-neon transition-colors"
+                title="Settings"
+              >
+                SETTINGS
+              </button>
+              <button
                 onClick={onDeselect}
                 className="text-[9px] text-muted tracking-widest border border-line px-1.5 py-0.5 hover:text-danger hover:border-danger transition-colors"
                 title="Deselect drone"
