@@ -102,6 +102,34 @@ export default function Drone({
   const positionsRef = useRef<Cesium.Cartesian3[]>([]);
   const initialFlown = useRef(false);
 
+  const ensureLiveTrackingEntities = (mapViewer: Cesium.Viewer, position: Cesium.Cartesian3): void => {
+    if (!droneRef.current) {
+      droneRef.current = addLiveDroneEntity(mapViewer, position);
+    } else {
+      droneRef.current.position = new Cesium.ConstantPositionProperty(position);
+    }
+
+    if (!pathRef.current) {
+      pathRef.current = mapViewer.entities.add({
+        name: 'flight-path',
+        polyline: {
+          positions: new Cesium.CallbackProperty(() => [...positionsRef.current], false),
+          width: 1.5,
+          material: new Cesium.PolylineGlowMaterialProperty({
+            glowPower: 0.15,
+            color: Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.65),
+          }),
+          clampToGround: false,
+          arcType: Cesium.ArcType.NONE,
+        },
+      });
+    }
+
+    if (mapViewer.trackedEntity !== droneRef.current) {
+      mapViewer.trackedEntity = droneRef.current;
+    }
+  };
+
   useEffect(() => {
     if (selectedDrone) return;
 
@@ -129,6 +157,8 @@ export default function Drone({
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) return;
 
+    viewer.trackedEntity = undefined;
+
     if (droneRef.current) {
       viewer.entities.remove(droneRef.current);
       droneRef.current = null;
@@ -147,6 +177,8 @@ export default function Drone({
   useEffect(() => {
     if (!viewer || viewer.isDestroyed() || selectedDrone || !lastKnown) return;
 
+    viewer.trackedEntity = undefined;
+
     if (droneRef.current) {
       viewer.entities.remove(droneRef.current);
       droneRef.current = null;
@@ -154,6 +186,24 @@ export default function Drone({
 
     const position = toCartesian(lastKnown);
     droneRef.current = addStaticDroneEntity(viewer, position);
+
+    if (!initialFlown.current) {
+      initialFlown.current = true;
+      flyToAsset(viewer, lastKnown.longitude, lastKnown.latitude);
+    }
+
+    viewer.scene.requestRender();
+  }, [viewer, selectedDrone, lastKnown]);
+
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed() || !selectedDrone || !lastKnown) return;
+
+    const position = toCartesian(lastKnown);
+    if (positionsRef.current.length === 0) {
+      positionsRef.current.push(position);
+    }
+
+    ensureLiveTrackingEntities(viewer, position);
 
     if (!initialFlown.current) {
       initialFlown.current = true;
@@ -172,29 +222,11 @@ export default function Drone({
       positionsRef.current.shift();
     }
 
-    if (!droneRef.current) {
-      droneRef.current = addLiveDroneEntity(viewer, position);
+    ensureLiveTrackingEntities(viewer, position);
 
-      pathRef.current = viewer.entities.add({
-        name: 'flight-path',
-        polyline: {
-          positions: new Cesium.CallbackProperty(() => [...positionsRef.current], false),
-          width: 1.5,
-          material: new Cesium.PolylineGlowMaterialProperty({
-            glowPower: 0.15,
-            color: Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.65),
-          }),
-          clampToGround: false,
-          arcType: Cesium.ArcType.NONE,
-        },
-      });
-
-      if (!initialFlown.current) {
-        initialFlown.current = true;
-        flyToAsset(viewer, telemetry.longitude, telemetry.latitude);
-      }
-    } else {
-      droneRef.current.position = new Cesium.ConstantPositionProperty(position);
+    if (!initialFlown.current) {
+      initialFlown.current = true;
+      flyToAsset(viewer, telemetry.longitude, telemetry.latitude);
     }
 
     viewer.scene.requestRender();
@@ -203,6 +235,8 @@ export default function Drone({
   useEffect(() => {
     return () => {
       if (!viewer || viewer.isDestroyed()) return;
+
+      viewer.trackedEntity = undefined;
 
       if (droneRef.current) {
         viewer.entities.remove(droneRef.current);
