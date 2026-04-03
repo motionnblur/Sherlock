@@ -23,7 +23,12 @@ function toCartesian(point: TelemetryPoint): Cesium.Cartesian3 {
   return Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, point.altitude);
 }
 
-function flyToAsset(viewer: Cesium.Viewer, longitude: number, latitude: number): void {
+function flyToAsset(
+  viewer: Cesium.Viewer,
+  longitude: number,
+  latitude: number,
+  onComplete?: () => void,
+): void {
   viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 8000),
     duration: 2.5,
@@ -32,6 +37,8 @@ function flyToAsset(viewer: Cesium.Viewer, longitude: number, latitude: number):
       pitch: Cesium.Math.toRadians(-35),
       roll: 0,
     },
+    complete: onComplete,
+    cancel: onComplete,
   });
 }
 
@@ -102,11 +109,16 @@ export default function Drone({
   const pathRef = useRef<Cesium.Entity | null>(null);
   const positionsRef = useRef<Cesium.Cartesian3[]>([]);
   const initialFlown = useRef(false);
+  const initialCentering = useRef(false);
+  const freeModeRef = useRef(freeMode);
+
+  useEffect(() => {
+    freeModeRef.current = freeMode;
+  }, [freeMode]);
 
   const ensureLiveTrackingEntities = (
     mapViewer: Cesium.Viewer,
     position: Cesium.Cartesian3,
-    shouldTrack: boolean,
   ): void => {
     if (!droneRef.current) {
       droneRef.current = addLiveDroneEntity(mapViewer, position);
@@ -129,10 +141,30 @@ export default function Drone({
         },
       });
     }
+  };
 
-    if (shouldTrack && mapViewer.trackedEntity !== droneRef.current) {
-      mapViewer.trackedEntity = droneRef.current;
-    }
+  const beginInitialCenter = (
+    mapViewer: Cesium.Viewer,
+    longitude: number,
+    latitude: number,
+  ): void => {
+    if (initialFlown.current || initialCentering.current) return;
+
+    initialCentering.current = true;
+    mapViewer.trackedEntity = undefined;
+
+    flyToAsset(mapViewer, longitude, latitude, () => {
+      if (mapViewer.isDestroyed()) return;
+
+      initialCentering.current = false;
+      initialFlown.current = true;
+
+      if (!freeModeRef.current && droneRef.current) {
+        mapViewer.trackedEntity = droneRef.current;
+      }
+
+      mapViewer.scene.requestRender();
+    });
   };
 
   useEffect(() => {
@@ -162,6 +194,7 @@ export default function Drone({
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) return;
 
+    viewer.camera.cancelFlight();
     viewer.trackedEntity = undefined;
 
     if (droneRef.current) {
@@ -176,6 +209,7 @@ export default function Drone({
 
     positionsRef.current = [];
     initialFlown.current = false;
+    initialCentering.current = false;
     viewer.scene.requestRender();
   }, [viewer, selectedDrone]);
 
@@ -193,8 +227,7 @@ export default function Drone({
     droneRef.current = addStaticDroneEntity(viewer, position);
 
     if (!initialFlown.current) {
-      initialFlown.current = true;
-      flyToAsset(viewer, lastKnown.longitude, lastKnown.latitude);
+      beginInitialCenter(viewer, lastKnown.longitude, lastKnown.latitude);
     }
 
     viewer.scene.requestRender();
@@ -208,11 +241,10 @@ export default function Drone({
       positionsRef.current.push(position);
     }
 
-    ensureLiveTrackingEntities(viewer, position, !freeMode);
+    ensureLiveTrackingEntities(viewer, position);
 
     if (!initialFlown.current) {
-      initialFlown.current = true;
-      flyToAsset(viewer, lastKnown.longitude, lastKnown.latitude);
+      beginInitialCenter(viewer, lastKnown.longitude, lastKnown.latitude);
     }
 
     viewer.scene.requestRender();
@@ -227,11 +259,10 @@ export default function Drone({
       positionsRef.current.shift();
     }
 
-    ensureLiveTrackingEntities(viewer, position, !freeMode);
+    ensureLiveTrackingEntities(viewer, position);
 
     if (!initialFlown.current) {
-      initialFlown.current = true;
-      flyToAsset(viewer, telemetry.longitude, telemetry.latitude);
+      beginInitialCenter(viewer, telemetry.longitude, telemetry.latitude);
     }
 
     viewer.scene.requestRender();
@@ -239,6 +270,12 @@ export default function Drone({
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed() || !selectedDrone || !droneRef.current) return;
+
+    if (initialCentering.current) {
+      viewer.trackedEntity = undefined;
+      viewer.scene.requestRender();
+      return;
+    }
 
     viewer.trackedEntity = freeMode ? undefined : droneRef.current;
     viewer.scene.requestRender();
