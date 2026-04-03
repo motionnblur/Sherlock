@@ -2,32 +2,27 @@ import type {
   BatteryBarProps,
   TelemetryDataRowProps,
   TelemetryPanelProps,
-  TelemetrySectionHeaderProps,
 } from '../interfaces/components';
-
-const BLANK = '---';
-
-function fmt(val: number | null | undefined, decimals = 2): string {
-  if (val == null) return BLANK;
-  return Number(val).toFixed(decimals);
-}
-
-function formatCoord(val: number | null | undefined, posLabel: string, negLabel: string): string {
-  if (val == null) return BLANK;
-  const abs = Math.abs(val).toFixed(6);
-  return `${abs}° ${val >= 0 ? posLabel : negLabel}`;
-}
+import { PACKET_RATE_LABEL, PRIMARY_DRONE_ID } from '../constants/telemetry';
+import SectionHeader from './SectionHeader';
+import {
+  BLANK_VALUE,
+  clamp,
+  formatFixed,
+  formatHemisphereCoordinate,
+  formatUtcTime,
+  getCardinalDirection,
+} from '../utils/formatters';
 
 function BatteryBar({ value }: BatteryBarProps) {
-  const pct = value ?? 0;
-  const clampedPct = Math.max(0, Math.min(100, pct));
+  const clampedPct = clamp(value ?? 0, 0, 100);
   const isLow = clampedPct < 20;
   const isCritical = clampedPct < 10;
 
   const barColor = isCritical ? 'bg-danger' : isLow ? 'bg-caution' : 'bg-neon';
   const textColor = isCritical ? 'text-danger' : isLow ? 'text-caution' : 'text-neon';
 
-  const filled = Math.max(0, Math.min(10, Math.round(clampedPct / 10)));
+  const filled = clamp(Math.round(clampedPct / 10), 0, 10);
   const empty = 10 - filled;
 
   return (
@@ -37,7 +32,7 @@ function BatteryBar({ value }: BatteryBarProps) {
           {'▓'.repeat(filled)}
           <span className="text-muted">{'░'.repeat(empty)}</span>
         </span>
-        <span className={`text-xs font-bold ${textColor}`}>{fmt(clampedPct, 1)}%</span>
+        <span className={`text-xs font-bold ${textColor}`}>{formatFixed(clampedPct, 1)}%</span>
         {isLow && (
           <span className={`text-[9px] font-bold animate-blink ${isCritical ? 'text-danger' : 'text-caution'}`}>
             {isCritical ? '⚠ CRITICAL' : '⚠ LOW'}
@@ -67,18 +62,9 @@ function DataRow({ label, value, unit = '', accent = false, critical = false }: 
   );
 }
 
-function SectionHeader({ title }: TelemetrySectionHeaderProps) {
-  return (
-    <div className="flex items-center gap-2 py-1.5 mb-0.5">
-      <span className="text-[9px] text-neon tracking-widest font-bold">{title}</span>
-      <div className="flex-1 h-px bg-line" />
-    </div>
-  );
-}
-
 export default function TelemetryPanel({ telemetry: t }: TelemetryPanelProps) {
   const heading = t?.heading ?? null;
-  const headingDir = heading != null ? getCardinal(heading) : BLANK;
+  const headingDir = heading != null ? getCardinalDirection(heading) : BLANK_VALUE;
 
   return (
     <aside className="w-64 bg-panel border-r border-line flex flex-col shrink-0 overflow-y-auto">
@@ -99,16 +85,16 @@ export default function TelemetryPanel({ telemetry: t }: TelemetryPanelProps) {
 
       <div className="px-3 py-2 flex flex-col gap-0.5">
         <SectionHeader title="POSITION" />
-        <DataRow label="LATITUDE" value={formatCoord(t?.latitude, 'N', 'S')} />
-        <DataRow label="LONGITUDE" value={formatCoord(t?.longitude, 'E', 'W')} />
+        <DataRow label="LATITUDE" value={formatHemisphereCoordinate(t?.latitude, 'N', 'S')} />
+        <DataRow label="LONGITUDE" value={formatHemisphereCoordinate(t?.longitude, 'E', 'W')} />
 
         <SectionHeader title="KINEMATICS" />
-        <DataRow label="ALTITUDE" value={fmt(t?.altitude, 0)} unit="m ASL" />
-        <DataRow label="SPEED" value={fmt(t?.speed, 1)} unit="km/h" />
+        <DataRow label="ALTITUDE" value={formatFixed(t?.altitude, 0)} unit="m ASL" />
+        <DataRow label="SPEED" value={formatFixed(t?.speed, 1)} unit="km/h" />
         <DataRow
           label="HEADING"
-          value={t?.heading != null ? `${fmt(t.heading, 1)}°` : BLANK}
-          unit={headingDir !== BLANK ? headingDir : ''}
+          value={t?.heading != null ? `${formatFixed(t.heading, 1)}°` : BLANK_VALUE}
+          unit={headingDir !== BLANK_VALUE ? headingDir : ''}
         />
 
         <SectionHeader title="POWER" />
@@ -122,24 +108,17 @@ export default function TelemetryPanel({ telemetry: t }: TelemetryPanelProps) {
         <SectionHeader title="TIMING" />
         <DataRow
           label="LAST PKT"
-          value={t?.timestamp ? new Date(t.timestamp).toISOString().slice(11, 19) : BLANK}
+          value={formatUtcTime(t?.timestamp)}
           unit="UTC"
         />
       </div>
 
       <div className="mt-auto px-3 py-2 border-t border-line">
-        <div className="text-[9px] text-muted tracking-widest">
-          PLATFORM  <span className="text-neon font-bold">SHERLOCK-01</span>
-        </div>
+        <div className="text-[9px] text-muted tracking-widest">PLATFORM <span className="text-neon font-bold">{PRIMARY_DRONE_ID}</span></div>
         <div className="text-[9px] text-muted tracking-widest mt-0.5">
-          FREQ  <span className="text-neon">2 Hz</span>
+          FREQ <span className="text-neon">{PACKET_RATE_LABEL}</span>
         </div>
       </div>
     </aside>
   );
-}
-
-function getCardinal(deg: number): string {
-  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-  return dirs[Math.round(deg / 45) % 8];
 }

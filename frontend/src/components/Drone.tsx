@@ -1,7 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type MutableRefObject } from 'react';
 import * as Cesium from 'cesium';
+import { FLIGHT_PATH_POINT_LIMIT, PRIMARY_DRONE_ID, PRIMARY_DRONE_LABEL } from '../constants/telemetry';
 import type { DroneProps } from '../interfaces/components';
 import type { TelemetryPoint } from '../interfaces/telemetry';
+import { getLastTelemetryPoint } from '../utils/telemetry';
+
+const NEON = Cesium.Color.fromCssColorString('#00FF41');
+const MUTED = Cesium.Color.fromCssColorString('#3d4f63');
 
 const DRONE_ICON = (() => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
@@ -16,8 +21,11 @@ const DRONE_ICON = (() => {
     <circle cx="10" cy="26" r="4" fill="none" stroke="#00FF41" stroke-width="1.5"/>
     <circle cx="26" cy="26" r="4" fill="none" stroke="#00FF41" stroke-width="1.5"/>
   </svg>`;
+
   return `data:image/svg+xml;base64,${btoa(svg)}`;
 })();
+
+type DroneVisualMode = 'static' | 'live';
 
 function toCartesian(point: TelemetryPoint): Cesium.Cartesian3 {
   return Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, point.altitude);
@@ -42,9 +50,15 @@ function flyToAsset(
   });
 }
 
-function addStaticDroneEntity(viewer: Cesium.Viewer, position: Cesium.Cartesian3): Cesium.Entity {
+function createDroneEntity(
+  viewer: Cesium.Viewer,
+  position: Cesium.Cartesian3,
+  mode: DroneVisualMode,
+): Cesium.Entity {
+  const isLive = mode === 'live';
+
   return viewer.entities.add({
-    name: 'SHERLOCK-01',
+    name: PRIMARY_DRONE_ID,
     position,
     billboard: {
       image: DRONE_ICON,
@@ -53,12 +67,12 @@ function addStaticDroneEntity(viewer: Cesium.Viewer, position: Cesium.Cartesian3
       horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
       heightReference: Cesium.HeightReference.NONE,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      color: Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.45),
+      color: isLive ? undefined : NEON.withAlpha(0.45),
     },
     label: {
-      text: '◆ SHERLOCK-01',
+      text: PRIMARY_DRONE_LABEL,
       font: '11px "JetBrains Mono", monospace',
-      fillColor: Cesium.Color.fromCssColorString('#3d4f63'),
+      fillColor: isLive ? NEON : MUTED,
       outlineColor: Cesium.Color.BLACK,
       outlineWidth: 2,
       style: Cesium.LabelStyle.FILL_AND_OUTLINE,
@@ -70,31 +84,59 @@ function addStaticDroneEntity(viewer: Cesium.Viewer, position: Cesium.Cartesian3
   });
 }
 
-function addLiveDroneEntity(viewer: Cesium.Viewer, position: Cesium.Cartesian3): Cesium.Entity {
+function removeEntity(viewer: Cesium.Viewer, entity: Cesium.Entity | null): null {
+  if (entity) {
+    viewer.entities.remove(entity);
+  }
+
+  return null;
+}
+
+function ensureLiveDroneEntity(
+  viewer: Cesium.Viewer,
+  currentEntity: Cesium.Entity | null,
+  position: Cesium.Cartesian3,
+): Cesium.Entity {
+  if (!currentEntity) {
+    return createDroneEntity(viewer, position, 'live');
+  }
+
+  currentEntity.position = new Cesium.ConstantPositionProperty(position);
+  return currentEntity;
+}
+
+function ensurePathEntity(
+  viewer: Cesium.Viewer,
+  currentPath: Cesium.Entity | null,
+  positionsRef: MutableRefObject<Cesium.Cartesian3[]>,
+): Cesium.Entity {
+  if (currentPath) {
+    return currentPath;
+  }
+
   return viewer.entities.add({
-    name: 'SHERLOCK-01',
-    position,
-    billboard: {
-      image: DRONE_ICON,
-      scale: 0.9,
-      verticalOrigin: Cesium.VerticalOrigin.CENTER,
-      horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-      heightReference: Cesium.HeightReference.NONE,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
-    },
-    label: {
-      text: '◆ SHERLOCK-01',
-      font: '11px "JetBrains Mono", monospace',
-      fillColor: Cesium.Color.fromCssColorString('#00FF41'),
-      outlineColor: Cesium.Color.BLACK,
-      outlineWidth: 2,
-      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-      pixelOffset: new Cesium.Cartesian2(0, -22),
-      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 600000),
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    name: 'flight-path',
+    polyline: {
+      positions: new Cesium.CallbackProperty(() => [...positionsRef.current], false),
+      width: 1.5,
+      material: new Cesium.PolylineGlowMaterialProperty({
+        glowPower: 0.15,
+        color: NEON.withAlpha(0.65),
+      }),
+      clampToGround: false,
+      arcType: Cesium.ArcType.NONE,
     },
   });
+}
+
+async function fetchLastKnownTelemetry(signal: AbortSignal): Promise<TelemetryPoint | null> {
+  const response = await fetch('/api/telemetry/history', { signal });
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as unknown;
+  return getLastTelemetryPoint(payload);
 }
 
 export default function Drone({
@@ -108,58 +150,38 @@ export default function Drone({
   const droneRef = useRef<Cesium.Entity | null>(null);
   const pathRef = useRef<Cesium.Entity | null>(null);
   const positionsRef = useRef<Cesium.Cartesian3[]>([]);
-  const initialFlown = useRef(false);
-  const initialCentering = useRef(false);
+  const initialFlownRef = useRef(false);
+  const initialCenteringRef = useRef(false);
   const freeModeRef = useRef(freeMode);
 
-  useEffect(() => {
-    freeModeRef.current = freeMode;
-  }, [freeMode]);
-
-  const ensureLiveTrackingEntities = (
-    mapViewer: Cesium.Viewer,
-    position: Cesium.Cartesian3,
-  ): void => {
-    if (!droneRef.current) {
-      droneRef.current = addLiveDroneEntity(mapViewer, position);
-    } else {
-      droneRef.current.position = new Cesium.ConstantPositionProperty(position);
-    }
-
-    if (!pathRef.current) {
-      pathRef.current = mapViewer.entities.add({
-        name: 'flight-path',
-        polyline: {
-          positions: new Cesium.CallbackProperty(() => [...positionsRef.current], false),
-          width: 1.5,
-          material: new Cesium.PolylineGlowMaterialProperty({
-            glowPower: 0.15,
-            color: Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.65),
-          }),
-          clampToGround: false,
-          arcType: Cesium.ArcType.NONE,
-        },
-      });
-    }
+  const resetSceneEntities = (mapViewer: Cesium.Viewer) => {
+    mapViewer.camera.cancelFlight();
+    mapViewer.trackedEntity = undefined;
+    droneRef.current = removeEntity(mapViewer, droneRef.current);
+    pathRef.current = removeEntity(mapViewer, pathRef.current);
+    positionsRef.current = [];
+    initialFlownRef.current = false;
+    initialCenteringRef.current = false;
+    mapViewer.scene.requestRender();
   };
 
-  const beginInitialCenter = (
-    mapViewer: Cesium.Viewer,
-    longitude: number,
-    latitude: number,
-  ): void => {
-    if (initialFlown.current || initialCentering.current) return;
+  const centerOnPoint = (mapViewer: Cesium.Viewer, point: TelemetryPoint) => {
+    if (initialFlownRef.current || initialCenteringRef.current) {
+      return;
+    }
 
-    initialCentering.current = true;
+    initialCenteringRef.current = true;
     mapViewer.trackedEntity = undefined;
 
-    flyToAsset(mapViewer, longitude, latitude, () => {
-      if (mapViewer.isDestroyed()) return;
+    flyToAsset(mapViewer, point.longitude, point.latitude, () => {
+      if (mapViewer.isDestroyed()) {
+        return;
+      }
 
-      initialCentering.current = false;
-      initialFlown.current = true;
+      initialCenteringRef.current = false;
+      initialFlownRef.current = true;
 
-      if (!freeModeRef.current && droneRef.current) {
+      if (selectedDrone && !freeModeRef.current && droneRef.current) {
         mapViewer.trackedEntity = droneRef.current;
       }
 
@@ -168,110 +190,93 @@ export default function Drone({
   };
 
   useEffect(() => {
-    if (selectedDrone) return;
+    freeModeRef.current = freeMode;
+  }, [freeMode]);
 
-    let cancelled = false;
+  useEffect(() => {
+    if (selectedDrone) {
+      return;
+    }
 
-    const loadLastKnown = async () => {
-      try {
-        const response = await fetch('/api/telemetry/history');
-        const data = (await response.json()) as unknown;
-        if (!cancelled && Array.isArray(data) && data.length > 0) {
-          onLastKnownChange(data[data.length - 1] as TelemetryPoint);
+    const abortController = new AbortController();
+    onLastKnownChange(null);
+
+    fetchLastKnownTelemetry(abortController.signal)
+      .then((point) => {
+        if (!abortController.signal.aborted) {
+          onLastKnownChange(point);
         }
-      } catch {
-        // no-op: map can still render without last known point
-      }
-    };
-
-    loadLastKnown();
+      })
+      .catch(() => {
+        if (!abortController.signal.aborted) {
+          onLastKnownChange(null);
+        }
+      });
 
     return () => {
-      cancelled = true;
+      abortController.abort();
     };
   }, [selectedDrone, onLastKnownChange]);
 
   useEffect(() => {
-    if (!viewer || viewer.isDestroyed()) return;
-
-    viewer.camera.cancelFlight();
-    viewer.trackedEntity = undefined;
-
-    if (droneRef.current) {
-      viewer.entities.remove(droneRef.current);
-      droneRef.current = null;
+    if (!viewer || viewer.isDestroyed()) {
+      return;
     }
 
-    if (pathRef.current) {
-      viewer.entities.remove(pathRef.current);
-      pathRef.current = null;
-    }
-
-    positionsRef.current = [];
-    initialFlown.current = false;
-    initialCentering.current = false;
-    viewer.scene.requestRender();
+    resetSceneEntities(viewer);
   }, [viewer, selectedDrone]);
 
   useEffect(() => {
-    if (!viewer || viewer.isDestroyed() || selectedDrone || !lastKnown) return;
-
-    viewer.trackedEntity = undefined;
-
-    if (droneRef.current) {
-      viewer.entities.remove(droneRef.current);
-      droneRef.current = null;
+    if (!viewer || viewer.isDestroyed() || selectedDrone || !lastKnown) {
+      return;
     }
 
     const position = toCartesian(lastKnown);
-    droneRef.current = addStaticDroneEntity(viewer, position);
-
-    if (!initialFlown.current) {
-      beginInitialCenter(viewer, lastKnown.longitude, lastKnown.latitude);
-    }
-
+    droneRef.current = removeEntity(viewer, droneRef.current);
+    droneRef.current = createDroneEntity(viewer, position, 'static');
+    centerOnPoint(viewer, lastKnown);
     viewer.scene.requestRender();
   }, [viewer, selectedDrone, lastKnown]);
 
   useEffect(() => {
-    if (!viewer || viewer.isDestroyed() || !selectedDrone || !lastKnown) return;
+    if (!viewer || viewer.isDestroyed() || !selectedDrone || !lastKnown) {
+      return;
+    }
 
     const position = toCartesian(lastKnown);
     if (positionsRef.current.length === 0) {
       positionsRef.current.push(position);
     }
 
-    ensureLiveTrackingEntities(viewer, position);
-
-    if (!initialFlown.current) {
-      beginInitialCenter(viewer, lastKnown.longitude, lastKnown.latitude);
-    }
-
+    droneRef.current = ensureLiveDroneEntity(viewer, droneRef.current, position);
+    pathRef.current = ensurePathEntity(viewer, pathRef.current, positionsRef);
+    centerOnPoint(viewer, lastKnown);
     viewer.scene.requestRender();
-  }, [viewer, selectedDrone, lastKnown, freeMode]);
+  }, [viewer, selectedDrone, lastKnown]);
 
   useEffect(() => {
-    if (!viewer || viewer.isDestroyed() || !telemetry || !selectedDrone) return;
+    if (!viewer || viewer.isDestroyed() || !telemetry || !selectedDrone) {
+      return;
+    }
 
     const position = toCartesian(telemetry);
     positionsRef.current.push(position);
-    if (positionsRef.current.length > 200) {
+    if (positionsRef.current.length > FLIGHT_PATH_POINT_LIMIT) {
       positionsRef.current.shift();
     }
 
-    ensureLiveTrackingEntities(viewer, position);
-
-    if (!initialFlown.current) {
-      beginInitialCenter(viewer, telemetry.longitude, telemetry.latitude);
-    }
-
+    droneRef.current = ensureLiveDroneEntity(viewer, droneRef.current, position);
+    pathRef.current = ensurePathEntity(viewer, pathRef.current, positionsRef);
+    centerOnPoint(viewer, telemetry);
     viewer.scene.requestRender();
-  }, [viewer, telemetry, selectedDrone, freeMode]);
+  }, [viewer, telemetry, selectedDrone]);
 
   useEffect(() => {
-    if (!viewer || viewer.isDestroyed() || !selectedDrone || !droneRef.current) return;
+    if (!viewer || viewer.isDestroyed() || !selectedDrone || !droneRef.current) {
+      return;
+    }
 
-    if (initialCentering.current) {
+    if (initialCenteringRef.current) {
       viewer.trackedEntity = undefined;
       viewer.scene.requestRender();
       return;
@@ -283,19 +288,11 @@ export default function Drone({
 
   useEffect(() => {
     return () => {
-      if (!viewer || viewer.isDestroyed()) return;
-
-      viewer.trackedEntity = undefined;
-
-      if (droneRef.current) {
-        viewer.entities.remove(droneRef.current);
-        droneRef.current = null;
+      if (!viewer || viewer.isDestroyed()) {
+        return;
       }
 
-      if (pathRef.current) {
-        viewer.entities.remove(pathRef.current);
-        pathRef.current = null;
-      }
+      resetSceneEntities(viewer);
     };
   }, [viewer]);
 

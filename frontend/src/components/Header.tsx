@@ -82,7 +82,7 @@ export default function Header({
           <>
             <div className="flex items-center gap-2 text-xs">
               <span
-                className={`w-1.5 h-1.5 rounded-full ${
+                className={`w-1.5 h-1.5 ${
                   connected ? 'bg-neon animate-pulse-fast' : 'bg-caution animate-blink'
                 }`}
               />

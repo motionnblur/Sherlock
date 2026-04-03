@@ -57,13 +57,13 @@ export interface CompassRoseProps {
   heading: number | null | undefined;
 }
 
-export interface SystemSectionHeaderProps {
-  title: string;
-}
-
 export interface LogEntryProps {
   entry: TelemetryPoint;
   index: number;
+}
+
+export interface SectionHeaderProps {
+  title: string;
 }
 
 export interface TelemetryPanelProps {
@@ -80,8 +80,4 @@ export interface TelemetryDataRowProps {
   unit?: string;
   accent?: boolean;
   critical?: boolean;
-}
-
-export interface TelemetrySectionHeaderProps {
-  title: string;
 }

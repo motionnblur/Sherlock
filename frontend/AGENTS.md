@@ -24,24 +24,28 @@ src/
 ├── App.tsx                      # Root layout shell, drone selection state, passes telemetry down
 ├── main.tsx                     # ReactDOM.createRoot entry point
 ├── index.css                    # Tailwind directives + Cesium widget overrides
+├── constants/
+│   └── telemetry.ts             # Shared frontend domain constants (asset id, history/path limits)
 ├── interfaces/
 │   ├── telemetry.ts             # Shared domain models (TelemetryPoint, DroneId)
 │   ├── components.ts            # Component prop interfaces and map settings interface
 │   ├── hooks.ts                 # Hook return interfaces
 │   └── index.ts                 # Barrel exports
+├── hooks/
+│   └── useTelemetry.ts          # STOMP client, auto-reconnect, validated message parsing, history state; gated by `enabled`
+├── utils/
+│   ├── formatters.ts            # Shared UI formatting helpers for coordinates, UTC time, cardinal heading
+│   └── telemetry.ts             # Runtime parsing/validation helpers for external telemetry payloads
 ├── configs/
 │   └── map-settings.json        # Map-only dimming config for Cesium imagery
-│
-├── hooks/
-│   └── useTelemetry.ts          # STOMP client, auto-reconnect, history state; gated by `enabled`
-│
 └── components/
-    ├── Drone.tsx                # Drone entity/path lifecycle: static marker, live tracking, history fetch
+    ├── Drone.tsx                # Drone entity/path lifecycle, last-known REST fetch, camera tracking handoff
     ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, deselect button
-    ├── TelemetryPanel.tsx       # Left sidebar: lat/lon/alt/speed/battery (hidden when no drone selected)
-    ├── MapComponent.tsx         # CesiumJS 3D globe shell, viewer setup, overlays, passes state to <Drone />
+    ├── MapComponent.tsx         # CesiumJS viewer shell, performance profile, overlays, passes viewer to <Drone />
+    ├── SectionHeader.tsx        # Shared panel section divider/header component
+    ├── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
     ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, log (hidden when no drone selected)
-    └── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
+    └── TelemetryPanel.tsx       # Left sidebar: lat/lon/alt/speed/battery (hidden when no drone selected)
 ```
 
 ---
@@ -97,6 +101,11 @@ Define any reusable interfaces in `src/interfaces/`:
 - Component props in `src/interfaces/components.ts`
 - Hook contracts in `src/interfaces/hooks.ts`
 
+Before adding new formatting or asset-specific literals:
+- Check `src/constants/telemetry.ts` for shared domain constants
+- Check `src/utils/formatters.ts` for coordinate/time/value formatting
+- Check `src/components/SectionHeader.tsx` before duplicating section header markup
+
 Pattern to follow for a data row:
 ```tsx
 // label left, value right, consistent spacing
@@ -108,10 +117,7 @@ Pattern to follow for a data row:
 
 Pattern for a section header inside a panel:
 ```tsx
-<div className="flex items-center gap-2 py-1.5">
-  <span className="text-[9px] text-neon tracking-widest font-bold">{title}</span>
-  <div className="flex-1 h-px bg-line" />
-</div>
+<SectionHeader title="POSITION" />
 ```
 
 ---
@@ -136,6 +142,8 @@ const { telemetry, connected, history } = useTelemetry(enabled);
 
 Pass `enabled={selectedDrone !== null}` from `App.tsx` — this is the gate that prevents any backend connection until a drone is selected.
 
+Incoming STOMP payloads are parsed through `src/utils/telemetry.ts`. Malformed payloads are ignored rather than pushed directly into React state.
+
 **Do not create a second STOMP client.** If a new component needs telemetry data, pass `telemetry` / `history` as props from `App.tsx`, or use React Context if the prop chain becomes deep.
 
 ---
@@ -143,13 +151,17 @@ Pass `enabled={selectedDrone !== null}` from `App.tsx` — this is the gate that
 ## MapComponent — CesiumJS Notes
 
 `src/components/MapComponent.tsx` owns the Cesium `Viewer` instance and map UI overlays.  
-`src/components/Drone.tsx` owns drone entity/path lifecycle and last-known history fetch.
+`src/components/Drone.tsx` owns drone entity/path lifecycle, last-known history fetch, and viewer tracking handoff.
 
-**Props:** `{ telemetry, lowPerf, selectedDrone, onSelectDrone }`
+**Props:** `{ telemetry, lowPerf, selectedDrone, freeMode, onSelectDrone }`
 
 **Imagery:** `UrlTemplateImageryProvider` (OpenStreetMap) is used by default — no Cesium Ion token required. If `VITE_CESIUM_TOKEN` is set in `.env`, Ion features (World Terrain, premium imagery) unlock automatically.
 
+**Viewer lifecycle:** the Cesium viewer is created once when `MapComponent` mounts and destroyed only on unmount. Do not tie viewer creation/destruction to `selectedDrone`; selection should only change overlays/entities, not recreate the entire globe.
+
 **Map dimming:** pressing `D` toggles map-only dimming for the Cesium imagery layer. The dim level is data-driven from `frontend/configs/map-settings.json` via `darkenPercent` (0-100), and the component applies `brightness = 1 - darkenPercent / 100` to imagery layers only. Do not dim the surrounding React layout.
+
+**Low perf mode:** `MapComponent` owns Cesium performance tuning. It applies the low/high performance profile and is solely responsible for attaching/removing the optional OSM buildings tileset. Do not remove generic `Cesium3DTileset` primitives by scanning the entire scene.
 
 **Drone selection overlay:** when `selectedDrone` is null, a centred overlay panel is rendered over the map listing available assets. Clicking an entry calls `onSelectDrone(id)`. The overlay also shows the drone's last known position fetched via a single `GET /api/telemetry/history` REST call — no WebSocket is open at this point.
 
@@ -175,6 +187,7 @@ model: {
 
 **Cesium refs lifecycle:**
 - `MapComponent.viewerRef` — the `Cesium.Viewer` instance (created once, destroyed on unmount)
+- `MapComponent.buildingsRef` — optional OSM buildings tileset, attached/removed by performance mode
 - `Drone.droneRef` — the drone `Entity` (static when unselected, live when selected; null between transitions)
 - `Drone.pathRef` — the polyline `Entity` (only exists when a drone is selected)
 - `Drone.positionsRef` — `Cartesian3[]` array (mutable, not React state — intentional for perf)

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Client, type IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
+import { TELEMETRY_HISTORY_LIMIT } from '../constants/telemetry';
 import type { UseTelemetryResult } from '../interfaces/hooks';
 import type { TelemetryPoint } from '../interfaces/telemetry';
+import { parseTelemetryMessage } from '../utils/telemetry';
 
 const WS_URL = import.meta.env.VITE_WS_URL || '/ws-skytrack';
-const MAX_HISTORY = 150;
 
 /**
  * Manages the STOMP/SockJS WebSocket connection and exposes live telemetry state.
@@ -18,14 +19,38 @@ export function useTelemetry(enabled = true): UseTelemetryResult {
   const clientRef = useRef<Client | null>(null);
 
   useEffect(() => {
+    const resetState = () => {
+      setConnected(false);
+      setTelemetry(null);
+      setHistory([]);
+    };
+
+    const appendHistory = (point: TelemetryPoint) => {
+      setHistory((previousHistory) => {
+        const nextHistory = [...previousHistory, point];
+        return nextHistory.length > TELEMETRY_HISTORY_LIMIT
+          ? nextHistory.slice(nextHistory.length - TELEMETRY_HISTORY_LIMIT)
+          : nextHistory;
+      });
+    };
+
+    const handleTelemetryMessage = (message: IMessage) => {
+      const nextTelemetry = parseTelemetryMessage(message.body);
+      if (!nextTelemetry) {
+        console.warn('[STOMP] Ignored malformed telemetry payload');
+        return;
+      }
+
+      setTelemetry(nextTelemetry);
+      appendHistory(nextTelemetry);
+    };
+
     if (!enabled) {
       if (clientRef.current) {
         clientRef.current.deactivate();
         clientRef.current = null;
       }
-      setConnected(false);
-      setTelemetry(null);
-      setHistory([]);
+      resetState();
       return;
     }
 
@@ -37,14 +62,7 @@ export function useTelemetry(enabled = true): UseTelemetryResult {
 
       onConnect: () => {
         setConnected(true);
-        client.subscribe('/topic/telemetry', (message: IMessage) => {
-          const data = JSON.parse(message.body) as TelemetryPoint;
-          setTelemetry(data);
-          setHistory((prev) => {
-            const next = [...prev, data];
-            return next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
-          });
-        });
+        client.subscribe('/topic/telemetry', handleTelemetryMessage);
       },
 
       onDisconnect: () => setConnected(false),

@@ -1,4 +1,6 @@
 import type { StatusBarProps } from '../interfaces/components';
+import { PACKET_RATE_LABEL } from '../constants/telemetry';
+import { formatCoordinatePair } from '../utils/formatters';
 
 export default function StatusBar({
   telemetry: t,
@@ -36,7 +38,7 @@ export default function StatusBar({
             <div className="flex items-center gap-1.5">
               <span className="text-muted">POS</span>
               <span className="text-neon tabular-nums">
-                {t.latitude?.toFixed(4)}°N, {t.longitude?.toFixed(4)}°E
+                {formatCoordinatePair(t.latitude, t.longitude)}
               </span>
             </div>
           </>
@@ -73,7 +75,7 @@ export default function StatusBar({
         <div className="flex items-center gap-1.5">
           <span className="text-muted">PKT RATE</span>
           <span className={selectedDrone ? 'text-neon' : 'text-muted'}>
-            {selectedDrone ? '2 Hz' : '─'}
+            {selectedDrone ? PACKET_RATE_LABEL : '─'}
           </span>
         </div>
         <span className="text-line">|</span>

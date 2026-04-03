@@ -5,10 +5,9 @@ import type {
   LogEntryProps,
   MissionClockProps,
   SystemPanelProps,
-  SystemSectionHeaderProps,
 } from '../interfaces/components';
-
-const BLANK = '---';
+import SectionHeader from './SectionHeader';
+import { BLANK_VALUE, formatUtcTime } from '../utils/formatters';
 
 function MissionClock({ started }: MissionClockProps) {
   const [elapsed, setElapsed] = useState(0);
@@ -73,19 +72,8 @@ function CompassRose({ heading }: CompassRoseProps) {
   );
 }
 
-function SectionHeader({ title }: SystemSectionHeaderProps) {
-  return (
-    <div className="flex items-center gap-2 py-1.5">
-      <span className="text-[9px] text-neon tracking-widest font-bold">{title}</span>
-      <div className="flex-1 h-px bg-line" />
-    </div>
-  );
-}
-
 function LogEntry({ entry, index }: LogEntryProps) {
-  const time = entry.timestamp
-    ? new Date(entry.timestamp).toISOString().slice(11, 19)
-    : BLANK;
+  const time = formatUtcTime(entry.timestamp);
 
   return (
     <div
@@ -94,8 +82,8 @@ function LogEntry({ entry, index }: LogEntryProps) {
       }`}
     >
       <span className="tabular-nums">{time}</span>
-      <span className="tabular-nums">{entry.altitude?.toFixed(0) ?? BLANK}m</span>
-      <span className="tabular-nums">{entry.speed?.toFixed(0) ?? BLANK}km/h</span>
+      <span className="tabular-nums">{entry.altitude?.toFixed(0) ?? BLANK_VALUE}m</span>
+      <span className="tabular-nums">{entry.speed?.toFixed(0) ?? BLANK_VALUE}km/h</span>
     </div>
   );
 }
@@ -122,7 +110,7 @@ export default function SystemPanel({ telemetry: t, history, connected }: System
           <CompassRose heading={t?.heading} />
           <div>
             <div className="text-sm font-bold text-neon tabular-nums">
-              {t?.heading != null ? `${t.heading.toFixed(1)}°` : BLANK}
+              {t?.heading != null ? `${t.heading.toFixed(1)}°` : BLANK_VALUE}
             </div>
           </div>
         </div>
@@ -133,7 +121,7 @@ export default function SystemPanel({ telemetry: t, history, connected }: System
             <AltitudeTrend history={history} />
           </span>
           <div className="text-xs text-neon font-bold tabular-nums">
-            {t?.altitude?.toFixed(0) ?? BLANK}
+            {t?.altitude?.toFixed(0) ?? BLANK_VALUE}
             <span className="text-[9px] text-muted ml-0.5">m</span>
           </div>
         </div>
