@@ -49,6 +49,9 @@ function createViewer(container: HTMLElement): Cesium.Viewer {
   }
 
   const viewer = new Cesium.Viewer(container, options);
+  viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(
+    Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK,
+  );
 
   viewer.scene.globe.showGroundAtmosphere = false;
   if (viewer.scene.skyAtmosphere) {
