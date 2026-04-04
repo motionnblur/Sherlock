@@ -21,7 +21,7 @@ export default function App() {
   const [lowPerf, setLowPerf] = useState(false);
   const [isLiveVideoOpen, setIsLiveVideoOpen] = useState(false);
 
-  const { telemetry, connected, history } = useTelemetry(selectedDrone !== null, freeMode);
+  const { telemetry, connected, history } = useTelemetry(selectedDrone, freeMode);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
 
   const handleToggleLiveVideo = useCallback(() => {

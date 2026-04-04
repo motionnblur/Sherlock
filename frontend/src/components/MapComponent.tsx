@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import mapSettings from '../../configs/map-settings.json';
-import { PRIMARY_DRONE_ID } from '../constants/telemetry';
+import { DRONE_IDS } from '../constants/telemetry';
 import type { MapComponentProps, MapSettingsConfig } from '../interfaces/components';
-import type { TelemetryPoint } from '../interfaces/telemetry';
+import type { TelemetryPoint, DroneId } from '../interfaces/telemetry';
 import { formatCoordinatePair, formatFixed } from '../utils/formatters';
 import FreeModeAssetWindow from './FreeModeAssetWindow';
 import Drone from './Drone';
@@ -190,11 +190,11 @@ function SelectedTelemetryBanner({
 }
 
 function AssetSelectionOverlay({
-  lastKnown,
+  lastKnownMap,
   onSelectDrone,
 }: {
-  lastKnown: TelemetryPoint | null;
-  onSelectDrone: (id: typeof PRIMARY_DRONE_ID) => void;
+  lastKnownMap: Record<string, TelemetryPoint | null>;
+  onSelectDrone: (id: DroneId) => void;
 }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -205,35 +205,41 @@ function AssetSelectionOverlay({
           </span>
         </div>
 
-        <div className="px-3 py-3">
-          <button
-            type="button"
-            onClick={() => onSelectDrone(PRIMARY_DRONE_ID)}
-            className="w-full text-left border border-line px-3 py-2.5 hover:bg-elevated hover:border-neon transition-colors"
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-bold text-neon tracking-widest">{PRIMARY_DRONE_ID}</span>
-              <span className="text-[9px] text-muted tracking-widest">▸ TRACK</span>
-            </div>
-
-            {lastKnown ? (
-              <div className="text-[9px] text-muted space-y-0.5 tracking-wider">
-                <div className="tabular-nums">{formatCoordinatePair(lastKnown.latitude, lastKnown.longitude)}</div>
-                <div className="tabular-nums">
-                  ALT {formatFixed(lastKnown.altitude, 0)}m
-                  <span className="mx-1.5 text-line">·</span>
-                  BAT {formatFixed(lastKnown.battery, 1)}%
+        <div className="px-3 py-3 space-y-2 max-h-[60vh] overflow-y-auto">
+          {DRONE_IDS.map((id) => {
+            const lastKnown = lastKnownMap[id];
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onSelectDrone(id)}
+                className="w-full text-left border border-line px-3 py-2.5 hover:bg-elevated hover:border-neon transition-colors"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-neon tracking-widest">{id}</span>
+                  <span className="text-[9px] text-muted tracking-widest">▸ TRACK</span>
                 </div>
-              </div>
-            ) : (
-              <div className="text-[9px] text-muted tracking-wider animate-pulse-fast">
-                FETCHING LAST POSITION...
-              </div>
-            )}
-          </button>
+
+                {lastKnown ? (
+                  <div className="text-[9px] text-muted space-y-0.5 tracking-wider">
+                    <div className="tabular-nums">{formatCoordinatePair(lastKnown.latitude, lastKnown.longitude)}</div>
+                    <div className="tabular-nums">
+                      ALT {formatFixed(lastKnown.altitude, 0)}m
+                      <span className="mx-1.5 text-line">·</span>
+                      BAT {formatFixed(lastKnown.battery ?? 0, 1)}%
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-[9px] text-muted tracking-wider animate-pulse-fast">
+                    FETCHING LAST POSITION...
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
 
-        <div className="px-3 pb-2">
+        <div className="px-3 pb-2 pt-1">
           <span className="text-[8px] text-muted tracking-widest">
             SELECT AN ASSET TO BEGIN TRACKING
           </span>
@@ -257,7 +263,11 @@ export default function MapComponent({
 
   const [viewer, setViewer] = useState<Cesium.Viewer | null>(null);
   const [isMapDimmed, setIsMapDimmed] = useState(false);
-  const [lastKnown, setLastKnown] = useState<TelemetryPoint | null>(null);
+  const [lastKnownMap, setLastKnownMap] = useState<Record<string, TelemetryPoint | null>>({});
+
+  const handleLastKnownChange = useCallback((id: string, pt: TelemetryPoint | null) => {
+    setLastKnownMap((prev) => ({ ...prev, [id]: pt }));
+  }, []);
 
   useEffect(() => {
     lowPerfRef.current = lowPerf;
@@ -335,14 +345,18 @@ export default function MapComponent({
     <div className="relative w-full h-full bg-surface">
       <div ref={containerRef} className="w-full h-full" />
 
-      <Drone
-        viewer={viewer}
-        telemetry={telemetry}
-        selectedDrone={selectedDrone}
-        freeMode={freeMode}
-        lastKnown={lastKnown}
-        onLastKnownChange={setLastKnown}
-      />
+      {DRONE_IDS.map((id) => (
+        <Drone
+          key={id}
+          viewer={viewer}
+          droneId={id}
+          telemetry={selectedDrone === id ? telemetry : null}
+          selectedDrone={selectedDrone}
+          freeMode={freeMode}
+          lastKnown={lastKnownMap[id] ?? null}
+          onLastKnownChange={handleLastKnownChange}
+        />
+      ))}
 
       <MapFrameOverlay isMapDimmed={isMapDimmed} />
       {freeMode && (
@@ -354,7 +368,7 @@ export default function MapComponent({
 
       {telemetry && selectedDrone && !freeMode && <SelectedTelemetryBanner telemetry={telemetry} />}
       {!selectedDrone && !freeMode && (
-        <AssetSelectionOverlay lastKnown={lastKnown} onSelectDrone={onSelectDrone} />
+        <AssetSelectionOverlay lastKnownMap={lastKnownMap} onSelectDrone={onSelectDrone} />
       )}
     </div>
   );

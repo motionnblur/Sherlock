@@ -3,7 +3,7 @@ import type {
   TelemetryDataRowProps,
   TelemetryPanelProps,
 } from '../interfaces/components';
-import { PACKET_RATE_LABEL, PRIMARY_DRONE_ID } from '../constants/telemetry';
+import { PACKET_RATE_LABEL } from '../constants/telemetry';
 import SectionHeader from './SectionHeader';
 import {
   BLANK_VALUE,
@@ -114,7 +114,7 @@ export default function TelemetryPanel({ telemetry: t }: TelemetryPanelProps) {
       </div>
 
       <div className="mt-auto px-3 py-2 border-t border-line">
-        <div className="text-[9px] text-muted tracking-widest">PLATFORM <span className="text-neon font-bold">{PRIMARY_DRONE_ID}</span></div>
+        <div className="text-[9px] text-muted tracking-widest">PLATFORM <span className="text-neon font-bold">{t?.droneId ?? 'NONE'}</span></div>
         <div className="text-[9px] text-muted tracking-widest mt-0.5">
           FREQ <span className="text-neon">{PACKET_RATE_LABEL}</span>
         </div>

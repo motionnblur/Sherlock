@@ -14,7 +14,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || '/ws-skytrack';
  * Only connects when `enabled` is true — pass false to disconnect and suppress all data.
  * JWT is injected into the STOMP CONNECT headers for server-side validation.
  */
-export function useTelemetry(enabled = true, freeMode = false): UseTelemetryResult {
+export function useTelemetry(droneId: string | null, freeMode = false): UseTelemetryResult {
   const { authToken, logout } = useAuth();
   const [telemetry, setTelemetry] = useState<TelemetryPoint | null>(null);
   const [connected, setConnected] = useState(false);
@@ -48,7 +48,7 @@ export function useTelemetry(enabled = true, freeMode = false): UseTelemetryResu
       appendHistory(nextTelemetry);
     };
 
-    if (!enabled || !authToken) {
+    if (!droneId || !authToken) {
       if (clientRef.current) {
         clientRef.current.deactivate();
         clientRef.current = null;
@@ -68,8 +68,10 @@ export function useTelemetry(enabled = true, freeMode = false): UseTelemetryResu
 
       onConnect: () => {
         setConnected(true);
-        const topic = freeMode ? '/topic/telemetry/lite' : '/topic/telemetry';
-        client.subscribe(topic, handleTelemetryMessage);
+        if (droneId) {
+          const topic = freeMode ? `/topic/telemetry/${droneId}/lite` : `/topic/telemetry/${droneId}`;
+          client.subscribe(topic, handleTelemetryMessage);
+        }
       },
 
       onDisconnect: () => setConnected(false),
@@ -94,7 +96,7 @@ export function useTelemetry(enabled = true, freeMode = false): UseTelemetryResu
       client.deactivate();
       clientRef.current = null;
     };
-  }, [enabled, freeMode, authToken, logout]);
+  }, [droneId, freeMode, authToken, logout]);
 
   return { telemetry, connected, history };
 }

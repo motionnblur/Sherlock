@@ -12,7 +12,8 @@ export function isTelemetryPoint(value: unknown): value is TelemetryPoint {
   const candidate = value as Partial<TelemetryPoint>;
 
   return (
-    isFiniteNumber(candidate.latitude)
+    typeof candidate.droneId === 'string'
+    && isFiniteNumber(candidate.latitude)
     && isFiniteNumber(candidate.longitude)
     && isFiniteNumber(candidate.altitude)
     && (candidate.speed === undefined || isFiniteNumber(candidate.speed))

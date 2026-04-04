@@ -39,11 +39,12 @@ export interface AssetWindowProps {
 
 export interface DroneProps {
   viewer: Cesium.Viewer | null;
+  droneId: DroneId;
   telemetry: TelemetryPoint | null;
   selectedDrone: DroneId | null;
   freeMode: boolean;
   lastKnown: TelemetryPoint | null;
-  onLastKnownChange: (point: TelemetryPoint | null) => void;
+  onLastKnownChange: (droneId: DroneId, point: TelemetryPoint | null) => void;
 }
 
 export interface StatusBarProps {

@@ -1,9 +1,7 @@
-import { PRIMARY_DRONE_ID } from './telemetry';
+import { DRONE_IDS } from './telemetry';
 
-export const AVAILABLE_ASSETS = [
-  {
-    id: PRIMARY_DRONE_ID,
-    label: 'SHERLOCK-01',
-    statusLabel: 'LIVE',
-  },
-] as const;
+export const AVAILABLE_ASSETS = DRONE_IDS.map(id => ({
+  id,
+  label: id,
+  statusLabel: 'LIVE',
+}));

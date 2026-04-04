@@ -11,6 +11,7 @@ import java.time.Instant;
 @Builder
 public class TelemetryLiteDTO {
 
+    private String droneId;
     private Double latitude;
     private Double longitude;
     private Double altitude;

@@ -17,6 +17,7 @@ public class TelemetryService {
 
     public void persist(TelemetryDTO dto) {
         TelemetryEntity entity = TelemetryEntity.builder()
+                .droneId(dto.getDroneId())
                 .latitude(dto.getLatitude())
                 .longitude(dto.getLongitude())
                 .altitude(dto.getAltitude())
@@ -28,8 +29,8 @@ public class TelemetryService {
         telemetryRepository.save(entity);
     }
 
-    public List<TelemetryDTO> getRecentHistory() {
-        return telemetryRepository.findTop100ByOrderByTimestampDesc()
+    public List<TelemetryDTO> getRecentHistory(String droneId) {
+        return telemetryRepository.findTop150ByDroneIdOrderByTimestampDesc(droneId)
                 .stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
@@ -37,6 +38,7 @@ public class TelemetryService {
 
     private TelemetryDTO toDTO(TelemetryEntity entity) {
         return TelemetryDTO.builder()
+                .droneId(entity.getDroneId())
                 .latitude(entity.getLatitude())
                 .longitude(entity.getLongitude())
                 .altitude(entity.getAltitude())

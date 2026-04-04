@@ -7,7 +7,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "telemetry", indexes = {
-        @Index(name = "idx_telemetry_timestamp", columnList = "timestamp DESC")
+        @Index(name = "idx_telemetry_drone_timestamp", columnList = "drone_id, timestamp DESC")
 })
 @Getter
 @Setter
@@ -19,6 +19,9 @@ public class TelemetryEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "drone_id", nullable = false)
+    private String droneId;
 
     @Column(nullable = false)
     private Double latitude;

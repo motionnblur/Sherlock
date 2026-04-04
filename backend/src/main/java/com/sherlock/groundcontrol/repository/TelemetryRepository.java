@@ -9,5 +9,5 @@ import java.util.List;
 @Repository
 public interface TelemetryRepository extends JpaRepository<TelemetryEntity, Long> {
 
-    List<TelemetryEntity> findTop100ByOrderByTimestampDesc();
+    List<TelemetryEntity> findTop150ByDroneIdOrderByTimestampDesc(String droneId);
 }
