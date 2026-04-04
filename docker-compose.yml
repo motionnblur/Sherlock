@@ -42,9 +42,10 @@ services:
       JWT_SECRET:            ${JWT_SECRET:-U2hlcmxvY2tHQ1MtZGVmYXVsdC1kZXYta2V5LW11c3QtYmUtY2hhbmdlZC1pbi1wcm9kdWN0aW9uLVNIQS01MTIta2V5}
       JWT_EXPIRATION_HOURS:  ${JWT_EXPIRATION_HOURS:-8}
       # Dev seed user — created on startup if username does not exist.
-      # Leave unset (or empty) in production.
-      DEV_SEED_USER:         ${DEV_SEED_USER:-}
-      DEV_SEED_PASSWORD:     ${DEV_SEED_PASSWORD:-}
+      # Defaults make local compose usable without a copied .env file.
+      # Override both values in production.
+      DEV_SEED_USER:         ${DEV_SEED_USER:-admin}
+      DEV_SEED_PASSWORD:     ${DEV_SEED_PASSWORD:-sherlock}
       # /hls is proxied by nginx to mediamtx:8888 inside Docker — browser-reachable
       MEDIAMTX_HLS_BASE_URL: /hls
     ports:
