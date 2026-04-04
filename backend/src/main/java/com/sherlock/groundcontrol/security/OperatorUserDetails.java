@@ -39,6 +39,18 @@ public class OperatorUserDetails implements UserDetails {
     }
 
     @Override
+    public boolean isAccountNonExpired() {
+        // Account expiry is not modelled — token lifetime handles session expiry.
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        // Credential expiry is not modelled — JWT expiry enforces this at the token level.
+        return true;
+    }
+
+    @Override
     public boolean isEnabled() {
         return operator.isEnabled();
     }
