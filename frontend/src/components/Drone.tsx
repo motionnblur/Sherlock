@@ -233,19 +233,22 @@ export default function Drone({
     };
   }, [selectedDrone, droneId, onLastKnownChange]); // Intentionally omitting lastKnown to avoid refetch loops
 
+  const isTracked = selectedDrone === droneId || (freeMode && showAllAssets);
+  const isHidden = selectedDrone !== null && selectedDrone !== droneId && !(freeMode && showAllAssets);
+
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
       return;
     }
 
-    const isHidden = selectedDrone !== null && selectedDrone !== droneId && !freeMode;
     if (isHidden) {
        resetSceneEntities(viewer);
+       if (latestTelemetryRef.current) {
+         onLastKnownChange(droneId, latestTelemetryRef.current);
+         latestTelemetryRef.current = null;
+       }
     }
-  }, [viewer, selectedDrone, droneId, freeMode]);
-
-  const isTracked = selectedDrone === droneId || (freeMode && showAllAssets);
-  const isHidden = selectedDrone !== null && selectedDrone !== droneId && !freeMode;
+  }, [viewer, isHidden, droneId, onLastKnownChange]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed() || isHidden || !lastKnown) {
