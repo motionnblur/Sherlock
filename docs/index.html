@@ -531,18 +531,20 @@
       <pre><code><span class="cmd">cp</span> .env.example .env</code></pre>
     </div>
     <p>
-      The defaults work for local development. You <strong>must</strong> set
-      <span class="inline-code">JWT_SECRET</span> to a random 512-bit key in
-      any non-development deployment. Generate one with:
+      The file ships with development defaults including a seed operator
+      (<span class="inline-code">admin</span> / <span class="inline-code">sherlock</span>)
+      that is created automatically on first startup — no manual SQL needed for local work.
+    </p>
+    <p>
+      In any non-development deployment you <strong>must</strong> replace
+      <span class="inline-code">JWT_SECRET</span> with a random 512-bit key and
+      clear <span class="inline-code">DEV_SEED_USER</span> /
+      <span class="inline-code">DEV_SEED_PASSWORD</span>. Generate a production secret with:
     </p>
     <div class="code-block">
       <button class="copy-btn" onclick="copyCode(this)">copy</button>
       <pre><code><span class="cmd">openssl rand -base64 64</span></code></pre>
     </div>
-    <p>
-      You only need to edit <span class="inline-code">.env</span> further if you
-      want to supply a Cesium Ion token (for premium 3D terrain) or change database credentials.
-    </p>
 
     <h3>Step 2 — Start everything</h3>
     <p>
@@ -627,15 +629,35 @@
     </p>
 
     <h3>Creating operator accounts</h3>
+
+    <h4 style="font-size:.8rem;color:var(--caution);letter-spacing:.08em;margin:1rem 0 .4rem;text-transform:uppercase;">Development — automatic seed user</h4>
     <p>
-      Connect to the database and insert a row into the
-      <span class="inline-code">operators</span> table.
-      The password must be hashed with <strong>BCrypt cost factor 12</strong> before
-      inserting — plain text passwords are never stored.
+      Set <span class="inline-code">DEV_SEED_USER</span> and
+      <span class="inline-code">DEV_SEED_PASSWORD</span> in your
+      <span class="inline-code">.env</span> file before starting the stack.
+      <span class="inline-code">DevDataInitializer</span> creates the operator on startup
+      and skips silently if the username already exists.
+      <span class="inline-code">.env.example</span> ships with
+      <span class="inline-code">admin</span> / <span class="inline-code">sherlock</span>
+      as ready-to-use defaults — no SQL required.
     </p>
     <div class="code-block">
       <button class="copy-btn" onclick="copyCode(this)">copy</button>
-      <pre><code><span class="comment">-- Insert an operator (run in psql or DBeaver against the sherlock DB)</span>
+      <pre><code><span class="comment"># .env — development only</span>
+DEV_SEED_USER=admin
+DEV_SEED_PASSWORD=sherlock</code></pre>
+    </div>
+
+    <h4 style="font-size:.8rem;color:var(--muted-text);letter-spacing:.08em;margin:1.25rem 0 .4rem;text-transform:uppercase;">Production — direct database insert</h4>
+    <p>
+      Leave <span class="inline-code">DEV_SEED_USER</span> and
+      <span class="inline-code">DEV_SEED_PASSWORD</span> unset.
+      Insert directly into the <span class="inline-code">operators</span> table with a
+      <strong>BCrypt cost-12</strong> password hash.
+    </p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="comment">-- Run in psql or DBeaver against the sherlock database</span>
 <span class="kw">INSERT INTO</span> operators (id, username, password_hash, is_enabled, failed_attempts, created_at)
 <span class="kw">VALUES</span> (
   gen_random_uuid(),
@@ -647,10 +669,9 @@
 );</code></pre>
     </div>
     <p>
-      To generate the BCrypt hash, use any cost-12 BCrypt tool, or add a temporary
-      <span class="inline-code">main()</span> method in the backend that calls
+      To generate the BCrypt hash, use any cost-12 BCrypt tool, or call
       <span class="inline-code">new BCryptPasswordEncoder(12).encode("yourpassword")</span>
-      and prints the result.
+      in a temporary backend main method.
     </p>
 
     <h3>Account lockout</h3>
@@ -1111,8 +1132,14 @@
     <p>
       The Operator ID or Access Code field is empty — the button is disabled until
       both fields have content. If you click AUTHENTICATE and get
-      <em>"Authentication failed"</em>, the credentials are wrong. Double-check the
-      username and that the password was hashed with BCrypt cost 12 when the account was created.
+      <em>"Authentication failed"</em>, the credentials are wrong.
+      For a default dev setup the credentials are
+      <strong>admin</strong> / <strong>sherlock</strong> (set via
+      <span class="inline-code">DEV_SEED_USER</span> /
+      <span class="inline-code">DEV_SEED_PASSWORD</span> in <span class="inline-code">.env</span>).
+      Check the backend logs for the line
+      <span class="inline-code">[DEV] Seed operator 'admin' created</span> to confirm
+      the account was seeded — if it's missing, the env vars weren't set before startup.
     </p>
 
     <h3>Account locked — can't log in</h3>

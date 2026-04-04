@@ -100,7 +100,11 @@ The full telemetry stream shares the same field set recursively down the stack. 
 
 All endpoints except `POST /api/auth/login` require a JWT in the `Authorization: Bearer <token>` header. The WebSocket endpoint (`/ws-skytrack/**`) is HTTP-permit but requires the JWT in the STOMP `CONNECT` frame header instead (browsers cannot set headers on WebSocket upgrades).
 
-**No sign-up.** Users are added exclusively via direct database insertion:
+**No sign-up.** Users are added by one of two methods:
+
+- **Development** — set `DEV_SEED_USER` and `DEV_SEED_PASSWORD` in `.env`. `DevDataInitializer` creates the operator automatically on startup (idempotent). `.env.example` ships with `admin` / `sherlock`.
+- **Production** — insert directly into the `operators` table with a BCrypt cost-12 hash:
+
 ```sql
 INSERT INTO operators (id, username, password_hash, is_enabled, failed_attempts, created_at)
 VALUES (gen_random_uuid(), 'operator1', '$2a$12$<bcrypt-hash>', true, 0, now());

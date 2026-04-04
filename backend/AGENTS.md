@@ -60,6 +60,7 @@ com.sherlock.groundcontrol
 └── service/
     ├── AuthAuditService.java        # Persists every login attempt to auth_audit_log
     ├── AuthService.java             # authenticate(), logout(), lockout, blacklist purge
+    ├── DevDataInitializer.java      # ApplicationRunner — creates seed operator when DEV_SEED_USER/DEV_SEED_PASSWORD are set
     ├── DroneStreamService.java      # Resolves HLS stream URL from MEDIAMTX_HLS_BASE_URL
     ├── TelemetryService.java        # persist() + getRecentHistory()
     └── TelemetrySimulator.java      # @Scheduled 500ms broadcast + persist
@@ -88,6 +89,8 @@ app.jwt.expiration-hours: ${JWT_EXPIRATION_HOURS:8}
 |----------------------------|----------------------------|-----------------------------------------------|
 | `JWT_SECRET`               | dev fallback               | Base64-encoded 512-bit HMAC key. **Override in production:** `openssl rand -base64 64` |
 | `JWT_EXPIRATION_HOURS`     | `8`                        | Token lifetime in hours (one operator shift)  |
+| `DEV_SEED_USER`            | _(empty)_                  | If non-empty, `DevDataInitializer` creates this operator on startup (idempotent). **Leave unset in production.** |
+| `DEV_SEED_PASSWORD`        | _(empty)_                  | Plaintext password for the seed operator — BCrypt-12 hash computed at startup. **Leave unset in production.** |
 | `MEDIAMTX_HLS_BASE_URL`    | `http://localhost:8888`    | Base URL of MediaMTX HLS output as seen by the **browser**. In Docker use `/hls` (nginx proxies it). In local dev the default hits MediaMTX directly. |
 
 For Docker, these are injected by `docker-compose.yml`. For local dev, the defaults work against a local PostgreSQL instance with user/db `sherlock`.
@@ -197,11 +200,18 @@ Spring Security secures all endpoints with stateless JWT (HS512). There is no si
 The HTTP upgrade to `/ws-skytrack` is permitted without a token because browsers cannot set custom headers on WebSocket connections. Security is enforced at the STOMP level: `WebSocketAuthChannelInterceptor` validates the JWT sent in the `Authorization` header of the STOMP `CONNECT` frame. No token → connection rejected.
 
 ### Adding an operator (only way to create accounts)
+
+**Development** — set `DEV_SEED_USER` and `DEV_SEED_PASSWORD` in your `.env` file.
+`DevDataInitializer` creates the operator on startup (idempotent — skips if the username already exists).
+The `.env.example` ships with `admin` / `sherlock` as defaults.
+
+**Production** — insert directly into the database:
 ```sql
 INSERT INTO operators (id, username, password_hash, is_enabled, failed_attempts, created_at)
 VALUES (gen_random_uuid(), 'operator1', '$2a$12$<bcrypt-hash>', true, 0, now());
 ```
 Generate the hash via `new BCryptPasswordEncoder(12).encode("password")` in a scratch main, or any BCrypt cost-12 tool.
+Never set `DEV_SEED_USER` / `DEV_SEED_PASSWORD` in production.
 
 ### Lockout and audit
 - `AuthService` locks an account for 30 minutes after 5 consecutive failures.
