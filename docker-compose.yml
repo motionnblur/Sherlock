@@ -36,8 +36,8 @@ services:
       DB_NAME:               ${DB_NAME:-sherlock}
       DB_USER:               ${DB_USER:-sherlock}
       DB_PASSWORD:           ${DB_PASSWORD:-sherlock}
-      # HLS base URL reachable inside the Docker network
-      MEDIAMTX_HLS_BASE_URL: http://mediamtx:8888
+      # /hls is proxied by nginx to mediamtx:8888 inside Docker — browser-reachable
+      MEDIAMTX_HLS_BASE_URL: /hls
     ports:
       - "8080:8080"
     depends_on:

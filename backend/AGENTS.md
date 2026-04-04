@@ -61,7 +61,7 @@ spring.jpa.hibernate.ddl-auto: update   # schema auto-managed in dev
 
 | Environment Variable       | Default                    | Purpose                                       |
 |----------------------------|----------------------------|-----------------------------------------------|
-| `MEDIAMTX_HLS_BASE_URL`    | `http://localhost:8888`    | Base URL of MediaMTX HLS output. In Docker this is `http://mediamtx:8888`. |
+| `MEDIAMTX_HLS_BASE_URL`    | `http://localhost:8888`    | Base URL of MediaMTX HLS output as seen by the **browser**. In Docker use `/hls` (nginx proxies it). In local dev the default hits MediaMTX directly. |
 
 For Docker, these are injected by `docker-compose.yml`. For local dev, the defaults work against a local PostgreSQL instance with user/db `sherlock`.
 
