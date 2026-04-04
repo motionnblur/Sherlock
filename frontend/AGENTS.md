@@ -6,14 +6,15 @@
 
 ## Stack
 
-| Component     | Library / Version                      |
-|---------------|----------------------------------------|
-| Language      | TypeScript (TS/TSX)                    |
-| Framework     | React 18 + Vite 5                      |
+| Component     | Library / Version                        |
+|---------------|------------------------------------------|
+| Language      | TypeScript (TS/TSX)                      |
+| Framework     | React 18 + Vite 5                        |
 | Styling       | Tailwind CSS 3 — **only styling method** |
-| 3D Globe      | CesiumJS 1.116 via `vite-plugin-cesium` |
-| WebSocket     | `@stomp/stompjs` + `sockjs-client`     |
-| Font          | JetBrains Mono (Google Fonts)          |
+| 3D Globe      | CesiumJS 1.116 via `vite-plugin-cesium`  |
+| WebSocket     | `@stomp/stompjs` + `sockjs-client`       |
+| HLS video     | `hls.js` — used only in `LiveVideoWindow` |
+| Font          | JetBrains Mono (Google Fonts)            |
 
 ---
 
@@ -32,7 +33,8 @@ src/
 │   ├── hooks.ts                 # Hook return interfaces
 │   └── index.ts                 # Barrel exports
 ├── hooks/
-│   └── useTelemetry.ts          # STOMP client, auto-reconnect, validated message parsing, history state; gated by `enabled`
+│   ├── useTelemetry.ts          # STOMP client, auto-reconnect, validated message parsing, history state; gated by `enabled`
+│   └── useStreamUrl.ts          # Fetches HLS stream URL from GET /api/drones/{droneId}/stream; exposes isFetching + fetchError
 ├── utils/
 │   ├── formatters.ts            # Shared UI formatting helpers for coordinates, UTC time, cardinal heading
 │   └── telemetry.ts             # Runtime parsing/validation helpers for external telemetry payloads
@@ -40,7 +42,8 @@ src/
 │   └── map-settings.json        # Map-only dimming config for Cesium imagery
 └── components/
     ├── Drone.tsx                # Drone entity/path lifecycle, last-known REST fetch, camera tracking handoff
-    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, deselect button
+    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, settings dropdown (FREE MODE + LIVE VIDEO)
+    ├── LiveVideoWindow.tsx      # Floating 240×240 HLS video window; uses hls.js; mounted inside <main> over the map
     ├── MapComponent.tsx         # CesiumJS viewer shell, performance profile, overlays, passes viewer to <Drone />
     ├── SectionHeader.tsx        # Shared panel section divider/header component
     ├── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
@@ -208,6 +211,27 @@ Defined in `frontend/.env` (copy from `.env.example`):
 | `VITE_CESIUM_TOKEN` | _(empty)_ | Optional Cesium Ion token                     |
 
 All `VITE_*` variables are baked into the bundle at build time by Vite.
+
+---
+
+## Live Video — HLS Proxy
+
+HLS segments are served through a proxy path so the browser never makes a cross-origin request:
+
+| Environment    | HLS URL seen by the browser         | Proxied to              |
+|----------------|-------------------------------------|-------------------------|
+| Docker (nginx) | `http://<host>/hls/{droneId}/…`     | `mediamtx:8888`         |
+| Dev (`npm run dev`) | `http://localhost:5173/hls/{droneId}/…` | `localhost:8888`   |
+
+The stream URL returned by `GET /api/drones/{droneId}/stream` already uses the MediaMTX internal address (`http://mediamtx:8888/…`). `useStreamUrl` reuses this URL as-is; the nginx `/hls/` proxy block rewrites it transparently.
+
+**Do not bypass this proxy** by pointing `hls.js` directly at `mediamtx:8888` from JSX — that breaks in Docker where MediaMTX is not exposed to the host on that path.
+
+### LiveVideoWindow rules
+- Always mounted **inside `<main>`** (the map area) as an absolutely-positioned overlay — never outside it.
+- Size is fixed at 240×240 px via named constants in the component file. Do not use magic numbers.
+- Uses `hls.js` when `Hls.isSupported()` is true; falls back to native `<video src>` for Safari.
+- The `hls.js` instance is created/destroyed via a `useEffect` that depends on `streamUrl`. Do not manage it with `useState`.
 
 ---
 

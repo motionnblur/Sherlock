@@ -27,17 +27,20 @@ com.sherlock.groundcontrol
 │   ├── WebSocketConfig.java        # STOMP broker, /ws-skytrack endpoint
 │   └── CorsConfig.java             # Global CORS filter bean
 ├── controller/
-│   └── TelemetryController.java    # REST: GET /api/telemetry/history
+│   ├── TelemetryController.java    # REST: GET /api/telemetry/history
+│   └── DroneStreamController.java  # REST: GET /api/drones/{droneId}/stream
 ├── dto/
 │   ├── TelemetryDTO.java           # Wire object (no JPA annotations)
-│   └── TelemetryLiteDTO.java       # Minimal wire object for Free Mode
+│   ├── TelemetryLiteDTO.java       # Minimal wire object for Free Mode
+│   └── StreamUrlDTO.java           # Wire object: { streamUrl } for live video
 ├── entity/
 │   └── TelemetryEntity.java        # @Entity mapped to `telemetry` table
 ├── repository/
 │   └── TelemetryRepository.java    # JpaRepository, custom finder
 └── service/
     ├── TelemetryService.java        # persist() + getRecentHistory()
-    └── TelemetrySimulator.java      # @Scheduled 500ms broadcast + persist
+    ├── TelemetrySimulator.java      # @Scheduled 500ms broadcast + persist
+    └── DroneStreamService.java      # Resolves HLS stream URL from MEDIAMTX_HLS_BASE_URL
 ```
 
 **Rule:** never let a layer reach past its neighbour.  
@@ -55,6 +58,10 @@ spring.datasource.username: ${DB_USER:sherlock}
 spring.datasource.password: ${DB_PASSWORD:sherlock}
 spring.jpa.hibernate.ddl-auto: update   # schema auto-managed in dev
 ```
+
+| Environment Variable       | Default                    | Purpose                                       |
+|----------------------------|----------------------------|-----------------------------------------------|
+| `MEDIAMTX_HLS_BASE_URL`    | `http://localhost:8888`    | Base URL of MediaMTX HLS output. In Docker this is `http://mediamtx:8888`. |
 
 For Docker, these are injected by `docker-compose.yml`. For local dev, the defaults work against a local PostgreSQL instance with user/db `sherlock`.
 
@@ -114,6 +121,35 @@ Follow this checklist in order:
 3. Add a `@GetMapping` / `@PostMapping` method to `TelemetryController`
 
 There is no Spring Security configured. Do not add authentication without discussing it first.
+
+---
+
+## Live Video Stream — How It Works
+
+`GET /api/drones/{droneId}/stream` → `DroneStreamController` → `DroneStreamService`
+
+`DroneStreamService` constructs the HLS URL as:
+```
+{MEDIAMTX_HLS_BASE_URL}/{droneId-lowercased}/index.m3u8
+```
+
+The backend **does not proxy video bytes**. It only returns the URL. The frontend calls MediaMTX directly (via the nginx `/hls/` proxy in Docker, or via Vite's `/hls` dev proxy locally).
+
+**Simulating a drone camera feed (development):**
+```bash
+# Loop any video file into MediaMTX as if it were a live drone
+ffmpeg -re -stream_loop -1 -i footage.mp4 \
+  -c:v libx264 -preset ultrafast -tune zerolatency \
+  -f rtsp rtsp://localhost:8554/sherlock-01
+
+# Synthetic test pattern (no file needed)
+ffmpeg -re -f lavfi \
+  -i "testsrc2=size=1280x720:rate=30,drawtext=text='DRONE CAM SIM':fontsize=36:fontcolor=lime" \
+  -c:v libx264 -preset ultrafast -tune zerolatency \
+  -f rtsp rtsp://localhost:8554/sherlock-01
+```
+
+MediaMTX auto-creates the path on first push. No configuration file changes are needed for basic use.
 
 ---
 
