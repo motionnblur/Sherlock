@@ -46,6 +46,8 @@ services:
       # Override both values in production.
       DEV_SEED_USER:         ${DEV_SEED_USER:-admin}
       DEV_SEED_PASSWORD:     ${DEV_SEED_PASSWORD:-sherlock}
+      SIMULATOR_FLEET_SIZE:  ${SIMULATOR_FLEET_SIZE:-5000}
+      TELEMETRY_LAST_KNOWN_CACHE_SIZE: ${TELEMETRY_LAST_KNOWN_CACHE_SIZE:-10000}
       # /hls is proxied by nginx to mediamtx:8888 inside Docker — browser-reachable
       MEDIAMTX_HLS_BASE_URL: /hls
     ports:

@@ -1,10 +1,18 @@
 import { AVAILABLE_ASSETS } from '../constants/assets';
+import {
+  ASSET_LIST_OVERSCAN_ROWS,
+  ASSET_LIST_ROW_HEIGHT_PX,
+  FREE_MODE_ASSET_LIST_HEIGHT_PX,
+} from '../constants/telemetry';
 import type { AssetWindowProps } from '../interfaces/components';
+import VirtualizedAssetList from './VirtualizedAssetList';
 
 export default function FreeModeAssetWindow({
   selectedDrone,
   onActivateDrone,
 }: AssetWindowProps) {
+  const assetIds = AVAILABLE_ASSETS;
+
   return (
     <div className="absolute top-4 left-4 z-20 w-60 h-[18rem] max-h-[calc(100%-2rem)] pointer-events-none">
       <div className="flex h-full flex-col border border-line bg-panel shadow-[0_0_0_1px_rgba(0,255,65,0.08)] pointer-events-auto overflow-hidden">
@@ -24,25 +32,27 @@ export default function FreeModeAssetWindow({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {AVAILABLE_ASSETS.map((asset) => {
-            const isSelected = selectedDrone === asset.id;
-
+        <VirtualizedAssetList
+          assetIds={assetIds}
+          viewportHeightPx={FREE_MODE_ASSET_LIST_HEIGHT_PX}
+          rowHeightPx={ASSET_LIST_ROW_HEIGHT_PX}
+          overscanRows={ASSET_LIST_OVERSCAN_ROWS}
+          renderRow={(assetId) => {
+            const isSelected = selectedDrone === assetId;
             return (
               <button
-                key={asset.id}
                 type="button"
-                onClick={() => onActivateDrone(asset.id)}
-                className={`w-full text-left px-3 py-2 border-b border-line last:border-b-0 transition-colors ${
+                onClick={() => onActivateDrone(assetId)}
+                className={`w-full h-full text-left px-3 py-2 border-b border-line transition-colors ${
                   isSelected ? 'bg-elevated' : 'hover:bg-elevated/70'
                 }`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs font-bold tracking-widest text-neon">
-                    {asset.label}
+                    {assetId}
                   </span>
                   <span className={`text-[9px] tracking-widest uppercase ${isSelected ? 'text-neon' : 'text-muted'}`}>
-                    {isSelected ? 'ACTIVE' : asset.statusLabel}
+                    {isSelected ? 'ACTIVE' : 'LIVE'}
                   </span>
                 </div>
 
@@ -52,8 +62,8 @@ export default function FreeModeAssetWindow({
                 </div>
               </button>
             );
-          })}
-        </div>
+          }}
+        />
 
         <div className="px-3 py-2 border-t border-line">
           <span className="text-[8px] tracking-widest text-muted uppercase">

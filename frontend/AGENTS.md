@@ -37,8 +37,9 @@ src/
 │   └── index.ts                 # Barrel exports
 ├── hooks/
 │   ├── useAuth.ts               # Consumes AuthContext; throws if used outside <AuthProvider>
+│   ├── useLastKnownTelemetry.ts # One-shot bulk bootstrap from POST /api/telemetry/last-known
 │   ├── useLogin.ts              # Login form submission logic; calls POST /api/auth/login
-│   ├── useTelemetry.ts          # STOMP client; JWT in connectHeaders; auto-logout on auth error
+│   ├── useTelemetry.ts          # STOMP client; selected stream + bounded fleet summary; auto-logout on auth error
 │   └── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
 ├── utils/
 │   ├── formatters.ts            # Shared UI formatting helpers for coordinates, UTC time, cardinal heading
@@ -46,15 +47,18 @@ src/
 ├── configs/
 │   └── map-settings.json        # Map-only dimming config for Cesium imagery
 └── components/
-    ├── Drone.tsx                # Drone entity/path lifecycle, last-known REST fetch, camera tracking handoff
+    ├── AssetSelectionOverlay.tsx# Virtualized startup asset selector with last-known telemetry rows
+    ├── VirtualizedAssetList.tsx # Shared fixed-row virtualization primitive for large asset lists
     ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings
     ├── LiveVideoWindow.tsx      # Floating 240×240 HLS video window; uses hls.js; mounted inside <main> over the map
     ├── LoginPage.tsx            # Full-screen operator authentication form (shown when unauthenticated)
-    ├── MapComponent.tsx         # CesiumJS viewer shell, performance profile, overlays, passes viewer to <Drone />
+    ├── MapComponent.tsx         # CesiumJS viewer shell, selected-drone entity/path, fleet point layer
     ├── SectionHeader.tsx        # Shared panel section divider/header component
     ├── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
     ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, log (hidden when no drone selected)
     └── TelemetryPanel.tsx       # Left sidebar: lat/lon/alt/speed/battery (hidden when no drone selected)
+    └── map/
+        └── cesiumScene.ts       # Cesium viewer + entity/primitive helper functions/constants
 ```
 
 ---
@@ -136,22 +140,30 @@ Pattern for a section header inside a panel:
 `src/hooks/useTelemetry.ts` — the single source of truth for live data.
 
 ```ts
-const { telemetry, connected, history } = useTelemetry(selectedDrone, freeMode, showAllAssets);
+const { telemetry, fleetTelemetry, connected, history } = useTelemetry(
+  selectedDrone,
+  freeMode,
+  showAllAssets,
+);
 ```
 
-| Parameter    | Type      | Description                                               |
-|--------------|-----------|-----------------------------------------------------------|
-| `enabled`    | `boolean` | When `false`, STOMP client is deactivated and state is cleared. Defaults to `true`. |
-| `freeMode`   | `boolean` | When `true`, dynamically subscribes to `/topic/telemetry/{droneId}/lite` bypassing heavy fields. |
-| `showAllAssets` | `boolean` | When `true` (and `freeMode` is true), actively subscribes to all available drones' lite topics. |
+| Parameter       | Type      | Description                                               |
+|-----------------|-----------|-----------------------------------------------------------|
+| `selectedDrone` | `string \| null` | Selected drone ID. When null, no STOMP connection is created. |
+| `freeMode`      | `boolean` | Enables free-mode behavior in subscription selection.     |
+| `showAllAssets` | `boolean` | In free mode, subscribes to one fleet summary topic instead of per-drone fan-out. |
 
-| Return value | Type              | Description                              |
-|--------------|-------------------|------------------------------------------|
-| `telemetry`  | `TelemetryPoint \| null`  | Latest telemetry packet (null until first message) |
-| `connected`  | `boolean`         | STOMP link status                        |
-| `history`    | `TelemetryPoint[]`| Last 150 telemetry objects (oldest first)|
+| Return value    | Type                     | Description                              |
+|-----------------|--------------------------|------------------------------------------|
+| `telemetry`     | `TelemetryPoint \| null` | Latest telemetry packet for selected drone |
+| `fleetTelemetry`| `Record<string, TelemetryPoint>` | Latest fleet-lite points keyed by drone ID |
+| `connected`     | `boolean`                | STOMP link status                        |
+| `history`       | `TelemetryPoint[]`       | Last 150 selected-drone telemetry packets |
 
-Pass `enabled={selectedDrone !== null}` from `App.tsx` — this is the gate that prevents any backend connection until a drone is selected.
+Subscription model:
+- Always subscribes to selected full stream: `/topic/telemetry/{droneId}`
+- In Free Mode + SHOW ASSET ALL, also subscribes to `/topic/telemetry/lite/fleet`
+- Never opens one STOMP subscription per drone in all-assets mode
 
 Incoming STOMP payloads are parsed through `src/utils/telemetry.ts`. Malformed payloads are ignored rather than pushed directly into React state.
 
@@ -166,7 +178,7 @@ The app gate is in `App.tsx`:
 const { authToken, logout } = useAuth();
 if (!authToken) return <LoginPage />;
 ```
-All hooks are still instantiated when `LoginPage` is shown, but `useTelemetry` is gated by `enabled={selectedDrone !== null}` so no backend connections are made.
+All hooks are still instantiated when `LoginPage` is shown, but `useTelemetry` receives `selectedDrone=null`, so no backend WebSocket connection is created.
 
 ### Auth context
 `AuthContext.tsx` stores the JWT in `sessionStorage` (key: `skytrack_auth`). The token is validated on load — expired tokens are evicted immediately. The session clears when the tab or browser closes.
@@ -202,10 +214,9 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 
 ## MapComponent — CesiumJS Notes
 
-`src/components/MapComponent.tsx` owns the Cesium `Viewer` instance and map UI overlays.  
-`src/components/Drone.tsx` owns drone entity/path lifecycle, last-known history fetch, and viewer tracking handoff.
+`src/components/MapComponent.tsx` owns the Cesium `Viewer` instance, selected-drone entity/path, fleet point layer, and map UI overlays.
 
-**Props:** `{ telemetry, lowPerf, selectedDrone, freeMode, showAllAssets, onSelectDrone }`
+**Props:** `{ telemetry, fleetTelemetry, lastKnownTelemetry, lowPerf, selectedDrone, freeMode, showAllAssets, onSelectDrone }`
 
 **Imagery:** `UrlTemplateImageryProvider` (OpenStreetMap) is used by default — no Cesium Ion token required. If `VITE_CESIUM_TOKEN` is set in `.env`, Ion features (World Terrain, premium imagery) unlock automatically.
 
@@ -215,13 +226,14 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 
 **Low perf mode:** `MapComponent` owns Cesium performance tuning. It applies the low/high performance profile and is solely responsible for attaching/removing the optional OSM buildings tileset. Do not remove generic `Cesium3DTileset` primitives by scanning the entire scene.
 
-**Drone selection overlay:** when `selectedDrone` is null, a centred overlay panel is rendered over the map listing available assets. Clicking an entry calls `onSelectDrone(id)`. The overlay also shows the drone's last known position fetched via a single `GET /api/telemetry/history` REST call — no WebSocket is open at this point.
+**Drone selection overlay:** when `selectedDrone` is null, a centred overlay panel is rendered over the map listing available assets. Clicking an entry calls `onSelectDrone(id)`. Last-known values come from `useLastKnownTelemetry` (`POST /api/telemetry/last-known`) so startup avoids per-drone history requests.
 
-**Static vs live drone entity:** there are two display modes:
-- **Unselected** — a dimmed/muted drone icon is placed at the last known position (REST fetch). No flight path. Label uses `text-muted` color.
-- **Selected** — full-brightness live icon + glowing flight path polyline updated each telemetry tick. (Note: in Free mode with `showAllAssets=true`, all drones render in this "Selected" state visually but map-centering is disabled).
+**Fleet rendering model:**
+- **Selected drone:** one full-detail Cesium `Entity` + optional live path polyline (expensive path features only here).
+- **Non-selected drones:** lightweight `PointPrimitiveCollection` entries (no per-drone path entities, no per-drone labels).
+- **All-assets view:** points are fed by fleet summary topic updates, not per-drone REST fetches or per-drone STOMP subscriptions.
 
-Whenever `selectedDrone` changes (select or deselect), `Drone.tsx` removes all drone entities (`droneRef`, `pathRef`) and resets `positionsRef` / `initialFlown` before the new mode sets up its own entities.
+Whenever `selectedDrone` changes, `MapComponent` resets selected entity/path refs before creating the next selected state.
 
 **Drone entity:** rendered as a billboard using an inline SVG data URI. To replace with a 3D model:
 ```ts
@@ -240,10 +252,10 @@ model: {
 **Cesium refs lifecycle:**
 - `MapComponent.viewerRef` — the `Cesium.Viewer` instance (created once, destroyed on unmount)
 - `MapComponent.buildingsRef` — optional OSM buildings tileset, attached/removed by performance mode
-- `Drone.droneRef` — the drone `Entity` (static when unselected, live when selected; null between transitions)
-- `Drone.pathRef` — the polyline `Entity` (only exists when a drone is selected)
-- `Drone.positionsRef` — `Cartesian3[]` array (mutable, not React state — intentional for perf)
-- `Drone.initialFlown` — first-fix camera guard, reset on selection transitions
+- `MapComponent.selectedDroneRef` — selected drone `Entity`
+- `MapComponent.selectedPathRef` — selected drone path `Entity`
+- `MapComponent.pathPositionsRef` — selected drone path points (`Cartesian3[]`)
+- `MapComponent.fleetPointCollectionRef` — lightweight fleet point primitive collection
 
 Do not put Cesium objects into React state (`useState`). They are mutable and do not need to trigger re-renders.
 

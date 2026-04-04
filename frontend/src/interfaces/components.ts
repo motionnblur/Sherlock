@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
-import type * as Cesium from 'cesium';
-import type { DroneId, TelemetryPoint } from './telemetry';
+import type { DroneId, TelemetryByDrone, TelemetryPoint } from './telemetry';
 
 export interface HeaderProps {
   connected: boolean;
@@ -28,6 +27,8 @@ export interface MapSettingsConfig {
 
 export interface MapComponentProps {
   telemetry: TelemetryPoint | null;
+  fleetTelemetry: TelemetryByDrone;
+  lastKnownTelemetry: TelemetryByDrone;
   lowPerf: boolean;
   selectedDrone: DroneId | null;
   freeMode: boolean;
@@ -38,17 +39,6 @@ export interface MapComponentProps {
 export interface AssetWindowProps {
   selectedDrone: DroneId | null;
   onActivateDrone: (id: DroneId) => void;
-}
-
-export interface DroneProps {
-  viewer: Cesium.Viewer | null;
-  droneId: DroneId;
-  telemetry: TelemetryPoint | null;
-  selectedDrone: DroneId | null;
-  freeMode: boolean;
-  lastKnown: TelemetryPoint | null;
-  onLastKnownChange: (droneId: DroneId, point: TelemetryPoint | null) => void;
-  showAllAssets: boolean;
 }
 
 export interface StatusBarProps {

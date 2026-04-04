@@ -752,9 +752,10 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
           <div class="step-title">Broadcast over STOMP / WebSocket</div>
           <p class="step-desc">
             The new <span class="inline-code">TelemetryDTO</span> is serialised to JSON
-            and sent to <span class="inline-code">/topic/telemetry</span> (full stream)
-            and <span class="inline-code">/topic/telemetry/lite</span>
-            (Free Mode — omits speed + battery to save bandwidth).
+            and sent to <span class="inline-code">/topic/telemetry/{droneId}</span>
+            for selected-drone detail. In parallel, a fleet-lite snapshot is sent to
+            <span class="inline-code">/topic/telemetry/lite/fleet</span> for
+            all-assets rendering.
           </p>
         </div>
       </div>
@@ -784,11 +785,12 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
       <div class="flow-step">
         <div class="step-num">5</div>
         <div class="step-body">
-          <div class="step-title">History loaded on drone select</div>
+          <div class="step-title">Bulk last-known bootstrap on startup</div>
           <p class="step-desc">
-            When you select a drone, the frontend calls
-            <span class="inline-code">GET /api/telemetry/history</span> to fetch the last
-            150 stored points. This draws the flight path from before you opened the browser.
+            On login, the frontend calls
+            <span class="inline-code">POST /api/telemetry/last-known</span> once with the
+            fleet IDs. This removes the per-drone request burst and fills the
+            asset selector with last known coordinates in one response.
           </p>
         </div>
       </div>
@@ -814,6 +816,7 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
       <tbody>
         <tr><td>POST /api/auth/login</td><td>No</td><td>JWT token + username + expiry on valid credentials</td></tr>
         <tr><td>POST /api/auth/logout</td><td>Bearer token</td><td>204 No Content; blacklists the token server-side</td></tr>
+        <tr><td>POST /api/telemetry/last-known</td><td>Bearer token</td><td>Bulk last-known telemetry for a supplied list of drone IDs</td></tr>
         <tr><td>GET /api/telemetry/history</td><td>Bearer token</td><td>Last 150 telemetry points from the database</td></tr>
         <tr><td>GET /api/drones/{droneId}/stream</td><td>Bearer token</td><td>JSON with <span class="inline-code">{ "streamUrl": "http://…/index.m3u8" }</span> — the HLS URL for the live camera</td></tr>
       </tbody>
@@ -1098,9 +1101,10 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
     <h3>Free Mode</h3>
     <p>
       Activated via SETTINGS → FREE MODE. Hides the left and right panels so the
-      globe fills the screen. Also switches the WebSocket subscription to the
-      <span class="inline-code">/topic/telemetry/lite</span> stream (omits speed +
-      battery) to reduce bandwidth — useful for mobile or slow connections.
+      globe fills the screen. In SHOW ASSET: ALL mode, the client uses one bounded
+      fleet subscription:
+      <span class="inline-code">/topic/telemetry/lite/fleet</span> instead of one
+      topic subscription per drone.
     </p>
 
     <h3>Live Video Window</h3>

@@ -111,7 +111,7 @@ export default function Header({
 
             <div className="flex items-center gap-2 text-xs">
               <span className="text-muted tracking-wider">
-                SHERLOCK<span className="text-neon">-01</span>
+                <span className="text-neon">{selectedDrone}</span>
               </span>
               <div ref={settingsRef} className="relative flex items-center gap-1">
                 <button

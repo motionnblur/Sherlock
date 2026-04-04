@@ -2,6 +2,8 @@ import { useState, useCallback } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useTelemetry } from './hooks/useTelemetry';
 import { useStreamUrl } from './hooks/useStreamUrl';
+import { useLastKnownTelemetry } from './hooks/useLastKnownTelemetry';
+import { DRONE_IDS } from './constants/telemetry';
 import Header from './components/Header';
 import TelemetryPanel from './components/TelemetryPanel';
 import MapComponent from './components/MapComponent';
@@ -22,7 +24,8 @@ export default function App() {
   const [isLiveVideoOpen, setIsLiveVideoOpen] = useState(false);
   const [showAllAssets, setShowAllAssets] = useState(false);
 
-  const { telemetry, connected, history } = useTelemetry(selectedDrone, freeMode, showAllAssets);
+  const { telemetry, fleetTelemetry, connected, history } = useTelemetry(selectedDrone, freeMode, showAllAssets);
+  const lastKnownTelemetry = useLastKnownTelemetry(DRONE_IDS);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
 
   const handleToggleLiveVideo = useCallback(() => {
@@ -108,6 +111,8 @@ export default function App() {
         <main className="flex-1 relative min-w-0">
           <MapComponent
             telemetry={telemetry}
+            fleetTelemetry={fleetTelemetry}
+            lastKnownTelemetry={lastKnownTelemetry}
             lowPerf={lowPerf}
             selectedDrone={selectedDrone}
             freeMode={freeMode}

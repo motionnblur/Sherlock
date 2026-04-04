@@ -1,22 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { Client, type IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { TELEMETRY_HISTORY_LIMIT, DRONE_IDS } from '../constants/telemetry';
+import { FLEET_LITE_TOPIC, TELEMETRY_HISTORY_LIMIT } from '../constants/telemetry';
 import type { UseTelemetryResult } from '../interfaces/hooks';
-import type { TelemetryPoint } from '../interfaces/telemetry';
-import { parseTelemetryMessage } from '../utils/telemetry';
+import type { TelemetryByDrone, TelemetryPoint } from '../interfaces/telemetry';
+import { parseTelemetryListMessage, parseTelemetryMessage } from '../utils/telemetry';
 import { useAuth } from './useAuth';
 
 const WS_URL = import.meta.env.VITE_WS_URL || '/ws-skytrack';
 
 /**
  * Manages the STOMP/SockJS WebSocket connection and exposes live telemetry state.
- * Only connects when `enabled` is true — pass false to disconnect and suppress all data.
+ * Connects only when a selected drone ID is available.
  * JWT is injected into the STOMP CONNECT headers for server-side validation.
  */
 export function useTelemetry(droneId: string | null, freeMode = false, showAllAssets = false): UseTelemetryResult {
   const { authToken, logout } = useAuth();
   const [telemetry, setTelemetry] = useState<TelemetryPoint | null>(null);
+  const [fleetTelemetry, setFleetTelemetry] = useState<TelemetryByDrone>({});
   const [connected, setConnected] = useState(false);
   const [history, setHistory] = useState<TelemetryPoint[]>([]);
   const clientRef = useRef<Client | null>(null);
@@ -25,6 +26,7 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
     const resetState = () => {
       setConnected(false);
       setTelemetry(null);
+      setFleetTelemetry({});
       setHistory([]);
     };
 
@@ -45,7 +47,26 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
       }
 
       setTelemetry(nextTelemetry);
+      setFleetTelemetry((previousFleetTelemetry) => ({
+        ...previousFleetTelemetry,
+        [nextTelemetry.droneId]: nextTelemetry,
+      }));
       appendHistory(nextTelemetry);
+    };
+
+    const handleFleetTelemetryMessage = (message: IMessage) => {
+      const fleetUpdate = parseTelemetryListMessage(message.body);
+      if (fleetUpdate.length === 0) {
+        return;
+      }
+
+      setFleetTelemetry((previousFleetTelemetry) => {
+        const nextFleetTelemetry = { ...previousFleetTelemetry };
+        for (const point of fleetUpdate) {
+          nextFleetTelemetry[point.droneId] = point;
+        }
+        return nextFleetTelemetry;
+      });
     };
 
     if (!droneId || !authToken) {
@@ -68,14 +89,13 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
 
       onConnect: () => {
         setConnected(true);
-        if (showAllAssets) {
-          for (const id of DRONE_IDS) {
-            const topic = `/topic/telemetry/${id}/lite`;
-            client.subscribe(topic, handleTelemetryMessage);
-          }
-        } else if (droneId) {
-          const topic = freeMode ? `/topic/telemetry/${droneId}/lite` : `/topic/telemetry/${droneId}`;
-          client.subscribe(topic, handleTelemetryMessage);
+        if (!droneId) {
+          return;
+        }
+
+        client.subscribe(`/topic/telemetry/${droneId}`, handleTelemetryMessage);
+        if (freeMode && showAllAssets) {
+          client.subscribe(FLEET_LITE_TOPIC, handleFleetTelemetryMessage);
         }
       },
 
@@ -103,5 +123,5 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
     };
   }, [droneId, freeMode, showAllAssets, authToken, logout]);
 
-  return { telemetry, connected, history };
+  return { telemetry, fleetTelemetry, connected, history };
 }

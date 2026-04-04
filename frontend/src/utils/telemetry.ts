@@ -1,4 +1,4 @@
-import type { TelemetryPoint } from '../interfaces/telemetry';
+import type { TelemetryByDrone, TelemetryPoint } from '../interfaces/telemetry';
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -32,17 +32,33 @@ export function parseTelemetryMessage(messageBody: string): TelemetryPoint | nul
   }
 }
 
-export function getLastTelemetryPoint(payload: unknown): TelemetryPoint | null {
-  if (!Array.isArray(payload)) {
-    return null;
-  }
-
-  for (let index = payload.length - 1; index >= 0; index -= 1) {
-    const entry = payload[index];
-    if (isTelemetryPoint(entry)) {
-      return entry;
+export function parseTelemetryListMessage(messageBody: string): TelemetryPoint[] {
+  try {
+    const parsed = JSON.parse(messageBody) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
     }
+
+    return parsed.filter(isTelemetryPoint);
+  } catch {
+    return [];
+  }
+}
+
+export function parseLastKnownTelemetryMap(payload: unknown): TelemetryByDrone {
+  if (!payload || typeof payload !== 'object') {
+    return {};
   }
 
-  return null;
+  const response = payload as { telemetry?: unknown };
+  if (!Array.isArray(response.telemetry)) {
+    return {};
+  }
+
+  return response.telemetry.reduce<TelemetryByDrone>((accumulator, entry) => {
+    if (isTelemetryPoint(entry)) {
+      accumulator[entry.droneId] = entry;
+    }
+    return accumulator;
+  }, {});
 }

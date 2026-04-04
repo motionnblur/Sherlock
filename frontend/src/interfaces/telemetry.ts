@@ -1,3 +1,5 @@
+export type DroneId = string;
+
 export interface TelemetryPoint {
   droneId: DroneId;
   latitude: number;
@@ -9,4 +11,4 @@ export interface TelemetryPoint {
   timestamp: string;
 }
 
-export type DroneId = 'SHERLOCK-01' | 'SHERLOCK-02' | 'SHERLOCK-03' | 'SHERLOCK-04' | 'SHERLOCK-05';
+export type TelemetryByDrone = Record<DroneId, TelemetryPoint>;

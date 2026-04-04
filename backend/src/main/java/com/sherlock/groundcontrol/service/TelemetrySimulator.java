@@ -2,8 +2,8 @@ package com.sherlock.groundcontrol.service;
 
 import com.sherlock.groundcontrol.dto.TelemetryDTO;
 import com.sherlock.groundcontrol.dto.TelemetryLiteDTO;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -18,41 +18,41 @@ import java.util.Random;
  * Generates movement based on heading and speed physics, then persists each data point.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class TelemetrySimulator {
 
-    private static final String TELEMETRY_TOPIC_PREFIX = "/topic/telemetry";
+    private static final int TELEMETRY_INTERVAL_MS = 500;
+    private static final int MIN_DRONE_ID_WIDTH = 2;
+    private static final String TELEMETRY_TOPIC_PREFIX = "/topic/telemetry/";
+    private static final String FLEET_LITE_TOPIC = "/topic/telemetry/lite/fleet";
     private static final double EARTH_RADIUS_KM = 6371.0;
+    private static final double BASE_LATITUDE = 37.9838;
+    private static final double BASE_LONGITUDE = 23.7275;
+    private static final double FLEET_SPACING_DEGREES = 0.02;
 
     private final SimpMessagingTemplate messagingTemplate;
     private final TelemetryService telemetryService;
+    private final List<DroneState> fleet;
+    private final int droneIdWidth;
 
-    private final List<DroneState> fleet = initializeFleet();
-
-    private List<DroneState> initializeFleet() {
-        List<DroneState> drones = new ArrayList<>();
-        // Initial center position: Eastern Mediterranean
-        double baseLat  = 37.9838;
-        double baseLon = 23.7275;
-
-        for (int i = 1; i <= 5; i++) {
-            String droneId = String.format("SHERLOCK-%02d", i);
-            DroneState state = new DroneState(droneId);
-            // Stagger starting positions slightly
-            state.latitude = baseLat + (i * 0.05) - 0.15;
-            state.longitude = baseLon + (i * 0.05) - 0.15;
-            state.altitude = 1500.0 + (i * 100);
-            state.speed = 120.0 + (i * 5);
-            state.battery = 95.0 + i;
-            state.heading = i * 60.0;
-            drones.add(state);
-        }
-        return drones;
+    public TelemetrySimulator(
+            SimpMessagingTemplate messagingTemplate,
+            TelemetryService telemetryService,
+            @Value("${app.simulator.fleet-size:5000}") int configuredFleetSize
+    ) {
+        this.messagingTemplate = messagingTemplate;
+        this.telemetryService = telemetryService;
+        int fleetSize = Math.max(1, configuredFleetSize);
+        this.droneIdWidth = Math.max(MIN_DRONE_ID_WIDTH, String.valueOf(fleetSize).length());
+        this.fleet = initializeFleet(fleetSize);
     }
 
-    @Scheduled(fixedRate = 500)
+    @Scheduled(fixedRate = TELEMETRY_INTERVAL_MS)
     public void broadcastTelemetry() {
+        Instant timestamp = Instant.now();
+        List<TelemetryDTO> telemetryBatch = new ArrayList<>(fleet.size());
+        List<TelemetryLiteDTO> fleetLiteBatch = new ArrayList<>(fleet.size());
+
         for (DroneState state : fleet) {
             state.updateState();
 
@@ -64,11 +64,11 @@ public class TelemetrySimulator {
                     .speed(roundTo(state.speed, 1))
                     .battery(roundTo(state.battery, 2))
                     .heading(roundTo(normalizeHeading(state.heading), 1))
-                    .timestamp(Instant.now())
+                    .timestamp(timestamp)
                     .build();
 
-            String fullTopic = TELEMETRY_TOPIC_PREFIX + "/" + state.droneId;
-            messagingTemplate.convertAndSend(fullTopic, dto);
+            telemetryBatch.add(dto);
+            messagingTemplate.convertAndSend(TELEMETRY_TOPIC_PREFIX + state.droneId, dto);
 
             TelemetryLiteDTO liteDto = TelemetryLiteDTO.builder()
                     .droneId(dto.getDroneId())
@@ -78,12 +78,9 @@ public class TelemetrySimulator {
                     .heading(dto.getHeading())
                     .timestamp(dto.getTimestamp())
                     .build();
-            String liteTopic = fullTopic + "/lite";
-            messagingTemplate.convertAndSend(liteTopic, liteDto);
+            fleetLiteBatch.add(liteDto);
 
-            telemetryService.persist(dto);
-
-            if (state.droneId.equals("SHERLOCK-01")) {
+            if (state.droneId.equals(fleet.get(0).droneId)) {
                 log.debug("TX [{}] lat={} lon={} alt={}m spd={}km/h bat={}% hdg={}°",
                         state.droneId,
                         String.format("%.6f", state.latitude),
@@ -94,6 +91,35 @@ public class TelemetrySimulator {
                         String.format("%.1f", state.heading));
             }
         }
+
+        telemetryService.persistBatch(telemetryBatch);
+        messagingTemplate.convertAndSend(FLEET_LITE_TOPIC, fleetLiteBatch);
+    }
+
+    private List<DroneState> initializeFleet(int fleetSize) {
+        List<DroneState> drones = new ArrayList<>(fleetSize);
+        int gridSize = (int) Math.ceil(Math.sqrt(fleetSize));
+        double centerOffset = (gridSize - 1) / 2.0;
+
+        for (int index = 0; index < fleetSize; index++) {
+            int row = index / gridSize;
+            int column = index % gridSize;
+            DroneState state = new DroneState(formatDroneId(index + 1), index);
+            state.latitude = BASE_LATITUDE + ((row - centerOffset) * FLEET_SPACING_DEGREES);
+            state.longitude = BASE_LONGITUDE + ((column - centerOffset) * FLEET_SPACING_DEGREES);
+            state.altitude = 1200.0 + ((index % 12) * 120.0);
+            state.speed = 95.0 + (index % 35);
+            state.battery = Math.min(100.0, 88.0 + (index % 13));
+            state.heading = (index * 17.0) % 360.0;
+            drones.add(state);
+        }
+
+        log.info("Initialized telemetry simulator fleet: {} drones", fleetSize);
+        return drones;
+    }
+
+    private String formatDroneId(int index) {
+        return "SHERLOCK-" + String.format("%0" + droneIdWidth + "d", index);
     }
 
     private double normalizeHeading(double degrees) {
@@ -105,21 +131,22 @@ public class TelemetrySimulator {
         return Math.round(value * factor) / factor;
     }
 
-    private class DroneState {
-        String droneId;
-        double latitude;
-        double longitude;
-        double altitude;
-        double speed;
-        double battery;
-        double heading;
-        Random random = new Random();
+    private static class DroneState {
+        private final String droneId;
+        private final Random random;
+        private double latitude;
+        private double longitude;
+        private double altitude;
+        private double speed;
+        private double battery;
+        private double heading;
 
-        DroneState(String droneId) {
+        private DroneState(String droneId, int seedOffset) {
             this.droneId = droneId;
+            this.random = new Random(1_000L + seedOffset);
         }
 
-        void updateState() {
+        private void updateState() {
             // Gradual heading drift to simulate waypoint navigation
             heading += (random.nextDouble() - 0.5) * 6.0;
 

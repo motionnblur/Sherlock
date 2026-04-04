@@ -41,7 +41,7 @@ Additional runtime service (not a build artifact):
 │                                                                  │
 │  ┌──────────┐   STOMP/WS       ┌──────────────┐                 │
 │  │ Frontend │ ◄─────────────── │   Backend    │                 │
-│  │  :80     │ /topic/telemetry │   :8080      │                 │
+│  │  :80     │ /topic/telemetry/{id} │ :8080    │                 │
 │  │  nginx   │                  │ Spring Boot  │                 │
 │  └────┬─────┘  REST /api/...   └──────┬───────┘                 │
 │       │        ────────────────►      │ JPA                     │
@@ -58,9 +58,9 @@ Additional runtime service (not a build artifact):
 
 **Data flow:**
 1. `TelemetrySimulator` fires every 500 ms (`@Scheduled`)
-2. Publishes `TelemetryDTO` to `/topic/telemetry` via `SimpMessagingTemplate`
-3. Persists the same DTO to PostgreSQL via `TelemetryService`
-4. Frontend STOMP client receives the message → updates React state → re-renders map + panels
+2. Publishes per-drone `TelemetryDTO` to `/topic/telemetry/{droneId}` and fleet-lite snapshots to `/topic/telemetry/lite/fleet`
+3. Persists each tick as a batch to PostgreSQL via `TelemetryService.persistBatch(...)`
+4. Frontend bootstrap loads bulk last-known positions once via REST, then applies STOMP deltas for selected drone + fleet summary
 
 ---
 
@@ -87,9 +87,10 @@ The full telemetry stream shares the same field set recursively down the stack. 
 | Login                    | `POST /api/auth/login`                         |
 | Logout                   | `POST /api/auth/logout`                        |
 | WS connect               | `/ws-skytrack` (SockJS)                        |
-| STOMP subscribe          | `/topic/telemetry`                             |
-| STOMP lite stream        | `/topic/telemetry/lite`                        |
+| STOMP selected stream    | `/topic/telemetry/{droneId}`                   |
+| STOMP fleet lite stream  | `/topic/telemetry/lite/fleet`                  |
 | REST history             | `GET /api/telemetry/history`                   |
+| REST bulk last-known     | `POST /api/telemetry/last-known`               |
 | REST stream URL          | `GET /api/drones/{droneId}/stream`             |
 | RTSP ingest (MediaMTX)   | `rtsp://localhost:8554/{droneId}` (push)       |
 | HLS output (MediaMTX)    | `http://localhost:8888/{droneId}/index.m3u8`   |
