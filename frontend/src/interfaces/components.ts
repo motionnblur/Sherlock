@@ -6,8 +6,17 @@ export interface HeaderProps {
   connected: boolean;
   selectedDrone: DroneId | null;
   freeMode: boolean;
+  isLiveVideoOpen: boolean;
   onToggleFreeMode: () => void;
   onDeselect: () => void;
+  onToggleLiveVideo: () => void;
+}
+
+export interface LiveVideoWindowProps {
+  streamUrl: string | null;
+  isFetching: boolean;
+  fetchError: string | null;
+  onClose: () => void;
 }
 
 export interface MapSettingsConfig {

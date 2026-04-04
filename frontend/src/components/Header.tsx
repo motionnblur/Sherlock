@@ -25,8 +25,10 @@ export default function Header({
   connected,
   selectedDrone,
   freeMode,
+  isLiveVideoOpen,
   onToggleFreeMode,
   onDeselect,
+  onToggleLiveVideo,
 }: HeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
@@ -118,8 +120,9 @@ export default function Header({
                 </button>
 
                 {settingsOpen && (
-                  <div className="absolute right-0 top-6 w-32 bg-panel border border-line p-2 z-20">
+                  <div className="absolute right-0 top-6 w-36 bg-panel border border-line p-2 z-20 flex flex-col gap-1">
                     <button
+                      id="free-mode-toggle-btn"
                       type="button"
                       onClick={onToggleFreeMode}
                       className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
@@ -129,6 +132,18 @@ export default function Header({
                       }`}
                     >
                       FREE MODE: {freeMode ? 'ON' : 'OFF'}
+                    </button>
+                    <button
+                      id="live-video-toggle-btn"
+                      type="button"
+                      onClick={onToggleLiveVideo}
+                      className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
+                        isLiveVideoOpen
+                          ? 'text-neon border-neon bg-elevated'
+                          : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
+                      }`}
+                    >
+                      LIVE VIDEO: {isLiveVideoOpen ? 'ON' : 'OFF'}
                     </button>
                   </div>
                 )}

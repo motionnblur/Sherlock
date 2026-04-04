@@ -31,11 +31,13 @@ services:
     container_name: sherlock-backend
     restart: on-failure
     environment:
-      DB_HOST:     postgres
-      DB_PORT:     5432
-      DB_NAME:     ${DB_NAME:-sherlock}
-      DB_USER:     ${DB_USER:-sherlock}
-      DB_PASSWORD: ${DB_PASSWORD:-sherlock}
+      DB_HOST:               postgres
+      DB_PORT:               5432
+      DB_NAME:               ${DB_NAME:-sherlock}
+      DB_USER:               ${DB_USER:-sherlock}
+      DB_PASSWORD:           ${DB_PASSWORD:-sherlock}
+      # HLS base URL reachable inside the Docker network
+      MEDIAMTX_HLS_BASE_URL: http://mediamtx:8888
     ports:
       - "8080:8080"
     depends_on:
@@ -58,6 +60,19 @@ services:
       - "80:80"
     depends_on:
       - backend
+      - mediamtx
+    networks:
+      - sherlock-net
+
+  # ── MediaMTX — RTSP/HLS media proxy (drone camera simulator) ─────────────────
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: sherlock-mediamtx
+    restart: unless-stopped
+    ports:
+      - "8554:8554"   # RTSP ingest (FFmpeg feeds here)
+      - "8888:8888"   # HLS output  (frontend consumes)
+      - "8889:8889"   # WebRTC output (future use)
     networks:
       - sherlock-net
 
