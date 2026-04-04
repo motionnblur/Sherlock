@@ -16,6 +16,7 @@ const CAMERA_FLY_ALTITUDE = 8000;
 const FLEET_POINT_SIZE = 3;
 const NEON = Cesium.Color.fromCssColorString('#00FF41');
 const MUTED = Cesium.Color.fromCssColorString('#3d4f63');
+const DANGER = Cesium.Color.fromCssColorString('#FF3B30');
 
 const DRONE_ICON = (() => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
@@ -29,6 +30,23 @@ const DRONE_ICON = (() => {
     <circle cx="26" cy="10" r="4" fill="none" stroke="#00FF41" stroke-width="1.5"/>
     <circle cx="10" cy="26" r="4" fill="none" stroke="#00FF41" stroke-width="1.5"/>
     <circle cx="26" cy="26" r="4" fill="none" stroke="#00FF41" stroke-width="1.5"/>
+  </svg>`;
+
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+})();
+
+const DRONE_ICON_RED = (() => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+    <line x1="10" y1="10" x2="18" y2="18" stroke="#FF3B30" stroke-width="1.5"/>
+    <line x1="26" y1="10" x2="18" y2="18" stroke="#FF3B30" stroke-width="1.5"/>
+    <line x1="10" y1="26" x2="18" y2="18" stroke="#FF3B30" stroke-width="1.5"/>
+    <line x1="26" y1="26" x2="18" y2="18" stroke="#FF3B30" stroke-width="1.5"/>
+    <circle cx="18" cy="18" r="4" fill="#FF3B30" opacity="0.9"/>
+    <circle cx="18" cy="18" r="6" fill="none" stroke="#FF3B30" stroke-width="0.8" opacity="0.4"/>
+    <circle cx="10" cy="10" r="4" fill="none" stroke="#FF3B30" stroke-width="1.5"/>
+    <circle cx="26" cy="10" r="4" fill="none" stroke="#FF3B30" stroke-width="1.5"/>
+    <circle cx="10" cy="26" r="4" fill="none" stroke="#FF3B30" stroke-width="1.5"/>
+    <circle cx="26" cy="26" r="4" fill="none" stroke="#FF3B30" stroke-width="1.5"/>
   </svg>`;
 
   return `data:image/svg+xml;base64,${btoa(svg)}`;
@@ -259,38 +277,110 @@ export function resetSelectedEntities(
   viewer.scene.requestRender();
 }
 
-export function ensureFleetPointCollection(
+export interface FleetAssetPrimitives {
+  point: Cesium.PointPrimitive;
+  billboard: Cesium.Billboard;
+  polyline: Cesium.Polyline;
+  label: Cesium.Label;
+  positions: Cesium.Cartesian3[];
+}
+
+export function ensureFleetCollections(
   viewer: Cesium.Viewer,
   pointCollectionRef: MutableRefObject<Cesium.PointPrimitiveCollection | null>,
-): Cesium.PointPrimitiveCollection {
+  billboardCollectionRef: MutableRefObject<Cesium.BillboardCollection | null>,
+  polylineCollectionRef: MutableRefObject<Cesium.PolylineCollection | null>,
+  labelCollectionRef: MutableRefObject<Cesium.LabelCollection | null>,
+): { pointCollection: Cesium.PointPrimitiveCollection; billboardCollection: Cesium.BillboardCollection; polylineCollection: Cesium.PolylineCollection; labelCollection: Cesium.LabelCollection } {
   if (!pointCollectionRef.current) {
     pointCollectionRef.current = viewer.scene.primitives.add(
       new Cesium.PointPrimitiveCollection(),
     ) as Cesium.PointPrimitiveCollection;
   }
-  return pointCollectionRef.current;
+  if (!billboardCollectionRef.current) {
+    billboardCollectionRef.current = viewer.scene.primitives.add(
+      new Cesium.BillboardCollection(),
+    ) as Cesium.BillboardCollection;
+  }
+  if (!polylineCollectionRef.current) {
+    polylineCollectionRef.current = viewer.scene.primitives.add(
+      new Cesium.PolylineCollection(),
+    ) as Cesium.PolylineCollection;
+  }
+  if (!labelCollectionRef.current) {
+    labelCollectionRef.current = viewer.scene.primitives.add(
+      new Cesium.LabelCollection(),
+    ) as Cesium.LabelCollection;
+  }
+  return {
+    pointCollection: pointCollectionRef.current,
+    billboardCollection: billboardCollectionRef.current,
+    polylineCollection: polylineCollectionRef.current,
+    labelCollection: labelCollectionRef.current,
+  };
 }
 
-export function upsertFleetPoint(
+export function upsertFleetAsset(
   pointCollection: Cesium.PointPrimitiveCollection,
-  pointMapRef: MutableRefObject<Map<DroneId, Cesium.PointPrimitive>>,
+  billboardCollection: Cesium.BillboardCollection,
+  polylineCollection: Cesium.PolylineCollection,
+  labelCollection: Cesium.LabelCollection,
+  assetMapRef: MutableRefObject<Map<DroneId, FleetAssetPrimitives>>,
   droneId: DroneId,
   telemetryPoint: TelemetryPoint,
 ): void {
   const position = toCartesian(telemetryPoint);
-  const existingPoint = pointMapRef.current.get(droneId);
-  if (existingPoint) {
-    existingPoint.position = position;
+  const existing = assetMapRef.current.get(droneId);
+  if (existing) {
+    existing.point.position = position;
+    existing.billboard.position = position;
+    existing.label.position = position;
+    existing.positions.push(position);
+    if (existing.positions.length > 25) {
+      existing.positions.shift();
+    }
+    existing.polyline.positions = existing.positions;
     return;
   }
 
-  const primitive = pointCollection.add({
+  const point = pointCollection.add({
     position,
     pixelSize: FLEET_POINT_SIZE,
     color: MUTED.withAlpha(0.65),
     outlineColor: NEON.withAlpha(0.25),
     outlineWidth: 1,
+    distanceDisplayCondition: new Cesium.DistanceDisplayCondition(8000, Number.POSITIVE_INFINITY),
     disableDepthTestDistance: Number.POSITIVE_INFINITY,
   });
-  pointMapRef.current.set(droneId, primitive);
+
+  const billboard = billboardCollection.add({
+    position,
+    image: DRONE_ICON_RED,
+    scale: 0.9,
+    distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 8000),
+    disableDepthTestDistance: Number.POSITIVE_INFINITY,
+  });
+
+  const polyline = polylineCollection.add({
+    positions: [position],
+    width: 1.5,
+    material: Cesium.Material.fromType('PolylineGlow', { glowPower: 0.15, color: DANGER.withAlpha(0.65) }),
+    distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 8000),
+  });
+
+  const label = labelCollection.add({
+    position,
+    text: `◆ ${droneId}`,
+    font: '11px "JetBrains Mono", monospace',
+    fillColor: DANGER,
+    outlineColor: Cesium.Color.BLACK,
+    outlineWidth: 2,
+    style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+    verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+    pixelOffset: new Cesium.Cartesian2(0, -22),
+    distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 8000),
+    disableDepthTestDistance: Number.POSITIVE_INFINITY,
+  });
+
+  assetMapRef.current.set(droneId, { point, billboard, polyline, label, positions: [position] });
 }

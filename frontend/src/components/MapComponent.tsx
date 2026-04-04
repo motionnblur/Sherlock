@@ -12,9 +12,10 @@ import {
   applyPerformanceProfile,
   createViewer,
   ensureBuildings,
-  ensureFleetPointCollection,
+  ensureFleetCollections,
   ensurePathEntity,
   ensureSelectedDroneEntity,
+  FleetAssetPrimitives,
   flyToAsset,
   HAS_TOKEN,
   MAP_BRIGHTNESS,
@@ -22,7 +23,7 @@ import {
   removeBuildings,
   resetSelectedEntities,
   toCartesian,
-  upsertFleetPoint,
+  upsertFleetAsset,
 } from './map/cesiumScene';
 
 function MapFrameOverlay({ isMapDimmed }: { isMapDimmed: boolean }) {
@@ -82,7 +83,10 @@ export default function MapComponent({
   const initialFlyDoneRef = useRef(false);
   const lastPathTimestampRef = useRef<string | null>(null);
   const fleetPointCollectionRef = useRef<Cesium.PointPrimitiveCollection | null>(null);
-  const fleetPointMapRef = useRef<Map<DroneId, Cesium.PointPrimitive>>(new Map());
+  const fleetBillboardCollectionRef = useRef<Cesium.BillboardCollection | null>(null);
+  const fleetPolylineCollectionRef = useRef<Cesium.PolylineCollection | null>(null);
+  const fleetLabelCollectionRef = useRef<Cesium.LabelCollection | null>(null);
+  const fleetAssetMapRef = useRef<Map<DroneId, FleetAssetPrimitives>>(new Map());
 
   const [viewer, setViewer] = useState<Cesium.Viewer | null>(null);
   const [isMapDimmed, setIsMapDimmed] = useState(false);
@@ -116,8 +120,20 @@ export default function MapComponent({
       if (fleetPointCollectionRef.current) {
         viewerRef.current.scene.primitives.remove(fleetPointCollectionRef.current);
       }
+      if (fleetBillboardCollectionRef.current) {
+        viewerRef.current.scene.primitives.remove(fleetBillboardCollectionRef.current);
+      }
+      if (fleetPolylineCollectionRef.current) {
+        viewerRef.current.scene.primitives.remove(fleetPolylineCollectionRef.current);
+      }
+      if (fleetLabelCollectionRef.current) {
+        viewerRef.current.scene.primitives.remove(fleetLabelCollectionRef.current);
+      }
       fleetPointCollectionRef.current = null;
-      fleetPointMapRef.current.clear();
+      fleetBillboardCollectionRef.current = null;
+      fleetPolylineCollectionRef.current = null;
+      fleetLabelCollectionRef.current = null;
+      fleetAssetMapRef.current.clear();
       viewerRef.current.destroy();
       viewerRef.current = null;
       setViewer(null);
@@ -215,11 +231,14 @@ export default function MapComponent({
       return;
     }
 
-    const pointCollection = ensureFleetPointCollection(viewer, fleetPointCollectionRef);
+    const { pointCollection, billboardCollection, polylineCollection, labelCollection } = ensureFleetCollections(viewer, fleetPointCollectionRef, fleetBillboardCollectionRef, fleetPolylineCollectionRef, fleetLabelCollectionRef);
     const shouldRenderFleet = !selectedDrone || (freeMode && showAllAssets);
     if (!shouldRenderFleet) {
       pointCollection.removeAll();
-      fleetPointMapRef.current.clear();
+      billboardCollection.removeAll();
+      polylineCollection.removeAll();
+      labelCollection.removeAll();
+      fleetAssetMapRef.current.clear();
       viewer.scene.requestRender();
       return;
     }
@@ -233,16 +252,19 @@ export default function MapComponent({
       if (!telemetryPoint) {
         continue;
       }
-      upsertFleetPoint(pointCollection, fleetPointMapRef, droneId, telemetryPoint);
+      upsertFleetAsset(pointCollection, billboardCollection, polylineCollection, labelCollection, fleetAssetMapRef, droneId, telemetryPoint);
       visibleIds.add(droneId);
     }
 
-    for (const [droneId, primitive] of fleetPointMapRef.current.entries()) {
+    for (const [droneId, primitives] of fleetAssetMapRef.current.entries()) {
       if (visibleIds.has(droneId)) {
         continue;
       }
-      pointCollection.remove(primitive);
-      fleetPointMapRef.current.delete(droneId);
+      pointCollection.remove(primitives.point);
+      billboardCollection.remove(primitives.billboard);
+      polylineCollection.remove(primitives.polyline);
+      labelCollection.remove(primitives.label);
+      fleetAssetMapRef.current.delete(droneId);
     }
 
     viewer.scene.requestRender();
