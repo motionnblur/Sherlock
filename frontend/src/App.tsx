@@ -19,7 +19,7 @@ export default function App() {
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
 
   const handleToggleLiveVideo = useCallback(() => {
-    if (!selectedDrone) return;
+    if (!selectedDrone || freeMode) return;
 
     if (isLiveVideoOpen) {
       setIsLiveVideoOpen(false);
@@ -28,11 +28,23 @@ export default function App() {
       setIsLiveVideoOpen(true);
       fetchStreamUrl(selectedDrone);
     }
-  }, [isLiveVideoOpen, selectedDrone, fetchStreamUrl, clearStreamUrl]);
+  }, [isLiveVideoOpen, selectedDrone, freeMode, fetchStreamUrl, clearStreamUrl]);
 
   const handleCloseLiveVideo = useCallback(() => {
     setIsLiveVideoOpen(false);
     clearStreamUrl();
+  }, [clearStreamUrl]);
+
+  const handleToggleFreeMode = useCallback(() => {
+    // Close live video whenever Free Mode turns on — no HLS connection in the background.
+    setFreeMode((current) => {
+      const nextFreeMode = !current;
+      if (nextFreeMode) {
+        setIsLiveVideoOpen(false);
+        clearStreamUrl();
+      }
+      return nextFreeMode;
+    });
   }, [clearStreamUrl]);
 
   const handleDeselect = useCallback(() => {
@@ -49,7 +61,7 @@ export default function App() {
         selectedDrone={selectedDrone}
         freeMode={freeMode}
         isLiveVideoOpen={isLiveVideoOpen}
-        onToggleFreeMode={() => setFreeMode((value) => !value)}
+        onToggleFreeMode={handleToggleFreeMode}
         onDeselect={handleDeselect}
         onToggleLiveVideo={handleToggleLiveVideo}
       />
@@ -66,7 +78,7 @@ export default function App() {
             onSelectDrone={(id) => setSelectedDrone(id)}
           />
 
-          {selectedDrone && isLiveVideoOpen && (
+          {selectedDrone && !freeMode && isLiveVideoOpen && (
             <LiveVideoWindow
               streamUrl={streamUrl}
               isFetching={isFetching}
