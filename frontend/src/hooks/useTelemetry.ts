@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Client, type IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { TELEMETRY_HISTORY_LIMIT } from '../constants/telemetry';
+import { TELEMETRY_HISTORY_LIMIT, DRONE_IDS } from '../constants/telemetry';
 import type { UseTelemetryResult } from '../interfaces/hooks';
 import type { TelemetryPoint } from '../interfaces/telemetry';
 import { parseTelemetryMessage } from '../utils/telemetry';
@@ -14,7 +14,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || '/ws-skytrack';
  * Only connects when `enabled` is true — pass false to disconnect and suppress all data.
  * JWT is injected into the STOMP CONNECT headers for server-side validation.
  */
-export function useTelemetry(droneId: string | null, freeMode = false): UseTelemetryResult {
+export function useTelemetry(droneId: string | null, freeMode = false, showAllAssets = false): UseTelemetryResult {
   const { authToken, logout } = useAuth();
   const [telemetry, setTelemetry] = useState<TelemetryPoint | null>(null);
   const [connected, setConnected] = useState(false);
@@ -68,7 +68,12 @@ export function useTelemetry(droneId: string | null, freeMode = false): UseTelem
 
       onConnect: () => {
         setConnected(true);
-        if (droneId) {
+        if (showAllAssets) {
+          for (const id of DRONE_IDS) {
+            const topic = `/topic/telemetry/${id}/lite`;
+            client.subscribe(topic, handleTelemetryMessage);
+          }
+        } else if (droneId) {
           const topic = freeMode ? `/topic/telemetry/${droneId}/lite` : `/topic/telemetry/${droneId}`;
           client.subscribe(topic, handleTelemetryMessage);
         }
@@ -96,7 +101,7 @@ export function useTelemetry(droneId: string | null, freeMode = false): UseTelem
       client.deactivate();
       clientRef.current = null;
     };
-  }, [droneId, freeMode, authToken, logout]);
+  }, [droneId, freeMode, showAllAssets, authToken, logout]);
 
   return { telemetry, connected, history };
 }

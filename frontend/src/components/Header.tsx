@@ -26,9 +26,11 @@ export default function Header({
   selectedDrone,
   freeMode,
   isLiveVideoOpen,
+  showAllAssets,
   onToggleFreeMode,
   onDeselect,
   onToggleLiveVideo,
+  onToggleShowAllAssets,
   onLogout,
 }: HeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -157,6 +159,20 @@ export default function Header({
                         }`}
                       >
                         LIVE VIDEO: {isLiveVideoOpen ? 'ON' : 'OFF'}
+                      </button>
+                    )}
+                    {freeMode && (
+                      <button
+                        id="show-all-assets-btn"
+                        type="button"
+                        onClick={onToggleShowAllAssets}
+                        className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
+                          showAllAssets
+                            ? 'text-neon border-neon bg-elevated'
+                            : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
+                        }`}
+                      >
+                        SHOW ASSET: {showAllAssets ? 'ALL' : 'PARTICULAR'}
                       </button>
                     )}
                   </div>

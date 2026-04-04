@@ -150,6 +150,7 @@ export default function Drone({
   freeMode,
   lastKnown,
   onLastKnownChange,
+  showAllAssets,
 }: DroneProps) {
   const droneRef = useRef<Cesium.Entity | null>(null);
   const pathRef = useRef<Cesium.Entity | null>(null);
@@ -242,6 +243,8 @@ export default function Drone({
     }
   }, [viewer, selectedDrone, droneId]);
 
+  const isTracked = selectedDrone === droneId || (freeMode && showAllAssets);
+
   useEffect(() => {
     if (!viewer || viewer.isDestroyed() || (selectedDrone && selectedDrone !== droneId) || !lastKnown) {
       return;
@@ -249,23 +252,30 @@ export default function Drone({
 
     const position = toCartesian(lastKnown);
     
-    if (!selectedDrone) {
+    if (!isTracked) {
       // Unselected static display
+      pathRef.current = removeEntity(viewer, pathRef.current);
+      positionsRef.current = [];
       droneRef.current = removeEntity(viewer, droneRef.current);
       droneRef.current = createDroneEntity(viewer, droneId, position, 'static');
-    } else if (selectedDrone === droneId && positionsRef.current.length === 0) {
+    } else if (isTracked && positionsRef.current.length === 0) {
       // Initially selected display
       positionsRef.current.push(position);
       droneRef.current = ensureLiveDroneEntity(viewer, droneId, droneRef.current, position);
       pathRef.current = ensurePathEntity(viewer, droneId, pathRef.current, positionsRef);
-      centerOnPoint(viewer, lastKnown);
+      if (selectedDrone === droneId) {
+        centerOnPoint(viewer, lastKnown);
+      }
     }
     
     viewer.scene.requestRender();
-  }, [viewer, selectedDrone, droneId, lastKnown]);
+  }, [viewer, selectedDrone, droneId, lastKnown, isTracked]);
 
   useEffect(() => {
-    if (!viewer || viewer.isDestroyed() || !telemetry || selectedDrone !== droneId) {
+    if (!viewer || viewer.isDestroyed() || !telemetry) {
+      return;
+    }
+    if (!isTracked || telemetry.droneId !== droneId) {
       return;
     }
 
@@ -277,9 +287,11 @@ export default function Drone({
 
     droneRef.current = ensureLiveDroneEntity(viewer, droneId, droneRef.current, position);
     pathRef.current = ensurePathEntity(viewer, droneId, pathRef.current, positionsRef);
-    centerOnPoint(viewer, telemetry);
+    if (selectedDrone === droneId) {
+      centerOnPoint(viewer, telemetry);
+    }
     viewer.scene.requestRender();
-  }, [viewer, telemetry, selectedDrone, droneId]);
+  }, [viewer, telemetry, selectedDrone, droneId, isTracked]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed() || selectedDrone !== droneId || !droneRef.current) {

@@ -20,8 +20,9 @@ export default function App() {
   const [freeMode, setFreeMode] = useState(false);
   const [lowPerf, setLowPerf] = useState(false);
   const [isLiveVideoOpen, setIsLiveVideoOpen] = useState(false);
+  const [showAllAssets, setShowAllAssets] = useState(false);
 
-  const { telemetry, connected, history } = useTelemetry(selectedDrone, freeMode);
+  const { telemetry, connected, history } = useTelemetry(selectedDrone, freeMode, showAllAssets);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
 
   const handleToggleLiveVideo = useCallback(() => {
@@ -48,10 +49,16 @@ export default function App() {
       if (nextFreeMode) {
         setIsLiveVideoOpen(false);
         clearStreamUrl();
+      } else {
+        setShowAllAssets(false);
       }
       return nextFreeMode;
     });
   }, [clearStreamUrl]);
+
+  const handleToggleShowAllAssets = useCallback(() => {
+    setShowAllAssets((current) => !current);
+  }, []);
 
   const handleActivateDrone = useCallback((id: DroneId) => {
     setSelectedDrone(id);
@@ -87,9 +94,11 @@ export default function App() {
         selectedDrone={selectedDrone}
         freeMode={freeMode}
         isLiveVideoOpen={isLiveVideoOpen}
+        showAllAssets={showAllAssets}
         onToggleFreeMode={handleToggleFreeMode}
         onDeselect={handleDeselect}
         onToggleLiveVideo={handleToggleLiveVideo}
+        onToggleShowAllAssets={handleToggleShowAllAssets}
         onLogout={handleLogout}
       />
 
@@ -102,6 +111,7 @@ export default function App() {
             lowPerf={lowPerf}
             selectedDrone={selectedDrone}
             freeMode={freeMode}
+            showAllAssets={showAllAssets}
             onSelectDrone={handleActivateDrone}
           />
 

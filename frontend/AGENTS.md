@@ -136,13 +136,14 @@ Pattern for a section header inside a panel:
 `src/hooks/useTelemetry.ts` — the single source of truth for live data.
 
 ```ts
-const { telemetry, connected, history } = useTelemetry(enabled, freeMode);
+const { telemetry, connected, history } = useTelemetry(selectedDrone, freeMode, showAllAssets);
 ```
 
 | Parameter    | Type      | Description                                               |
 |--------------|-----------|-----------------------------------------------------------|
 | `enabled`    | `boolean` | When `false`, STOMP client is deactivated and state is cleared. Defaults to `true`. |
-| `freeMode`   | `boolean` | When `true`, dynamically subscribes to `/topic/telemetry/lite` bypassing heavy fields. |
+| `freeMode`   | `boolean` | When `true`, dynamically subscribes to `/topic/telemetry/{droneId}/lite` bypassing heavy fields. |
+| `showAllAssets` | `boolean` | When `true` (and `freeMode` is true), actively subscribes to all available drones' lite topics. |
 
 | Return value | Type              | Description                              |
 |--------------|-------------------|------------------------------------------|
@@ -204,7 +205,7 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 `src/components/MapComponent.tsx` owns the Cesium `Viewer` instance and map UI overlays.  
 `src/components/Drone.tsx` owns drone entity/path lifecycle, last-known history fetch, and viewer tracking handoff.
 
-**Props:** `{ telemetry, lowPerf, selectedDrone, freeMode, onSelectDrone }`
+**Props:** `{ telemetry, lowPerf, selectedDrone, freeMode, showAllAssets, onSelectDrone }`
 
 **Imagery:** `UrlTemplateImageryProvider` (OpenStreetMap) is used by default — no Cesium Ion token required. If `VITE_CESIUM_TOKEN` is set in `.env`, Ion features (World Terrain, premium imagery) unlock automatically.
 
@@ -218,7 +219,7 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 
 **Static vs live drone entity:** there are two display modes:
 - **Unselected** — a dimmed/muted drone icon is placed at the last known position (REST fetch). No flight path. Label uses `text-muted` color.
-- **Selected** — full-brightness live icon + glowing flight path polyline updated each telemetry tick.
+- **Selected** — full-brightness live icon + glowing flight path polyline updated each telemetry tick. (Note: in Free mode with `showAllAssets=true`, all drones render in this "Selected" state visually but map-centering is disabled).
 
 Whenever `selectedDrone` changes (select or deselect), `Drone.tsx` removes all drone entities (`droneRef`, `pathRef`) and resets `positionsRef` / `initialFlown` before the new mode sets up its own entities.
 

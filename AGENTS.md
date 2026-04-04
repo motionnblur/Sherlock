@@ -211,8 +211,14 @@ These rules apply to every line of code written or modified in this project.
 - React components: prefer under 100 lines of JSX. Extract sub-components aggressively.
 - Java methods: prefer under 20 lines. Hard limit 40 lines — extract private helpers.
 
-### UPDATING AGENTS.md files and docs/index.html — Mandatory
-- For every major change made to the project, reflect the changes to related AGENTS.md files and update index.html only if needed.
+### UPDATING AGENTS.md files and docs/index.html — MANDATORY FINAL STEP
+The primary failure mode of AI assistants on this project is forgetting to synchronize the documentation with their code changes. To strictly guarantee compliance, YOU MUST adhere to this workflow:
+1. **Never conclude a task** without verifying if your architectural, interface, file layout, or logic changes require updates to `AGENTS.md`, `backend/AGENTS.md`, `frontend/AGENTS.md`, or `docs/index.html`.
+2. **If you update systems described in the AGENTS files**, you MUST edit the relevant `AGENTS.md` files using your file editing tools BEFORE telling the user you are finished.
+3. **MANDATORY TEXT CHECK:** The final sentence of your message upon completing a user's task MUST BE exactly one of the following:
+   - *"Documentation Check: I have updated [File Name] to reflect these changes."*
+   - *"Documentation Check: No structural changes were made; AGENTS.md remains accurate."*
+If you skip this step, you have failed the task natively.
 ---
 
 ## Running Locally

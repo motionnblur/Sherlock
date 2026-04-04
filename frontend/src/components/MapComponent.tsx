@@ -254,6 +254,7 @@ export default function MapComponent({
   lowPerf,
   selectedDrone,
   freeMode,
+  showAllAssets,
   onSelectDrone,
 }: MapComponentProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -350,16 +351,17 @@ export default function MapComponent({
           key={id}
           viewer={viewer}
           droneId={id}
-          telemetry={selectedDrone === id ? telemetry : null}
+          telemetry={(selectedDrone === id || (freeMode && showAllAssets && telemetry?.droneId === id)) ? telemetry : null}
           selectedDrone={selectedDrone}
           freeMode={freeMode}
           lastKnown={lastKnownMap[id] ?? null}
           onLastKnownChange={handleLastKnownChange}
+          showAllAssets={showAllAssets}
         />
       ))}
 
       <MapFrameOverlay isMapDimmed={isMapDimmed} />
-      {freeMode && (
+      {freeMode && !showAllAssets && (
         <FreeModeAssetWindow
           selectedDrone={selectedDrone}
           onActivateDrone={onSelectDrone}

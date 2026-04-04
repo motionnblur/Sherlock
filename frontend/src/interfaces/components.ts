@@ -7,9 +7,11 @@ export interface HeaderProps {
   selectedDrone: DroneId | null;
   freeMode: boolean;
   isLiveVideoOpen: boolean;
+  showAllAssets: boolean;
   onToggleFreeMode: () => void;
   onDeselect: () => void;
   onToggleLiveVideo: () => void;
+  onToggleShowAllAssets: () => void;
   onLogout: () => void;
 }
 
@@ -29,6 +31,7 @@ export interface MapComponentProps {
   lowPerf: boolean;
   selectedDrone: DroneId | null;
   freeMode: boolean;
+  showAllAssets: boolean;
   onSelectDrone: (id: DroneId) => void;
 }
 
@@ -45,6 +48,7 @@ export interface DroneProps {
   freeMode: boolean;
   lastKnown: TelemetryPoint | null;
   onLastKnownChange: (droneId: DroneId, point: TelemetryPoint | null) => void;
+  showAllAssets: boolean;
 }
 
 export interface StatusBarProps {
