@@ -13,8 +13,9 @@ export const MAP_DARKEN_PERCENT = Number.isFinite(typedMapSettings.darkenPercent
 export const MAP_BRIGHTNESS = 1 - MAP_DARKEN_PERCENT / 100;
 
 const CAMERA_FLY_ALTITUDE = 8000;
-const FLEET_POINT_SIZE = 3;
+const FLEET_POINT_SIZE = 1;
 const NEON = Cesium.Color.fromCssColorString('#00FF41');
+const NEON_LIGHT = Cesium.Color.fromCssColorString('#66FF99');
 const MUTED = Cesium.Color.fromCssColorString('#3d4f63');
 const DANGER = Cesium.Color.fromCssColorString('#FF3B30');
 
@@ -345,9 +346,9 @@ export function upsertFleetAsset(
 
   const point = pointCollection.add({
     position,
-    pixelSize: FLEET_POINT_SIZE,
-    color: MUTED.withAlpha(0.65),
-    outlineColor: NEON.withAlpha(0.25),
+    pixelSize: FLEET_POINT_SIZE + 1.5,
+    color: DANGER.withAlpha(0.9),
+    outlineColor: DANGER,
     outlineWidth: 1,
     distanceDisplayCondition: new Cesium.DistanceDisplayCondition(8000, Number.POSITIVE_INFINITY),
     disableDepthTestDistance: Number.POSITIVE_INFINITY,
