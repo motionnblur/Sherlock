@@ -22,19 +22,24 @@
 
 ```
 src/
-├── App.tsx                      # Root layout shell, drone selection state, passes telemetry down
-├── main.tsx                     # ReactDOM.createRoot entry point
+├── App.tsx                      # Root layout shell; auth gate (renders LoginPage when unauthenticated)
+├── main.tsx                     # ReactDOM.createRoot entry point; wraps tree in <AuthProvider>
 ├── index.css                    # Tailwind directives + Cesium widget overrides
 ├── constants/
 │   └── telemetry.ts             # Shared frontend domain constants (asset id, history/path limits)
+├── contexts/
+│   └── AuthContext.tsx          # AuthProvider: JWT state in sessionStorage, login(), logout()
 ├── interfaces/
+│   ├── auth.ts                  # LoginCredentials, AuthToken interfaces
 │   ├── telemetry.ts             # Shared domain models (TelemetryPoint, DroneId)
 │   ├── components.ts            # Component prop interfaces and map settings interface
 │   ├── hooks.ts                 # Hook return interfaces
 │   └── index.ts                 # Barrel exports
 ├── hooks/
-│   ├── useTelemetry.ts          # STOMP client, auto-reconnect, validated message parsing, history state; gated by `enabled`
-│   └── useStreamUrl.ts          # Fetches HLS stream URL from GET /api/drones/{droneId}/stream; exposes isFetching + fetchError
+│   ├── useAuth.ts               # Consumes AuthContext; throws if used outside <AuthProvider>
+│   ├── useLogin.ts              # Login form submission logic; calls POST /api/auth/login
+│   ├── useTelemetry.ts          # STOMP client; JWT in connectHeaders; auto-logout on auth error
+│   └── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
 ├── utils/
 │   ├── formatters.ts            # Shared UI formatting helpers for coordinates, UTC time, cardinal heading
 │   └── telemetry.ts             # Runtime parsing/validation helpers for external telemetry payloads
@@ -42,8 +47,9 @@ src/
 │   └── map-settings.json        # Map-only dimming config for Cesium imagery
 └── components/
     ├── Drone.tsx                # Drone entity/path lifecycle, last-known REST fetch, camera tracking handoff
-    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, settings dropdown (FREE MODE + LIVE VIDEO)
+    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings
     ├── LiveVideoWindow.tsx      # Floating 240×240 HLS video window; uses hls.js; mounted inside <main> over the map
+    ├── LoginPage.tsx            # Full-screen operator authentication form (shown when unauthenticated)
     ├── MapComponent.tsx         # CesiumJS viewer shell, performance profile, overlays, passes viewer to <Drone />
     ├── SectionHeader.tsx        # Shared panel section divider/header component
     ├── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
@@ -149,6 +155,47 @@ Pass `enabled={selectedDrone !== null}` from `App.tsx` — this is the gate that
 Incoming STOMP payloads are parsed through `src/utils/telemetry.ts`. Malformed payloads are ignored rather than pushed directly into React state.
 
 **Do not create a second STOMP client.** If a new component needs telemetry data, pass `telemetry` / `history` as props from `App.tsx`, or use React Context if the prop chain becomes deep.
+
+---
+
+## Authentication
+
+The app gate is in `App.tsx`:
+```tsx
+const { authToken, logout } = useAuth();
+if (!authToken) return <LoginPage />;
+```
+All hooks are still instantiated when `LoginPage` is shown, but `useTelemetry` is gated by `enabled={selectedDrone !== null}` so no backend connections are made.
+
+### Auth context
+`AuthContext.tsx` stores the JWT in `sessionStorage` (key: `skytrack_auth`). The token is validated on load — expired tokens are evicted immediately. The session clears when the tab or browser closes.
+
+```tsx
+const { authToken, login, logout } = useAuth();
+// authToken: { token, username, expiresAt } | null
+```
+
+Do not import `AuthContext` directly. Always go through `useAuth()`.
+
+### Attaching the token to requests
+Every HTTP call must include the JWT header:
+```ts
+headers: { Authorization: `Bearer ${authToken.token}` }
+```
+STOMP connections pass it in `connectHeaders`:
+```ts
+connectHeaders: { Authorization: `Bearer ${authToken.token}` }
+```
+Both `useTelemetry` and `useStreamUrl` already do this. Any new hook or service that calls the backend must follow the same pattern.
+
+### Handling 401 responses
+A 401 from any endpoint means the token has expired or been revoked. Always respond by calling `logout()` — do not show a retry loop. The user will be returned to `LoginPage` automatically.
+
+### Logout
+`App.tsx` fires a best-effort `POST /api/auth/logout` to blacklist the token server-side, then calls `logout()` from `useAuth()`. The LOG OUT button is rendered in `Header` via the `onLogout` prop.
+
+### Adding a new component that needs auth data
+Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that the component consumes. Do not access `sessionStorage` directly in components.
 
 ---
 

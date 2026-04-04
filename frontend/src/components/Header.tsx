@@ -29,6 +29,7 @@ export default function Header({
   onToggleFreeMode,
   onDeselect,
   onToggleLiveVideo,
+  onLogout,
 }: HeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
@@ -77,6 +78,17 @@ export default function Header({
             <UtcClock />
           </span>
         </div>
+
+        <div className="w-px h-5 bg-line" />
+
+        <button
+          type="button"
+          onClick={onLogout}
+          className="text-[9px] text-muted tracking-widest border border-line px-1.5 py-0.5 hover:text-danger hover:border-danger transition-colors"
+          title="Log out"
+        >
+          LOG OUT
+        </button>
 
         <div className="w-px h-5 bg-line" />
 

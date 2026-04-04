@@ -393,6 +393,7 @@
   <ul class="nav-links">
     <li><a href="#what-is-it">Overview</a></li>
     <li><a href="#running">Running</a></li>
+    <li><a href="#authentication">Auth</a></li>
     <li><a href="#how-data-flows">Data Flow</a></li>
     <li><a href="#live-video">Live Video</a></li>
     <li><a href="#simulate">Simulating</a></li>
@@ -418,6 +419,7 @@
     <span class="chip green">MediaMTX</span>
     <span class="chip yellow">STOMP / WebSocket</span>
     <span class="chip yellow">HLS Video</span>
+    <span class="chip yellow">JWT Auth</span>
     <span class="chip">Docker</span>
   </div>
 </div>
@@ -529,9 +531,17 @@
       <pre><code><span class="cmd">cp</span> .env.example .env</code></pre>
     </div>
     <p>
-      The defaults work out of the box. You only need to edit
-      <span class="inline-code">.env</span> if you want to supply a
-      Cesium Ion token (for premium 3D terrain) or change database credentials.
+      The defaults work for local development. You <strong>must</strong> set
+      <span class="inline-code">JWT_SECRET</span> to a random 512-bit key in
+      any non-development deployment. Generate one with:
+    </p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="cmd">openssl rand -base64 64</span></code></pre>
+    </div>
+    <p>
+      You only need to edit <span class="inline-code">.env</span> further if you
+      want to supply a Cesium Ion token (for premium 3D terrain) or change database credentials.
     </p>
 
     <h3>Step 2 — Start everything</h3>
@@ -562,6 +572,12 @@
       <strong>Dev profile:</strong> <a href="http://localhost:5173" target="_blank">http://localhost:5173</a><br/>
       <strong>Prod profile:</strong> <a href="http://localhost" target="_blank">http://localhost</a>
     </p>
+    <p>
+      You will see the <strong>Operator Authentication</strong> login screen first.
+      Enter the credentials for an account that has been added to the
+      <span class="inline-code">operators</span> database table.
+      See <a href="#authentication">Section 03 — Authentication</a> for how to create accounts.
+    </p>
 
     <div class="callout">
       <div class="callout-title">Tip — Running services outside Docker</div>
@@ -590,9 +606,107 @@
 
   <hr />
 
+  <!-- ═══════════════════════════════ AUTHENTICATION ══════════════════════════ -->
+  <section id="authentication">
+    <div class="section-label">Section 03</div>
+    <h2>Authentication</h2>
+    <p>
+      Every part of Sherlock GCS — the REST API, the WebSocket, and the React UI — is
+      gated behind a JWT login. There is <strong>no sign-up screen</strong>. Operator
+      accounts are created exclusively by inserting a row directly into the database.
+    </p>
+
+    <h3>Logging in</h3>
+    <p>
+      On first load the app shows a full-screen <strong>Operator Authentication</strong>
+      form. Enter a valid Operator ID and Access Code. A successful login returns a JWT
+      that is stored in <span class="inline-code">sessionStorage</span> and automatically
+      attached to every subsequent API call and WebSocket connection.
+      The token expires after <strong>8 hours</strong> (one operator shift) — the operator
+      must log in again after that. Closing the browser tab also clears the session.
+    </p>
+
+    <h3>Creating operator accounts</h3>
+    <p>
+      Connect to the database and insert a row into the
+      <span class="inline-code">operators</span> table.
+      The password must be hashed with <strong>BCrypt cost factor 12</strong> before
+      inserting — plain text passwords are never stored.
+    </p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="comment">-- Insert an operator (run in psql or DBeaver against the sherlock DB)</span>
+<span class="kw">INSERT INTO</span> operators (id, username, password_hash, is_enabled, failed_attempts, created_at)
+<span class="kw">VALUES</span> (
+  gen_random_uuid(),
+  <span class="str">'operator1'</span>,
+  <span class="str">'$2a$12$&lt;bcrypt-hash-of-the-password&gt;'</span>,
+  <span class="kw">true</span>,
+  0,
+  now()
+);</code></pre>
+    </div>
+    <p>
+      To generate the BCrypt hash, use any cost-12 BCrypt tool, or add a temporary
+      <span class="inline-code">main()</span> method in the backend that calls
+      <span class="inline-code">new BCryptPasswordEncoder(12).encode("yourpassword")</span>
+      and prints the result.
+    </p>
+
+    <h3>Account lockout</h3>
+    <p>
+      After <strong>5 consecutive failed login attempts</strong> an account is automatically
+      locked for <strong>30 minutes</strong>. The operator will see
+      <em>"Account temporarily locked — contact your system administrator"</em>.
+      To unlock early, set <span class="inline-code">failed_attempts = 0</span> and
+      <span class="inline-code">locked_until = NULL</span> directly in the database.
+    </p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="kw">UPDATE</span> operators
+<span class="kw">SET</span> failed_attempts = 0, locked_until = <span class="kw">NULL</span>
+<span class="kw">WHERE</span> username = <span class="str">'operator1'</span>;</code></pre>
+    </div>
+
+    <h3>Audit log</h3>
+    <p>
+      Every login attempt — success or failure — is written to the
+      <span class="inline-code">auth_audit_log</span> table with a timestamp,
+      IP address, and failure reason. This table is append-only and never modified.
+    </p>
+
+    <h3>Defence controls summary</h3>
+    <table>
+      <thead><tr><th>Control</th><th>Details</th></tr></thead>
+      <tbody>
+        <tr><td>Password hashing</td><td>BCrypt, cost factor 12</td></tr>
+        <tr><td>Token algorithm</td><td>HMAC-SHA512 (HS512)</td></tr>
+        <tr><td>Token lifetime</td><td>8 hours (configurable via <span class="inline-code">JWT_EXPIRATION_HOURS</span>)</td></tr>
+        <tr><td>Account lockout</td><td>5 failures → locked 30 min</td></tr>
+        <tr><td>Logout</td><td>Token JTI blacklisted server-side; can't be reused after logout</td></tr>
+        <tr><td>Error messages</td><td>Always generic — wrong username and wrong password return identical responses</td></tr>
+        <tr><td>Audit trail</td><td>All attempts logged to <span class="inline-code">auth_audit_log</span></td></tr>
+        <tr><td>WebSocket</td><td>JWT validated on every STOMP CONNECT frame</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <div class="callout-title">Production requirement</div>
+      <p>
+        The default <span class="inline-code">JWT_SECRET</span> in
+        <span class="inline-code">.env.example</span> is a development placeholder.
+        <strong>It must be replaced</strong> with a unique random key in any environment
+        that handles real mission data. Generate one with
+        <span class="inline-code">openssl rand -base64 64</span>.
+      </p>
+    </div>
+  </section>
+
+  <hr />
+
   <!-- ═══════════════════════════════ DATA FLOW ═══════════════════════════════ -->
   <section id="how-data-flows">
-    <div class="section-label">Section 03</div>
+    <div class="section-label">Section 04</div>
     <h2>How Telemetry Data Flows</h2>
     <p>
       Every 500 ms the backend's <strong>TelemetrySimulator</strong> fires.
@@ -638,9 +752,11 @@
         <div class="step-body">
           <div class="step-title">Frontend receives via STOMP client</div>
           <p class="step-desc">
-            The <span class="inline-code">useTelemetry</span> hook in React subscribes
-            to the WebSocket. Each message is validated then stored in React state.
-            Components re-render: the globe moves, panels update.
+            The <span class="inline-code">useTelemetry</span> hook in React connects
+            to the WebSocket with a JWT in the STOMP CONNECT headers.
+            The server validates the token before the subscription is granted.
+            Each message is then validated and stored in React state —
+            the globe moves, panels update.
           </p>
         </div>
       </div>
@@ -673,10 +789,12 @@
 
     <h3>REST endpoints</h3>
     <table>
-      <thead><tr><th>Endpoint</th><th>What it returns</th></tr></thead>
+      <thead><tr><th>Endpoint</th><th>Auth required</th><th>What it returns</th></tr></thead>
       <tbody>
-        <tr><td>GET /api/telemetry/history</td><td>Last 150 telemetry points from the database</td></tr>
-        <tr><td>GET /api/drones/{droneId}/stream</td><td>JSON with <span class="inline-code">{ "streamUrl": "http://…/index.m3u8" }</span> — the HLS URL for the live camera</td></tr>
+        <tr><td>POST /api/auth/login</td><td>No</td><td>JWT token + username + expiry on valid credentials</td></tr>
+        <tr><td>POST /api/auth/logout</td><td>Bearer token</td><td>204 No Content; blacklists the token server-side</td></tr>
+        <tr><td>GET /api/telemetry/history</td><td>Bearer token</td><td>Last 150 telemetry points from the database</td></tr>
+        <tr><td>GET /api/drones/{droneId}/stream</td><td>Bearer token</td><td>JSON with <span class="inline-code">{ "streamUrl": "http://…/index.m3u8" }</span> — the HLS URL for the live camera</td></tr>
       </tbody>
     </table>
   </section>
@@ -685,7 +803,7 @@
 
   <!-- ═══════════════════════════════ LIVE VIDEO ═══════════════════════════════ -->
   <section id="live-video">
-    <div class="section-label">Section 04</div>
+    <div class="section-label">Section 05</div>
     <h2>Live Video — How It Works</h2>
     <p>
       The live video pipeline is deliberately separated from telemetry.
@@ -770,7 +888,7 @@
 
   <!-- ═══════════════════════════════ SIMULATE ═══════════════════════════════ -->
   <section id="simulate">
-    <div class="section-label">Section 05</div>
+    <div class="section-label">Section 06</div>
     <h2>Simulating the Drone Camera (Development)</h2>
     <p>
       Since you don't have a physical drone, FFmpeg acts as the camera.
@@ -853,11 +971,12 @@
       <div class="flow-step">
         <div class="step-num">3</div>
         <div class="step-body">
-          <div class="step-title">Browser — open the dashboard</div>
+          <div class="step-title">Browser — log in and open the dashboard</div>
           <p class="step-desc">
             Go to <a href="http://localhost:5173">http://localhost:5173</a> (dev profile)
             or <a href="http://localhost">http://localhost</a> (prod profile).
-            Click <strong>SHERLOCK-01</strong> on the globe overlay to select the drone.
+            Enter your operator credentials on the login screen, then click
+            <strong>SHERLOCK-01</strong> on the globe overlay to select the drone.
           </p>
         </div>
       </div>
@@ -891,14 +1010,23 @@
 
   <!-- ═══════════════════════════════ UI TOUR ═══════════════════════════════ -->
   <section id="ui-tour">
-    <div class="section-label">Section 06</div>
+    <div class="section-label">Section 07</div>
     <h2>UI Tour</h2>
+
+    <h3>Login screen</h3>
+    <p>
+      Shown on first load (and after logout or session expiry). Enter your
+      <strong>Operator ID</strong> and <strong>Access Code</strong> then click
+      <strong>AUTHENTICATE</strong>. After 5 wrong attempts your account is locked
+      for 30 minutes.
+    </p>
 
     <h3>Header (top bar)</h3>
     <table>
       <thead><tr><th>Element</th><th>What it does</th></tr></thead>
       <tbody>
         <tr><td>UTC clock</td><td>Live UTC time, updated every second</td></tr>
+        <tr><td>LOG OUT button</td><td>Blacklists the current token server-side and returns to the login screen</td></tr>
         <tr><td>LINK ACTIVE / CONNECTING…</td><td>Green = WebSocket connected; yellow blinking = reconnecting</td></tr>
         <tr><td>SHERLOCK-01</td><td>Selected drone name</td></tr>
         <tr><td>SETTINGS button</td><td>Opens dropdown with FREE MODE and LIVE VIDEO toggles</td></tr>
@@ -976,8 +1104,44 @@
 
   <!-- ═══════════════════════════════ TROUBLESHOOTING ═══════════════════════════════ -->
   <section id="troubleshooting">
-    <div class="section-label">Section 07</div>
+    <div class="section-label">Section 08</div>
     <h2>Common Problems</h2>
+
+    <h3>Login button stays disabled / nothing happens</h3>
+    <p>
+      The Operator ID or Access Code field is empty — the button is disabled until
+      both fields have content. If you click AUTHENTICATE and get
+      <em>"Authentication failed"</em>, the credentials are wrong. Double-check the
+      username and that the password was hashed with BCrypt cost 12 when the account was created.
+    </p>
+
+    <h3>Account locked — can't log in</h3>
+    <p>
+      Five consecutive wrong passwords trigger a 30-minute lockout. Wait it out, or
+      unlock early by running this against the database:
+    </p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="kw">UPDATE</span> operators
+<span class="kw">SET</span> failed_attempts = 0, locked_until = <span class="kw">NULL</span>
+<span class="kw">WHERE</span> username = <span class="str">'operator1'</span>;</code></pre>
+    </div>
+
+    <h3>Logged out immediately after logging in</h3>
+    <p>
+      The token expired before it was used — this can happen if the system clock on
+      the server differs significantly from the browser clock. It can also happen if
+      you copied an old token from session storage. Log in fresh; the new token will
+      have a valid 8-hour window from the current server time.
+    </p>
+
+    <h3>CONNECTING… after login never turns to LINK ACTIVE</h3>
+    <p>
+      The WebSocket connected but the STOMP handshake failed. This usually means the
+      JWT was rejected by the server's channel interceptor — either it expired or the
+      <span class="inline-code">JWT_SECRET</span> in the backend doesn't match the one
+      used to sign the token. Restart the backend after setting the correct secret.
+    </p>
 
     <h3>Dashboard is blank / no globe</h3>
     <p>

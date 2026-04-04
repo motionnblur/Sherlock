@@ -10,6 +10,7 @@ export interface HeaderProps {
   onToggleFreeMode: () => void;
   onDeselect: () => void;
   onToggleLiveVideo: () => void;
+  onLogout: () => void;
 }
 
 export interface LiveVideoWindowProps {

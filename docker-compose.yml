@@ -36,6 +36,10 @@ services:
       DB_NAME:               ${DB_NAME:-sherlock}
       DB_USER:               ${DB_USER:-sherlock}
       DB_PASSWORD:           ${DB_PASSWORD:-sherlock}
+      # IMPORTANT: Set JWT_SECRET to a base64-encoded 512-bit random key in production.
+      # Generate: openssl rand -base64 64
+      JWT_SECRET:            ${JWT_SECRET:-}
+      JWT_EXPIRATION_HOURS:  ${JWT_EXPIRATION_HOURS:-8}
       # /hls is proxied by nginx to mediamtx:8888 inside Docker — browser-reachable
       MEDIAMTX_HLS_BASE_URL: /hls
     ports:

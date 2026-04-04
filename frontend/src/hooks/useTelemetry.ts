@@ -5,14 +5,17 @@ import { TELEMETRY_HISTORY_LIMIT } from '../constants/telemetry';
 import type { UseTelemetryResult } from '../interfaces/hooks';
 import type { TelemetryPoint } from '../interfaces/telemetry';
 import { parseTelemetryMessage } from '../utils/telemetry';
+import { useAuth } from './useAuth';
 
 const WS_URL = import.meta.env.VITE_WS_URL || '/ws-skytrack';
 
 /**
  * Manages the STOMP/SockJS WebSocket connection and exposes live telemetry state.
  * Only connects when `enabled` is true — pass false to disconnect and suppress all data.
+ * JWT is injected into the STOMP CONNECT headers for server-side validation.
  */
 export function useTelemetry(enabled = true, freeMode = false): UseTelemetryResult {
+  const { authToken, logout } = useAuth();
   const [telemetry, setTelemetry] = useState<TelemetryPoint | null>(null);
   const [connected, setConnected] = useState(false);
   const [history, setHistory] = useState<TelemetryPoint[]>([]);
@@ -45,7 +48,7 @@ export function useTelemetry(enabled = true, freeMode = false): UseTelemetryResu
       appendHistory(nextTelemetry);
     };
 
-    if (!enabled) {
+    if (!enabled || !authToken) {
       if (clientRef.current) {
         clientRef.current.deactivate();
         clientRef.current = null;
@@ -59,6 +62,9 @@ export function useTelemetry(enabled = true, freeMode = false): UseTelemetryResu
       reconnectDelay: 3000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
+      connectHeaders: {
+        Authorization: `Bearer ${authToken.token}`,
+      },
 
       onConnect: () => {
         setConnected(true);
@@ -69,7 +75,14 @@ export function useTelemetry(enabled = true, freeMode = false): UseTelemetryResu
       onDisconnect: () => setConnected(false),
 
       onStompError: (frame) => {
-        console.error('[STOMP] Error:', frame.headers?.message);
+        const errorMessage = frame.headers?.message ?? '';
+        console.error('[STOMP] Error:', errorMessage);
+
+        // Token rejected by server — force logout rather than looping reconnect attempts.
+        if (errorMessage.includes('Invalid') || errorMessage.includes('revoked') || errorMessage.includes('Authorization')) {
+          logout();
+        }
+
         setConnected(false);
       },
     });
@@ -81,7 +94,7 @@ export function useTelemetry(enabled = true, freeMode = false): UseTelemetryResu
       client.deactivate();
       clientRef.current = null;
     };
-  }, [enabled, freeMode]);
+  }, [enabled, freeMode, authToken, logout]);
 
   return { telemetry, connected, history };
 }

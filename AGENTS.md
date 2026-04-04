@@ -84,6 +84,8 @@ The full telemetry stream shares the same field set recursively down the stack. 
 
 | Purpose                  | Value                                          |
 |--------------------------|------------------------------------------------|
+| Login                    | `POST /api/auth/login`                         |
+| Logout                   | `POST /api/auth/logout`                        |
 | WS connect               | `/ws-skytrack` (SockJS)                        |
 | STOMP subscribe          | `/topic/telemetry`                             |
 | STOMP lite stream        | `/topic/telemetry/lite`                        |
@@ -91,6 +93,34 @@ The full telemetry stream shares the same field set recursively down the stack. 
 | REST stream URL          | `GET /api/drones/{droneId}/stream`             |
 | RTSP ingest (MediaMTX)   | `rtsp://localhost:8554/{droneId}` (push)       |
 | HLS output (MediaMTX)    | `http://localhost:8888/{droneId}/index.m3u8`   |
+
+---
+
+## Authentication
+
+All endpoints except `POST /api/auth/login` require a JWT in the `Authorization: Bearer <token>` header. The WebSocket endpoint (`/ws-skytrack/**`) is HTTP-permit but requires the JWT in the STOMP `CONNECT` frame header instead (browsers cannot set headers on WebSocket upgrades).
+
+**No sign-up.** Users are added exclusively via direct database insertion:
+```sql
+INSERT INTO operators (id, username, password_hash, is_enabled, failed_attempts, created_at)
+VALUES (gen_random_uuid(), 'operator1', '$2a$12$<bcrypt-hash>', true, 0, now());
+```
+Generate a BCrypt cost-12 hash with `new BCryptPasswordEncoder(12).encode("password")`.
+
+**Defense controls in place:**
+- BCrypt cost factor 12
+- Account lockout: 5 consecutive failures → 30-minute lock
+- Timing-attack resistance: dummy hash check for unknown usernames
+- Every attempt (success and failure) persisted to `auth_audit_log`
+- Logout blacklists the JWT ID in `token_blacklist`; blacklist is purged nightly at 03:00
+- Generic error messages: "Authentication failed" — no username enumeration
+
+**JWT configuration** (environment variables):
+
+| Variable               | Default | Notes                                              |
+|------------------------|---------|----------------------------------------------------|
+| `JWT_SECRET`           | dev key | **Must be overridden in production.** `openssl rand -base64 64` |
+| `JWT_EXPIRATION_HOURS` | `8`     | One operator shift                                 |
 
 ---
 

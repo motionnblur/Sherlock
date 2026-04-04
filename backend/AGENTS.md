@@ -24,23 +24,45 @@
 com.sherlock.groundcontrol
 ├── SherlockApplication.java        # @SpringBootApplication + @EnableScheduling
 ├── config/
-│   ├── WebSocketConfig.java        # STOMP broker, /ws-skytrack endpoint
-│   └── CorsConfig.java             # Global CORS filter bean
+│   ├── PasswordEncoderConfig.java  # BCryptPasswordEncoder(12) bean — isolated to avoid circular dep
+│   ├── SecurityConfig.java         # Spring Security filter chain, CORS, JWT gate
+│   └── WebSocketConfig.java        # STOMP broker, /ws-skytrack endpoint, channel interceptor
 ├── controller/
+│   ├── AuthController.java         # POST /api/auth/login, POST /api/auth/logout
+│   ├── GlobalExceptionHandler.java # @RestControllerAdvice — auth + generic errors
 │   ├── TelemetryController.java    # REST: GET /api/telemetry/history
 │   └── DroneStreamController.java  # REST: GET /api/drones/{droneId}/stream
 ├── dto/
+│   ├── LoginRequestDTO.java        # Wire: { username, password }
+│   ├── LoginResponseDTO.java       # Wire: { token, username, expiresAt }
 │   ├── TelemetryDTO.java           # Wire object (no JPA annotations)
 │   ├── TelemetryLiteDTO.java       # Minimal wire object for Free Mode
 │   └── StreamUrlDTO.java           # Wire object: { streamUrl } for live video
 ├── entity/
-│   └── TelemetryEntity.java        # @Entity mapped to `telemetry` table
+│   ├── AuthAuditLogEntity.java     # @Entity — append-only auth attempt log
+│   ├── OperatorEntity.java         # @Entity — operator accounts (no sign-up; DB-managed)
+│   ├── TelemetryEntity.java        # @Entity mapped to `telemetry` table
+│   └── TokenBlacklistEntity.java   # @Entity — revoked JWT IDs (JTI)
+├── exception/
+│   ├── AccountLockedException.java
+│   └── AuthenticationFailedException.java
 ├── repository/
-│   └── TelemetryRepository.java    # JpaRepository, custom finder
+│   ├── AuthAuditLogRepository.java
+│   ├── OperatorRepository.java
+│   ├── TelemetryRepository.java    # JpaRepository, custom finder
+│   └── TokenBlacklistRepository.java
+├── security/
+│   ├── JwtAuthenticationFilter.java        # OncePerRequestFilter — validates Bearer token
+│   ├── JwtTokenProvider.java               # Token generation/validation (HS512)
+│   ├── OperatorUserDetails.java            # UserDetails adapter for OperatorEntity
+│   ├── OperatorUserDetailsService.java     # UserDetailsService implementation
+│   └── WebSocketAuthChannelInterceptor.java # Validates JWT on STOMP CONNECT frame
 └── service/
+    ├── AuthAuditService.java        # Persists every login attempt to auth_audit_log
+    ├── AuthService.java             # authenticate(), logout(), lockout, blacklist purge
+    ├── DroneStreamService.java      # Resolves HLS stream URL from MEDIAMTX_HLS_BASE_URL
     ├── TelemetryService.java        # persist() + getRecentHistory()
-    ├── TelemetrySimulator.java      # @Scheduled 500ms broadcast + persist
-    └── DroneStreamService.java      # Resolves HLS stream URL from MEDIAMTX_HLS_BASE_URL
+    └── TelemetrySimulator.java      # @Scheduled 500ms broadcast + persist
 ```
 
 **Rule:** never let a layer reach past its neighbour.  
@@ -57,10 +79,15 @@ spring.datasource.url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${
 spring.datasource.username: ${DB_USER:sherlock}
 spring.datasource.password: ${DB_PASSWORD:sherlock}
 spring.jpa.hibernate.ddl-auto: update   # schema auto-managed in dev
+
+app.jwt.secret: ${JWT_SECRET:<dev-default>}   # MUST be overridden in production
+app.jwt.expiration-hours: ${JWT_EXPIRATION_HOURS:8}
 ```
 
 | Environment Variable       | Default                    | Purpose                                       |
 |----------------------------|----------------------------|-----------------------------------------------|
+| `JWT_SECRET`               | dev fallback               | Base64-encoded 512-bit HMAC key. **Override in production:** `openssl rand -base64 64` |
+| `JWT_EXPIRATION_HOURS`     | `8`                        | Token lifetime in hours (one operator shift)  |
 | `MEDIAMTX_HLS_BASE_URL`    | `http://localhost:8888`    | Base URL of MediaMTX HLS output as seen by the **browser**. In Docker use `/hls` (nginx proxies it). In local dev the default hits MediaMTX directly. |
 
 For Docker, these are injected by `docker-compose.yml`. For local dev, the defaults work against a local PostgreSQL instance with user/db `sherlock`.
@@ -150,6 +177,40 @@ ffmpeg -re -f lavfi \
 ```
 
 MediaMTX auto-creates the path on first push. No configuration file changes are needed for basic use.
+
+---
+
+## Authentication System
+
+Spring Security secures all endpoints with stateless JWT (HS512). There is no sign-up flow — operators are added via direct DB insert only.
+
+### Endpoint access rules
+
+| Path                      | Access             |
+|---------------------------|--------------------|
+| `POST /api/auth/login`    | Public             |
+| `OPTIONS /**`             | Public (CORS)      |
+| `/ws-skytrack/**`         | Public HTTP (see below) |
+| Everything else           | Requires `Authorization: Bearer <token>` |
+
+### WebSocket authentication
+The HTTP upgrade to `/ws-skytrack` is permitted without a token because browsers cannot set custom headers on WebSocket connections. Security is enforced at the STOMP level: `WebSocketAuthChannelInterceptor` validates the JWT sent in the `Authorization` header of the STOMP `CONNECT` frame. No token → connection rejected.
+
+### Adding an operator (only way to create accounts)
+```sql
+INSERT INTO operators (id, username, password_hash, is_enabled, failed_attempts, created_at)
+VALUES (gen_random_uuid(), 'operator1', '$2a$12$<bcrypt-hash>', true, 0, now());
+```
+Generate the hash via `new BCryptPasswordEncoder(12).encode("password")` in a scratch main, or any BCrypt cost-12 tool.
+
+### Lockout and audit
+- `AuthService` locks an account for 30 minutes after 5 consecutive failures.
+- Every attempt is written to `auth_audit_log` (never deleted, append-only).
+- Logged-out tokens are blacklisted in `token_blacklist` by JTI; a `@Scheduled` job purges expired entries at 03:00 daily.
+- Error messages are always generic — the caller cannot distinguish unknown user from wrong password.
+
+### Adding a new protected endpoint
+No extra steps — Spring Security's `anyRequest().authenticated()` rule covers all new mappings automatically. Do not add `.permitAll()` without a documented reason.
 
 ---
 

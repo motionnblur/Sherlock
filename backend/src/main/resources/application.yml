@@ -1,3 +1,10 @@
+app:
+  jwt:
+    # IMPORTANT: Override JWT_SECRET in production with a base64-encoded 512-bit random key.
+    # Generate: openssl rand -base64 64
+    secret: ${JWT_SECRET:U2hlcmxvY2tHQ1MtZGVmYXVsdC1kZXYta2V5LW11c3QtYmUtY2hhbmdlZC1pbi1wcm9kdWN0aW9uLVNIQS01MTItbWluaW11bQ==}
+    expiration-hours: ${JWT_EXPIRATION_HOURS:8}
+
 spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:sherlock}

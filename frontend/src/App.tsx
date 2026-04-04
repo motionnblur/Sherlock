@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useAuth } from './hooks/useAuth';
 import { useTelemetry } from './hooks/useTelemetry';
 import { useStreamUrl } from './hooks/useStreamUrl';
 import Header from './components/Header';
@@ -7,9 +8,14 @@ import MapComponent from './components/MapComponent';
 import SystemPanel from './components/SystemPanel';
 import StatusBar from './components/StatusBar';
 import LiveVideoWindow from './components/LiveVideoWindow';
+import LoginPage from './components/LoginPage';
 import type { DroneId } from './interfaces/telemetry';
 
+const AUTH_LOGOUT_PATH = '/api/auth/logout';
+
 export default function App() {
+  const { authToken, logout } = useAuth();
+
   const [selectedDrone, setSelectedDrone] = useState<DroneId | null>(null);
   const [freeMode, setFreeMode] = useState(false);
   const [lowPerf, setLowPerf] = useState(false);
@@ -54,6 +60,21 @@ export default function App() {
     clearStreamUrl();
   }, [clearStreamUrl]);
 
+  const handleLogout = useCallback(async () => {
+    if (authToken) {
+      // Best-effort server-side token revocation — do not block UI on failure.
+      fetch(AUTH_LOGOUT_PATH, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authToken.token}` },
+      }).catch(() => {});
+    }
+    logout();
+  }, [authToken, logout]);
+
+  if (!authToken) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="h-screen flex flex-col bg-surface font-mono text-neon overflow-hidden select-none">
       <Header
@@ -64,6 +85,7 @@ export default function App() {
         onToggleFreeMode={handleToggleFreeMode}
         onDeselect={handleDeselect}
         onToggleLiveVideo={handleToggleLiveVideo}
+        onLogout={handleLogout}
       />
 
       <div className="flex flex-1 min-h-0 border-t border-line">
