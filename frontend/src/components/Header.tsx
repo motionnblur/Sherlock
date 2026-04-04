@@ -133,18 +133,20 @@ export default function Header({
                     >
                       FREE MODE: {freeMode ? 'ON' : 'OFF'}
                     </button>
-                    <button
-                      id="live-video-toggle-btn"
-                      type="button"
-                      onClick={onToggleLiveVideo}
-                      className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
-                        isLiveVideoOpen
-                          ? 'text-neon border-neon bg-elevated'
-                          : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
-                      }`}
-                    >
-                      LIVE VIDEO: {isLiveVideoOpen ? 'ON' : 'OFF'}
-                    </button>
+                    {!freeMode && (
+                      <button
+                        id="live-video-toggle-btn"
+                        type="button"
+                        onClick={onToggleLiveVideo}
+                        className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
+                          isLiveVideoOpen
+                            ? 'text-neon border-neon bg-elevated'
+                            : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
+                        }`}
+                      >
+                        LIVE VIDEO: {isLiveVideoOpen ? 'ON' : 'OFF'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
