@@ -6,6 +6,7 @@ import { PRIMARY_DRONE_ID } from '../constants/telemetry';
 import type { MapComponentProps, MapSettingsConfig } from '../interfaces/components';
 import type { TelemetryPoint } from '../interfaces/telemetry';
 import { formatCoordinatePair, formatFixed } from '../utils/formatters';
+import FreeModeAssetWindow from './FreeModeAssetWindow';
 import Drone from './Drone';
 
 const ION_TOKEN = import.meta.env.VITE_CESIUM_TOKEN;
@@ -344,9 +345,17 @@ export default function MapComponent({
       />
 
       <MapFrameOverlay isMapDimmed={isMapDimmed} />
+      {freeMode && (
+        <FreeModeAssetWindow
+          selectedDrone={selectedDrone}
+          onSelectDrone={onSelectDrone}
+        />
+      )}
 
       {telemetry && selectedDrone && !freeMode && <SelectedTelemetryBanner telemetry={telemetry} />}
-      {!selectedDrone && <AssetSelectionOverlay lastKnown={lastKnown} onSelectDrone={onSelectDrone} />}
+      {!selectedDrone && !freeMode && (
+        <AssetSelectionOverlay lastKnown={lastKnown} onSelectDrone={onSelectDrone} />
+      )}
     </div>
   );
 }

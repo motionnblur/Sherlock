@@ -32,6 +32,11 @@ export interface MapComponentProps {
   onSelectDrone: (id: DroneId) => void;
 }
 
+export interface AssetWindowProps {
+  selectedDrone: DroneId | null;
+  onSelectDrone: (id: DroneId) => void;
+}
+
 export interface DroneProps {
   viewer: Cesium.Viewer | null;
   telemetry: TelemetryPoint | null;
