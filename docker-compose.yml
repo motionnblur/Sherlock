@@ -46,18 +46,42 @@ services:
     networks:
       - sherlock-net
 
-  # ── React Frontend (nginx) ───────────────────────────────────────────────────
+  # ── React Frontend — Production (nginx, static build) ────────────────────────
   frontend:
+    profiles: [prod]
     build:
       context:    ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_WS_URL:      ""          # empty → nginx proxies /ws-skytrack to backend
+        VITE_WS_URL:       ""         # empty → nginx proxies /ws-skytrack to backend
         VITE_CESIUM_TOKEN: ${VITE_CESIUM_TOKEN:-}
     container_name: sherlock-frontend
     restart: unless-stopped
     ports:
       - "80:80"
+    depends_on:
+      - backend
+      - mediamtx
+    networks:
+      - sherlock-net
+
+  # ── React Frontend — Development (Vite dev server, HMR enabled) ──────────────
+  frontend-dev:
+    profiles: [dev]
+    build:
+      context:    ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: sherlock-frontend-dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      BACKEND_URL:         http://backend:8080
+      MEDIAMTX_URL:        http://mediamtx:8888
+      CHOKIDAR_USEPOLLING: "true"
+      VITE_CESIUM_TOKEN:   ${VITE_CESIUM_TOKEN:-}
     depends_on:
       - backend
       - mediamtx
