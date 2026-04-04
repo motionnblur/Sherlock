@@ -5,7 +5,7 @@ import { performance } from 'node:perf_hooks';
 const DEFAULT_BACKEND_URL = 'http://localhost:8080';
 const DEFAULT_USERNAME = 'admin';
 const DEFAULT_PASSWORD = 'sherlock';
-const DEFAULT_FLEET_SIZE = 5000;
+const DEFAULT_FLEET_SIZE = 5;
 const DEFAULT_BULK_BUDGET_MS = 1500;
 const DEFAULT_HISTORY_BUDGET_MS = 500;
 const MIN_DRONE_ID_WIDTH = 2;

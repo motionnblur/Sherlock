@@ -1,6 +1,6 @@
 import type { DroneId } from '../interfaces/telemetry';
 
-const DEFAULT_FLEET_SIZE = 5000;
+const DEFAULT_FLEET_SIZE = 5;
 const MIN_DRONE_ID_WIDTH = 2;
 
 export const TOTAL_DRONE_COUNT = DEFAULT_FLEET_SIZE;

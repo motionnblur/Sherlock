@@ -5,7 +5,7 @@ app:
     secret: ${JWT_SECRET:U2hlcmxvY2tHQ1MtZGVmYXVsdC1kZXYta2V5LW11c3QtYmUtY2hhbmdlZC1pbi1wcm9kdWN0aW9uLVNIQS01MTItbWluaW11bQ==}
     expiration-hours: ${JWT_EXPIRATION_HOURS:8}
   simulator:
-    fleet-size: ${SIMULATOR_FLEET_SIZE:5000}
+    fleet-size: ${SIMULATOR_FLEET_SIZE:5}
   telemetry:
     last-known-cache-size: ${TELEMETRY_LAST_KNOWN_CACHE_SIZE:10000}
 
