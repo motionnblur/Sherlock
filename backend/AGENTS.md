@@ -29,7 +29,8 @@ com.sherlock.groundcontrol
 ├── controller/
 │   └── TelemetryController.java    # REST: GET /api/telemetry/history
 ├── dto/
-│   └── TelemetryDTO.java           # Wire object (no JPA annotations)
+│   ├── TelemetryDTO.java           # Wire object (no JPA annotations)
+│   └── TelemetryLiteDTO.java       # Minimal wire object for Free Mode
 ├── entity/
 │   └── TelemetryEntity.java        # @Entity mapped to `telemetry` table
 ├── repository/
@@ -69,6 +70,9 @@ For Docker, these are injected by `docker-compose.yml`. For local dev, the defau
 To broadcast from any Spring bean:
 ```java
 messagingTemplate.convertAndSend("/topic/telemetry", payloadObject);
+
+// For Free Mode, we also broadcast a minimal payload:
+messagingTemplate.convertAndSend("/topic/telemetry/lite", litePayloadObject);
 ```
 Spring serialises the object to JSON automatically via Jackson.
 

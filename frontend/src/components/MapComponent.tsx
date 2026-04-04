@@ -345,7 +345,7 @@ export default function MapComponent({
 
       <MapFrameOverlay isMapDimmed={isMapDimmed} />
 
-      {telemetry && selectedDrone && <SelectedTelemetryBanner telemetry={telemetry} />}
+      {telemetry && selectedDrone && !freeMode && <SelectedTelemetryBanner telemetry={telemetry} />}
       {!selectedDrone && <AssetSelectionOverlay lastKnown={lastKnown} onSelectDrone={onSelectDrone} />}
     </div>
   );

@@ -12,7 +12,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || '/ws-skytrack';
  * Manages the STOMP/SockJS WebSocket connection and exposes live telemetry state.
  * Only connects when `enabled` is true — pass false to disconnect and suppress all data.
  */
-export function useTelemetry(enabled = true): UseTelemetryResult {
+export function useTelemetry(enabled = true, freeMode = false): UseTelemetryResult {
   const [telemetry, setTelemetry] = useState<TelemetryPoint | null>(null);
   const [connected, setConnected] = useState(false);
   const [history, setHistory] = useState<TelemetryPoint[]>([]);
@@ -62,7 +62,8 @@ export function useTelemetry(enabled = true): UseTelemetryResult {
 
       onConnect: () => {
         setConnected(true);
-        client.subscribe('/topic/telemetry', handleTelemetryMessage);
+        const topic = freeMode ? '/topic/telemetry/lite' : '/topic/telemetry';
+        client.subscribe(topic, handleTelemetryMessage);
       },
 
       onDisconnect: () => setConnected(false),
@@ -80,7 +81,7 @@ export function useTelemetry(enabled = true): UseTelemetryResult {
       client.deactivate();
       clientRef.current = null;
     };
-  }, [enabled]);
+  }, [enabled, freeMode]);
 
   return { telemetry, connected, history };
 }

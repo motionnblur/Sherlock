@@ -1,6 +1,7 @@
 package com.sherlock.groundcontrol.service;
 
 import com.sherlock.groundcontrol.dto.TelemetryDTO;
+import com.sherlock.groundcontrol.dto.TelemetryLiteDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -49,6 +50,16 @@ public class TelemetrySimulator {
                 .build();
 
         messagingTemplate.convertAndSend(TELEMETRY_TOPIC, dto);
+
+        TelemetryLiteDTO liteDto = TelemetryLiteDTO.builder()
+                .latitude(dto.getLatitude())
+                .longitude(dto.getLongitude())
+                .altitude(dto.getAltitude())
+                .heading(dto.getHeading())
+                .timestamp(dto.getTimestamp())
+                .build();
+        messagingTemplate.convertAndSend(TELEMETRY_TOPIC + "/lite", liteDto);
+
         telemetryService.persist(dto);
 
         log.debug("TX [SHERLOCK-01] lat={} lon={} alt={}m spd={}km/h bat={}% hdg={}°",

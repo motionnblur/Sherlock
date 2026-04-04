@@ -59,7 +59,7 @@ Sherlock/
 
 ## Telemetry Data Model
 
-All layers share the same field set:
+The full telemetry stream shares the same field set recursively down the stack. The "lite" stream (used during Free Mode) omits `speed` and `battery`.
 
 | Field       | Type      | Notes                         |
 |-------------|-----------|-------------------------------|
@@ -75,11 +75,12 @@ All layers share the same field set:
 
 ## Key Interfaces
 
-| Purpose         | Value                       |
-|-----------------|-----------------------------|
-| WS connect      | `/ws-skytrack` (SockJS)     |
-| STOMP subscribe | `/topic/telemetry`          |
-| REST history    | `GET /api/telemetry/history` |
+| Purpose             | Value                           |
+|---------------------|---------------------------------|
+| WS connect          | `/ws-skytrack` (SockJS)         |
+| STOMP subscribe     | `/topic/telemetry`              |
+| STOMP lite stream   | `/topic/telemetry/lite`         |
+| REST history        | `GET /api/telemetry/history`    |
 
 ---
 

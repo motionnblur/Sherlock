@@ -35,6 +35,7 @@ export interface StatusBarProps {
   telemetry: TelemetryPoint | null;
   connected: boolean;
   selectedDrone: DroneId | null;
+  freeMode: boolean;
   lowPerf: boolean;
   onToggleLowPerf: () => void;
 }

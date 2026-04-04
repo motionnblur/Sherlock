@@ -65,7 +65,7 @@ src/
 
 **Do not change this structural layout** unless asked. Widths (`w-64`, `w-52`) are intentional for data density.
 
-`TelemetryPanel` and `SystemPanel` are conditionally mounted — they only appear when `selectedDrone` is non-null. Do not render them unconditionally.
+`TelemetryPanel` and `SystemPanel` are conditionally mounted — they only appear when `selectedDrone` is non-null and `freeMode` is OFF. Do not render them unconditionally. Additionally, when `freeMode` is ON, coordinate displays from `StatusBar` and `MapComponent` overlays are suppressed.
 
 ---
 
@@ -127,12 +127,13 @@ Pattern for a section header inside a panel:
 `src/hooks/useTelemetry.ts` — the single source of truth for live data.
 
 ```ts
-const { telemetry, connected, history } = useTelemetry(enabled);
+const { telemetry, connected, history } = useTelemetry(enabled, freeMode);
 ```
 
 | Parameter    | Type      | Description                                               |
 |--------------|-----------|-----------------------------------------------------------|
 | `enabled`    | `boolean` | When `false`, STOMP client is deactivated and state is cleared. Defaults to `true`. |
+| `freeMode`   | `boolean` | When `true`, dynamically subscribes to `/topic/telemetry/lite` bypassing heavy fields. |
 
 | Return value | Type              | Description                              |
 |--------------|-------------------|------------------------------------------|

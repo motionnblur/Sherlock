@@ -15,8 +15,8 @@ export function isTelemetryPoint(value: unknown): value is TelemetryPoint {
     isFiniteNumber(candidate.latitude)
     && isFiniteNumber(candidate.longitude)
     && isFiniteNumber(candidate.altitude)
-    && isFiniteNumber(candidate.speed)
-    && isFiniteNumber(candidate.battery)
+    && (candidate.speed === undefined || isFiniteNumber(candidate.speed))
+    && (candidate.battery === undefined || isFiniteNumber(candidate.battery))
     && isFiniteNumber(candidate.heading)
     && typeof candidate.timestamp === 'string'
   );

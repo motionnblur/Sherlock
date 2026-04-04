@@ -9,9 +9,9 @@ import type { DroneId } from './interfaces/telemetry';
 
 export default function App() {
   const [selectedDrone, setSelectedDrone] = useState<DroneId | null>(null);
-  const { telemetry, connected, history } = useTelemetry(selectedDrone !== null);
-  const [lowPerf, setLowPerf] = useState(false);
   const [freeMode, setFreeMode] = useState(false);
+  const { telemetry, connected, history } = useTelemetry(selectedDrone !== null, freeMode);
+  const [lowPerf, setLowPerf] = useState(false);
 
   return (
     <div className="h-screen flex flex-col bg-surface font-mono text-neon overflow-hidden select-none">
@@ -27,7 +27,7 @@ export default function App() {
       />
 
       <div className="flex flex-1 min-h-0 border-t border-line">
-        {selectedDrone && <TelemetryPanel telemetry={telemetry} />}
+        {selectedDrone && !freeMode && <TelemetryPanel telemetry={telemetry} />}
 
         <main className="flex-1 relative min-w-0">
           <MapComponent
@@ -39,13 +39,14 @@ export default function App() {
           />
         </main>
 
-        {selectedDrone && <SystemPanel telemetry={telemetry} history={history} connected={connected} />}
+        {selectedDrone && !freeMode && <SystemPanel telemetry={telemetry} history={history} connected={connected} />}
       </div>
 
       <StatusBar
         telemetry={telemetry}
         connected={connected}
         selectedDrone={selectedDrone}
+        freeMode={freeMode}
         lowPerf={lowPerf}
         onToggleLowPerf={() => setLowPerf((value) => !value)}
       />

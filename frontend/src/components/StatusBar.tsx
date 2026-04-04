@@ -6,6 +6,7 @@ export default function StatusBar({
   telemetry: t,
   connected,
   selectedDrone,
+  freeMode,
   lowPerf,
   onToggleLowPerf,
 }: StatusBarProps) {
@@ -32,7 +33,7 @@ export default function StatusBar({
           </span>
         </div>
 
-        {connected && t && (
+        {connected && t && !freeMode && (
           <>
             <span className="text-line">|</span>
             <div className="flex items-center gap-1.5">
