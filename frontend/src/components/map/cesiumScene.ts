@@ -10,13 +10,11 @@ const typedMapSettings = mapSettings as MapSettingsConfig;
 export const MAP_DARKEN_PERCENT = Number.isFinite(typedMapSettings.darkenPercent)
   ? Math.max(0, Math.min(100, typedMapSettings.darkenPercent ?? 50))
   : 50;
-export const MAP_BRIGHTNESS = 1 - MAP_DARKEN_PERCENT / 100;
+export const MAP_BRIGHTNESS = 1 - MAP_DARKEN_PERCENT / 88;
 
 const CAMERA_FLY_ALTITUDE = 8000;
 const FLEET_POINT_SIZE = 1;
 const NEON = Cesium.Color.fromCssColorString('#00FF41');
-const NEON_LIGHT = Cesium.Color.fromCssColorString('#66FF99');
-const MUTED = Cesium.Color.fromCssColorString('#3d4f63');
 const DANGER = Cesium.Color.fromCssColorString('#FF3B30');
 
 const DRONE_ICON = (() => {
