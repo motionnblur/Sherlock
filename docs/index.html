@@ -468,11 +468,12 @@
       <div class="flow-step">
         <div class="step-num">3</div>
         <div class="step-body">
-          <div class="step-title">Frontend (React / nginx) — the dashboard</div>
+          <div class="step-title">Frontend (React) — the dashboard</div>
           <p class="step-desc">
-            A React app served by nginx. Subscribes to the backend's WebSocket,
-            renders the drone on a CesiumJS 3D globe, and shows a military
-            C2-style telemetry panel. In Docker it also proxies API and video traffic.
+            A React app that subscribes to the backend's WebSocket, renders the
+            drone on a CesiumJS 3D globe, and shows a military C2-style telemetry
+            panel. Two Docker modes: <strong>prod</strong> serves a static build via
+            nginx on :80; <strong>dev</strong> runs the Vite dev server with HMR on :5173.
           </p>
         </div>
       </div>
@@ -534,10 +535,20 @@
     </p>
 
     <h3>Step 2 — Start everything</h3>
+    <p>
+      The stack uses Docker Compose profiles to select the frontend mode.
+      Pick one depending on what you need:
+    </p>
     <div class="code-block">
       <button class="copy-btn" onclick="copyCode(this)">copy</button>
-      <pre><code><span class="cmd">docker compose up --build</span>    <span class="comment"># first run builds images; ~2 min</span>
-<span class="cmd">docker compose up</span>             <span class="comment"># subsequent runs; ~20 sec</span></code></pre>
+      <pre><code><span class="comment"># Development — Vite dev server with HMR on :5173 (edit files, browser updates instantly)</span>
+<span class="cmd">docker compose --profile dev up --build</span>
+
+<span class="comment"># Production — nginx static build on :80</span>
+<span class="cmd">docker compose --profile prod up --build</span>
+
+<span class="comment"># Subsequent runs (no rebuild needed unless code changed)</span>
+<span class="cmd">docker compose --profile dev up</span></code></pre>
     </div>
     <p>
       Wait until you see the Spring Boot banner and
@@ -547,14 +558,15 @@
 
     <h3>Step 3 — Open the dashboard</h3>
     <p>
-      Navigate to <a href="http://localhost" target="_blank">http://localhost</a> in your browser.
-      You should see the mission control screen with the globe.
+      Navigate to the URL that matches your chosen profile:<br/>
+      <strong>Dev profile:</strong> <a href="http://localhost:5173" target="_blank">http://localhost:5173</a><br/>
+      <strong>Prod profile:</strong> <a href="http://localhost" target="_blank">http://localhost</a>
     </p>
 
     <div class="callout">
-      <div class="callout-title">Tip — Individual service dev (no Docker)</div>
+      <div class="callout-title">Tip — Running services outside Docker</div>
       <p>
-        You can also run each service directly for faster iteration:
+        You can also run each service directly without Docker for maximum iteration speed:
         <br/><br/>
         <strong>Backend:</strong> <span class="inline-code">cd backend && mvn spring-boot:run</span> (needs local Postgres)<br/>
         <strong>Frontend:</strong> <span class="inline-code">cd frontend && npm install && npm run dev</span> → opens at <span class="inline-code">http://localhost:5173</span>
@@ -565,7 +577,8 @@
     <table>
       <thead><tr><th>Port</th><th>Service</th><th>What it serves</th></tr></thead>
       <tbody>
-        <tr><td>:80</td><td>Frontend (nginx)</td><td>The dashboard — open this in your browser</td></tr>
+        <tr><td>:80</td><td>Frontend — prod profile (nginx)</td><td>The dashboard — static build, use with <span class="inline-code">--profile prod</span></td></tr>
+        <tr><td>:5173</td><td>Frontend — dev profile (Vite)</td><td>The dashboard with HMR, use with <span class="inline-code">--profile dev</span></td></tr>
         <tr><td>:8080</td><td>Backend (Spring Boot)</td><td>REST API + WebSocket endpoint</td></tr>
         <tr><td>:5432</td><td>PostgreSQL</td><td>Database (internal; exposed for tools like DBeaver)</td></tr>
         <tr><td>:8554</td><td>MediaMTX</td><td>RTSP ingest — FFmpeg pushes the camera feed here</td></tr>
@@ -820,9 +833,9 @@
         <div class="step-body">
           <div class="step-title">Terminal 1 — start the Docker stack</div>
           <div class="code-block" style="margin-top:.5rem">
-            <pre><code><span class="cmd">docker compose up --build</span></code></pre>
+            <pre><code><span class="cmd">docker compose --profile dev up --build</span></code></pre>
           </div>
-          <p class="step-desc">Wait for <span class="inline-code">Started SherlockApplication</span>.</p>
+          <p class="step-desc">Wait for <span class="inline-code">Started SherlockApplication</span>. Use <span class="inline-code">--profile prod</span> instead for the nginx build on :80.</p>
         </div>
       </div>
       <div class="flow-step">
@@ -842,7 +855,8 @@
         <div class="step-body">
           <div class="step-title">Browser — open the dashboard</div>
           <p class="step-desc">
-            Go to <a href="http://localhost">http://localhost</a>.
+            Go to <a href="http://localhost:5173">http://localhost:5173</a> (dev profile)
+            or <a href="http://localhost">http://localhost</a> (prod profile).
             Click <strong>SHERLOCK-01</strong> on the globe overlay to select the drone.
           </p>
         </div>
@@ -974,10 +988,11 @@
 
     <h3>CONNECTING… never turns to LINK ACTIVE</h3>
     <p>
-      The browser can't reach the WebSocket. Make sure you opened
-      <span class="inline-code">http://localhost</span> (port 80, nginx),
-      not <span class="inline-code">localhost:8080</span> directly.
-      The WebSocket is proxied through nginx.
+      The browser can't reach the WebSocket. Make sure the URL matches your profile:
+      <span class="inline-code">http://localhost:5173</span> (dev) or
+      <span class="inline-code">http://localhost</span> (prod).
+      Never open <span class="inline-code">localhost:8080</span> directly — the WebSocket
+      must go through the Vite or nginx proxy.
     </p>
 
     <h3>Live Video shows ⚠ FEED ERROR</h3>

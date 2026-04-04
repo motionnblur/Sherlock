@@ -182,9 +182,11 @@ These rules apply to every line of code written or modified in this project.
 ## Running Locally
 
 ```bash
-# Full stack via Docker
+# Full stack via Docker — pick a profile:
 cp .env.example .env
-docker compose up --build
+
+docker compose --profile dev up --build   # Vite dev server + HMR on :5173
+docker compose --profile prod up --build  # nginx static build on :80
 
 # Individual services — see sub-AGENTS.md files
 ```

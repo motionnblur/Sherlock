@@ -243,24 +243,45 @@ npm install
 npm run dev        # → http://localhost:5173
 ```
 
-The dev server proxies `/api` and `/ws-skytrack` to `http://localhost:8080` (see `vite.config.ts`). The backend must be running for the map to receive data.
+The dev server proxies `/api`, `/ws-skytrack`, and `/hls` according to `vite.config.ts`.
+Proxy targets are read from environment variables with localhost fallbacks:
+
+| Variable        | Default                  | Used by                  |
+|-----------------|--------------------------|--------------------------|
+| `BACKEND_URL`   | `http://localhost:8080`  | `/api`, `/ws-skytrack`   |
+| `MEDIAMTX_URL`  | `http://localhost:8888`  | `/hls`                   |
+
+The backend must be running for the map to receive data.
 
 ---
 
 ## Docker Build
 
-Multi-stage `Dockerfile`:
-1. **Stage `build`:** `node:20-alpine` — `npm install`, then `vite build`
-2. **Stage runtime:** `nginx:1.27-alpine` — serves `/dist`, proxies API and WS
+Two Dockerfiles, selected via Docker Compose profiles in `docker-compose.yml`:
 
-`ARG`/`ENV` blocks in the Dockerfile inject `VITE_*` build args passed from `docker-compose.yml`:
+### Production (`--profile prod`) — `Dockerfile`
+Multi-stage build:
+1. **Stage `build`:** `node:20-alpine` — `npm install`, then `vite build`
+2. **Stage runtime:** `nginx:1.27-alpine` — serves `/dist`, proxies API and WS on **:80**
+
+`ARG`/`ENV` blocks inject `VITE_*` build args from `docker-compose.yml`:
 ```yaml
 build:
   args:
     VITE_CESIUM_TOKEN: ${VITE_CESIUM_TOKEN:-}
 ```
-
 If you add a new `VITE_*` variable, add it as both an `ARG` and `ENV` line in the Dockerfile and a matching `build.args` entry in `docker-compose.yml`.
+
+### Development (`--profile dev`) — `Dockerfile.dev`
+Single-stage: `node:20-alpine` — installs dependencies, then runs `npm run dev`.
+The source tree is mounted as a volume at runtime — no rebuild needed for code changes.
+Proxy targets are injected via environment variables (`BACKEND_URL`, `MEDIAMTX_URL`).
+File watching uses polling (`CHOKIDAR_USEPOLLING=true`) for bind-mount compatibility.
+Serves on **:5173** with full HMR.
+
+```bash
+docker build -t sherlock-frontend-dev -f Dockerfile.dev ./frontend
+```
 
 ---
 
