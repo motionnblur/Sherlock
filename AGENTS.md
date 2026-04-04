@@ -211,8 +211,8 @@ These rules apply to every line of code written or modified in this project.
 - React components: prefer under 100 lines of JSX. Extract sub-components aggressively.
 - Java methods: prefer under 20 lines. Hard limit 40 lines — extract private helpers.
 
-### UPDATING README.md files and docs/index.html — Mandatory
-- For every major change made to the project, reflect the changes to related README.md files and update index.html only if needed.
+### UPDATING AGENTS.md files and docs/index.html — Mandatory
+- For every major change made to the project, reflect the changes to related AGENTS.md files and update index.html only if needed.
 ---
 
 ## Running Locally
