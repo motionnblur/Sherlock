@@ -34,7 +34,7 @@ export interface MapComponentProps {
 
 export interface AssetWindowProps {
   selectedDrone: DroneId | null;
-  onSelectDrone: (id: DroneId) => void;
+  onActivateDrone: (id: DroneId) => void;
 }
 
 export interface DroneProps {

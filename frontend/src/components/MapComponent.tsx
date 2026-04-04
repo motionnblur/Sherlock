@@ -348,7 +348,7 @@ export default function MapComponent({
       {freeMode && (
         <FreeModeAssetWindow
           selectedDrone={selectedDrone}
-          onSelectDrone={onSelectDrone}
+          onActivateDrone={onSelectDrone}
         />
       )}
 

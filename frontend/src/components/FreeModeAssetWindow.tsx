@@ -3,7 +3,7 @@ import type { AssetWindowProps } from '../interfaces/components';
 
 export default function FreeModeAssetWindow({
   selectedDrone,
-  onSelectDrone,
+  onActivateDrone,
 }: AssetWindowProps) {
   return (
     <div className="absolute top-4 left-4 z-20 w-60 h-[18rem] max-h-[calc(100%-2rem)] pointer-events-none">
@@ -32,7 +32,7 @@ export default function FreeModeAssetWindow({
               <button
                 key={asset.id}
                 type="button"
-                onClick={() => onSelectDrone(asset.id)}
+                onClick={() => onActivateDrone(asset.id)}
                 className={`w-full text-left px-3 py-2 border-b border-line last:border-b-0 transition-colors ${
                   isSelected ? 'bg-elevated' : 'hover:bg-elevated/70'
                 }`}
@@ -47,7 +47,7 @@ export default function FreeModeAssetWindow({
                 </div>
 
                 <div className="mt-1 flex items-center justify-between gap-3 text-[9px] tracking-widest uppercase text-muted">
-                  <span>{isSelected ? 'CURRENT TRACK' : 'CLICK TO ACTIVATE'}</span>
+                  <span>{isSelected ? 'RESUME TRACKING' : 'CLICK TO ACTIVATE'}</span>
                   <span className="text-line">▸</span>
                 </div>
               </button>

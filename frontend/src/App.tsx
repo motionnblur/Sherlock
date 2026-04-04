@@ -53,6 +53,11 @@ export default function App() {
     });
   }, [clearStreamUrl]);
 
+  const handleActivateDrone = useCallback((id: DroneId) => {
+    setSelectedDrone(id);
+    setFreeMode(false);
+  }, []);
+
   const handleDeselect = useCallback(() => {
     setSelectedDrone(null);
     setFreeMode(false);
@@ -97,7 +102,7 @@ export default function App() {
             lowPerf={lowPerf}
             selectedDrone={selectedDrone}
             freeMode={freeMode}
-            onSelectDrone={(id) => setSelectedDrone(id)}
+            onSelectDrone={handleActivateDrone}
           />
 
           {selectedDrone && !freeMode && isLiveVideoOpen && (
