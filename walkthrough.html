@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sherlock GCS — Walkthrough</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --neon:     #00FF41;
+      --caution:  #FFB400;
+      --danger:   #FF3B30;
+      --surface:  #050505;
+      --panel:    #0d1117;
+      --elevated: #161b22;
+      --line:     #1e2a3a;
+      --muted:    #3d4f63;
+      --muted-text: #8b9ab0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--surface);
+      color: #c9d1d9;
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    /* ── TOP NAV ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      height: 48px;
+    }
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--neon);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: .15em;
+    }
+    .nav-brand .bars { opacity: .7; }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--muted-text);
+      text-decoration: none;
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      transition: color .2s;
+    }
+    .nav-links a:hover { color: var(--neon); }
+    .badge {
+      background: var(--elevated);
+      border: 1px solid var(--line);
+      color: var(--caution);
+      font-size: 9px;
+      letter-spacing: .12em;
+      padding: 2px 7px;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      padding: 4rem 2rem 3rem;
+      text-align: center;
+    }
+    .hero-label {
+      font-size: 10px;
+      letter-spacing: .3em;
+      color: var(--muted-text);
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+    .hero h1 {
+      font-size: clamp(1.6rem, 4vw, 2.8rem);
+      font-weight: 700;
+      color: var(--neon);
+      letter-spacing: .08em;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+    }
+    .hero p {
+      max-width: 640px;
+      margin: 0 auto 2rem;
+      color: var(--muted-text);
+      font-size: 13px;
+    }
+    .hero-chips {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: .5rem;
+    }
+    .chip {
+      border: 1px solid var(--line);
+      background: var(--elevated);
+      color: var(--muted-text);
+      font-size: 10px;
+      letter-spacing: .1em;
+      padding: 3px 10px;
+      text-transform: uppercase;
+    }
+    .chip.green  { border-color: var(--neon);    color: var(--neon);    }
+    .chip.yellow { border-color: var(--caution); color: var(--caution); }
+
+    /* ── LAYOUT ── */
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2.5rem 2rem;
+    }
+
+    /* ── SECTIONS ── */
+    section { margin-bottom: 4rem; }
+
+    .section-label {
+      font-size: 9px;
+      letter-spacing: .35em;
+      text-transform: uppercase;
+      color: var(--muted-text);
+      border-left: 2px solid var(--neon);
+      padding-left: 10px;
+      margin-bottom: .75rem;
+    }
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #e6edf3;
+      margin-bottom: 1.25rem;
+      letter-spacing: .04em;
+    }
+    h3 {
+      font-size: .95rem;
+      font-weight: 600;
+      color: var(--neon);
+      letter-spacing: .06em;
+      margin: 1.75rem 0 .6rem;
+      text-transform: uppercase;
+    }
+    p { color: var(--muted-text); margin-bottom: .9rem; }
+    p strong { color: #c9d1d9; font-weight: 600; }
+    a { color: var(--neon); }
+
+    /* ── CALLOUTS ── */
+    .callout {
+      border-left: 3px solid var(--neon);
+      background: var(--elevated);
+      padding: 1rem 1.25rem;
+      margin: 1.25rem 0;
+      font-size: 13px;
+    }
+    .callout.warn  { border-color: var(--caution); }
+    .callout.danger { border-color: var(--danger); }
+    .callout-title {
+      font-size: 10px;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      margin-bottom: .4rem;
+    }
+    .callout.warn  .callout-title { color: var(--caution); }
+    .callout.danger .callout-title { color: var(--danger); }
+    .callout       .callout-title { color: var(--neon); }
+    .callout p { margin: 0; font-size: 13px; }
+
+    /* ── CODE BLOCKS ── */
+    pre {
+      background: var(--elevated);
+      border: 1px solid var(--line);
+      padding: 1.1rem 1.25rem;
+      overflow-x: auto;
+      font-size: 12.5px;
+      line-height: 1.6;
+      margin: 1rem 0;
+      position: relative;
+    }
+    code { font-family: 'JetBrains Mono', monospace; }
+    .inline-code {
+      background: var(--elevated);
+      border: 1px solid var(--line);
+      padding: 1px 6px;
+      font-size: 12px;
+      color: var(--neon);
+    }
+    .comment { color: var(--muted); }
+    .cmd     { color: var(--neon); }
+    .kw      { color: var(--caution); }
+    .str     { color: #79c0ff; }
+
+    /* ── COPY BUTTON ── */
+    .code-block { position: relative; }
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--muted-text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: .1em;
+      padding: 3px 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: color .2s, border-color .2s;
+    }
+    .copy-btn:hover { color: var(--neon); border-color: var(--neon); }
+    .copy-btn.copied { color: var(--neon); border-color: var(--neon); }
+
+    /* ── ARCH DIAGRAM ── */
+    .arch {
+      background: var(--elevated);
+      border: 1px solid var(--line);
+      padding: 1.5rem;
+      margin: 1.25rem 0;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      align-items: center;
+      gap: .75rem;
+      overflow-x: auto;
+    }
+    .box {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: .75rem 1rem;
+      text-align: center;
+    }
+    .box-label {
+      font-size: 9px;
+      letter-spacing: .2em;
+      color: var(--muted-text);
+      text-transform: uppercase;
+      margin-bottom: .25rem;
+    }
+    .box-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #e6edf3;
+    }
+    .box-port {
+      font-size: 10px;
+      color: var(--neon);
+      margin-top: .15rem;
+    }
+    .box.highlight { border-color: var(--neon); }
+    .arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+    .arrow-label {
+      font-size: 9px;
+      letter-spacing: .08em;
+      color: var(--muted-text);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .arrow-line {
+      width: 40px;
+      height: 1px;
+      background: var(--line);
+      position: relative;
+    }
+    .arrow-line::after {
+      content: '▶';
+      position: absolute;
+      right: -5px;
+      top: -6px;
+      font-size: 8px;
+      color: var(--muted-text);
+    }
+
+    /* ── FLOW STEPS ── */
+    .flow {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin: 1.25rem 0;
+    }
+    .flow-step {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      padding: .85rem 1rem;
+      background: var(--elevated);
+      border: 1px solid var(--line);
+      border-bottom: none;
+      transition: background .2s;
+    }
+    .flow-step:last-child { border-bottom: 1px solid var(--line); }
+    .flow-step:hover { background: #1c2535; }
+    .step-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--neon);
+      background: var(--panel);
+      border: 1px solid var(--neon);
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-body { flex: 1; }
+    .step-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #e6edf3;
+      margin-bottom: .2rem;
+      letter-spacing: .04em;
+    }
+    .step-desc { font-size: 12px; color: var(--muted-text); margin: 0; }
+
+    /* ── TABLE ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.25rem 0;
+      font-size: 12.5px;
+    }
+    th {
+      background: var(--elevated);
+      border: 1px solid var(--line);
+      padding: .5rem .75rem;
+      text-align: left;
+      font-size: 9px;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--muted-text);
+      font-weight: 400;
+    }
+    td {
+      border: 1px solid var(--line);
+      padding: .5rem .75rem;
+      color: var(--muted-text);
+      vertical-align: top;
+    }
+    td:first-child { color: var(--neon); font-weight: 600; }
+    tr:hover td { background: var(--elevated); }
+
+    /* ── DIVIDER ── */
+    hr {
+      border: none;
+      border-top: 1px solid var(--line);
+      margin: 3rem 0;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--elevated);
+      border-top: 1px solid var(--line);
+      text-align: center;
+      padding: 1.5rem;
+      font-size: 10px;
+      letter-spacing: .15em;
+      color: var(--muted-text);
+      text-transform: uppercase;
+    }
+    footer span { color: var(--neon); }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">
+    <span class="bars">▌▌▌</span> SHERLOCK GCS — WALKTHROUGH
+  </div>
+  <ul class="nav-links">
+    <li><a href="#what-is-it">Overview</a></li>
+    <li><a href="#running">Running</a></li>
+    <li><a href="#how-data-flows">Data Flow</a></li>
+    <li><a href="#live-video">Live Video</a></li>
+    <li><a href="#simulate">Simulating</a></li>
+    <li><a href="#ui-tour">UI Tour</a></li>
+    <li><span class="badge">◈ TRAINING MODE ◈</span></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-label">Internal Technical Reference</div>
+  <h1>SKYTRACK Ground Control Station</h1>
+  <p>
+    A real-time UAV ground control system. Live telemetry on a 3D globe,
+    live drone camera video, and a military C2 dashboard — all running
+    in Docker with a single command.
+  </p>
+  <div class="hero-chips">
+    <span class="chip green">Spring Boot 3.2</span>
+    <span class="chip green">React 18 + Vite</span>
+    <span class="chip green">CesiumJS</span>
+    <span class="chip green">PostgreSQL</span>
+    <span class="chip green">MediaMTX</span>
+    <span class="chip yellow">STOMP / WebSocket</span>
+    <span class="chip yellow">HLS Video</span>
+    <span class="chip">Docker</span>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- ═══════════════════════════════ WHAT IS IT ═══════════════════════════════ -->
+  <section id="what-is-it">
+    <div class="section-label">Section 01</div>
+    <h2>What is Sherlock GCS?</h2>
+    <p>
+      Sherlock GCS (<strong>Ground Control Station</strong>) is a defense-style
+      real-time dashboard for monitoring an Unmanned Aerial Vehicle (UAV / drone).
+      Think of it as a mission control screen: you see the drone moving on a live
+      3D globe, its altitude, speed, battery, heading, and optionally its live
+      camera feed — all updating twice per second.
+    </p>
+    <p>
+      There is no real drone. The backend <strong>simulates</strong> one in software,
+      broadcasting fake but realistic telemetry data. For the camera feed you use
+      <strong>FFmpeg</strong> to stream a video file (or a synthetic pattern) into
+      a media server called MediaMTX, which the frontend then plays back via HLS.
+    </p>
+
+    <h3>The five services</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">PostgreSQL — the database</div>
+          <p class="step-desc">
+            Stores every telemetry snapshot forever. Spring Boot writes to it;
+            the frontend reads the last 150 points to draw the flight path on startup.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Backend (Spring Boot) — the brain</div>
+          <p class="step-desc">
+            Simulates a drone at 2 Hz, pushes telemetry over WebSocket to all
+            connected browsers, and persists it to Postgres. Also exposes REST
+            endpoints for history and stream URL resolution.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Frontend (React / nginx) — the dashboard</div>
+          <p class="step-desc">
+            A React app served by nginx. Subscribes to the backend's WebSocket,
+            renders the drone on a CesiumJS 3D globe, and shows a military
+            C2-style telemetry panel. In Docker it also proxies API and video traffic.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">MediaMTX — the video server</div>
+          <p class="step-desc">
+            Accepts an RTSP video stream pushed by FFmpeg (your drone camera simulator)
+            and re-serves it as HLS. The frontend plays the HLS stream in the floating
+            Live Video window.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">FFmpeg — the drone camera sim</div>
+          <p class="step-desc">
+            Not a Docker service — you run it manually on your host once the stack
+            is up. It reads a video file (or generates a test pattern) and pushes
+            it as RTSP to MediaMTX. This simulates what a real drone camera would do.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr />
+
+  <!-- ═══════════════════════════════ RUNNING ═══════════════════════════════ -->
+  <section id="running">
+    <div class="section-label">Section 02</div>
+    <h2>Running the Stack</h2>
+
+    <h3>Prerequisites</h3>
+    <table>
+      <thead><tr><th>Tool</th><th>Why you need it</th></tr></thead>
+      <tbody>
+        <tr><td>Docker + Docker Compose</td><td>Runs all four services (Postgres, backend, frontend, MediaMTX)</td></tr>
+        <tr><td>FFmpeg</td><td>Simulates the drone camera feed (pushed into MediaMTX)</td></tr>
+        <tr><td>A browser</td><td>Opens the dashboard — any Chromium-based browser works best</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Step 1 — Copy the environment file</h3>
+    <p>
+      The repo ships with a <span class="inline-code">.env.example</span>.
+      Docker Compose reads from <span class="inline-code">.env</span>, so copy it first:
+    </p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="cmd">cp</span> .env.example .env</code></pre>
+    </div>
+    <p>
+      The defaults work out of the box. You only need to edit
+      <span class="inline-code">.env</span> if you want to supply a
+      Cesium Ion token (for premium 3D terrain) or change database credentials.
+    </p>
+
+    <h3>Step 2 — Start everything</h3>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="cmd">docker compose up --build</span>    <span class="comment"># first run builds images; ~2 min</span>
+<span class="cmd">docker compose up</span>             <span class="comment"># subsequent runs; ~20 sec</span></code></pre>
+    </div>
+    <p>
+      Wait until you see the Spring Boot banner and
+      <span class="inline-code">Started SherlockApplication</span> in the logs.
+      PostgreSQL must be healthy before the backend starts (Docker handles this automatically).
+    </p>
+
+    <h3>Step 3 — Open the dashboard</h3>
+    <p>
+      Navigate to <a href="http://localhost" target="_blank">http://localhost</a> in your browser.
+      You should see the mission control screen with the globe.
+    </p>
+
+    <div class="callout">
+      <div class="callout-title">Tip — Individual service dev (no Docker)</div>
+      <p>
+        You can also run each service directly for faster iteration:
+        <br/><br/>
+        <strong>Backend:</strong> <span class="inline-code">cd backend && mvn spring-boot:run</span> (needs local Postgres)<br/>
+        <strong>Frontend:</strong> <span class="inline-code">cd frontend && npm install && npm run dev</span> → opens at <span class="inline-code">http://localhost:5173</span>
+      </p>
+    </div>
+
+    <h3>Ports at a glance</h3>
+    <table>
+      <thead><tr><th>Port</th><th>Service</th><th>What it serves</th></tr></thead>
+      <tbody>
+        <tr><td>:80</td><td>Frontend (nginx)</td><td>The dashboard — open this in your browser</td></tr>
+        <tr><td>:8080</td><td>Backend (Spring Boot)</td><td>REST API + WebSocket endpoint</td></tr>
+        <tr><td>:5432</td><td>PostgreSQL</td><td>Database (internal; exposed for tools like DBeaver)</td></tr>
+        <tr><td>:8554</td><td>MediaMTX</td><td>RTSP ingest — FFmpeg pushes the camera feed here</td></tr>
+        <tr><td>:8888</td><td>MediaMTX</td><td>HLS output — frontend fetches the video from here (via nginx proxy)</td></tr>
+        <tr><td>:8889</td><td>MediaMTX</td><td>WebRTC output (reserved for future lower-latency use)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <hr />
+
+  <!-- ═══════════════════════════════ DATA FLOW ═══════════════════════════════ -->
+  <section id="how-data-flows">
+    <div class="section-label">Section 03</div>
+    <h2>How Telemetry Data Flows</h2>
+    <p>
+      Every 500 ms the backend's <strong>TelemetrySimulator</strong> fires.
+      Here is exactly what happens each tick:
+    </p>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Simulator fires (Java, every 500 ms)</div>
+          <p class="step-desc">
+            Advances latitude/longitude using great-circle maths, oscillates
+            altitude, drains battery ~3%/min, drifts heading ±3°. All state lives
+            in instance fields on one thread — intentionally simple.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Broadcast over STOMP / WebSocket</div>
+          <p class="step-desc">
+            The new <span class="inline-code">TelemetryDTO</span> is serialised to JSON
+            and sent to <span class="inline-code">/topic/telemetry</span> (full stream)
+            and <span class="inline-code">/topic/telemetry/lite</span>
+            (Free Mode — omits speed + battery to save bandwidth).
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Persisted to PostgreSQL</div>
+          <p class="step-desc">
+            Same data is written to the <span class="inline-code">telemetry</span>
+            table via JPA. This gives you full history even after the browser refreshes.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Frontend receives via STOMP client</div>
+          <p class="step-desc">
+            The <span class="inline-code">useTelemetry</span> hook in React subscribes
+            to the WebSocket. Each message is validated then stored in React state.
+            Components re-render: the globe moves, panels update.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">History loaded on drone select</div>
+          <p class="step-desc">
+            When you select a drone, the frontend calls
+            <span class="inline-code">GET /api/telemetry/history</span> to fetch the last
+            150 stored points. This draws the flight path from before you opened the browser.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Telemetry fields</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>latitude</td><td>number</td><td>Decimal degrees</td></tr>
+        <tr><td>longitude</td><td>number</td><td>Decimal degrees</td></tr>
+        <tr><td>altitude</td><td>number</td><td>Metres above sea level</td></tr>
+        <tr><td>speed</td><td>number?</td><td>km/h — omitted in Free Mode</td></tr>
+        <tr><td>battery</td><td>number?</td><td>0–100 % — omitted in Free Mode; triggers caution/danger UI states</td></tr>
+        <tr><td>heading</td><td>number</td><td>0–360°, clockwise from North</td></tr>
+        <tr><td>timestamp</td><td>string</td><td>ISO-8601 UTC</td></tr>
+      </tbody>
+    </table>
+
+    <h3>REST endpoints</h3>
+    <table>
+      <thead><tr><th>Endpoint</th><th>What it returns</th></tr></thead>
+      <tbody>
+        <tr><td>GET /api/telemetry/history</td><td>Last 150 telemetry points from the database</td></tr>
+        <tr><td>GET /api/drones/{droneId}/stream</td><td>JSON with <span class="inline-code">{ "streamUrl": "http://…/index.m3u8" }</span> — the HLS URL for the live camera</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <hr />
+
+  <!-- ═══════════════════════════════ LIVE VIDEO ═══════════════════════════════ -->
+  <section id="live-video">
+    <div class="section-label">Section 04</div>
+    <h2>Live Video — How It Works</h2>
+    <p>
+      The live video pipeline is deliberately separated from telemetry.
+      The backend <strong>never touches video bytes</strong> — it only tells the
+      frontend <em>where</em> the video lives. MediaMTX handles all of the
+      streaming heavy-lifting.
+    </p>
+
+    <h3>End-to-end pipeline</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Video source pushes RTSP to MediaMTX</div>
+          <p class="step-desc">
+            A real drone (or FFmpeg on your laptop) pushes an H.264 video stream
+            over RTSP to <span class="inline-code">rtsp://localhost:8554/sherlock-01</span>.
+            MediaMTX accepts it and automatically creates the path — no config needed.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">User clicks SETTINGS → LIVE VIDEO: OFF</div>
+          <p class="step-desc">
+            The toggle is inside the SETTINGS dropdown in the top-right of the header
+            (only visible when a drone is selected). Clicking it sets the state to ON.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Frontend fetches the stream URL</div>
+          <p class="step-desc">
+            <span class="inline-code">useStreamUrl</span> calls
+            <span class="inline-code">GET /api/drones/SHERLOCK-01/stream</span>.
+            The backend returns <span class="inline-code">{ "streamUrl": "http://mediamtx:8888/sherlock-01/index.m3u8" }</span>.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">LiveVideoWindow mounts + hls.js plays</div>
+          <p class="step-desc">
+            A 240×240 floating window appears in the bottom-right of the map area.
+            <span class="inline-code">hls.js</span> loads the
+            <span class="inline-code">index.m3u8</span> manifest and begins buffering
+            and playing the video segments. On Safari, native HLS is used instead.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Video goes through the nginx /hls/ proxy</div>
+          <p class="step-desc">
+            In Docker the browser actually requests
+            <span class="inline-code">http://localhost/hls/sherlock-01/…</span>.
+            Nginx proxies this to <span class="inline-code">mediamtx:8888</span> inside
+            the Docker network — the browser never needs direct access to MediaMTX.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">Important — video has latency</div>
+      <p>
+        HLS works by slicing the stream into small segments (usually 2–6 seconds each).
+        This means the live feed will be roughly 5–15 seconds behind real-time. 
+        This is normal and acceptable for a GCS operator view.
+        If you need sub-second latency in the future, the WebRTC port (:8889) is already
+        exposed on MediaMTX for that upgrade path.
+      </p>
+    </div>
+  </section>
+
+  <hr />
+
+  <!-- ═══════════════════════════════ SIMULATE ═══════════════════════════════ -->
+  <section id="simulate">
+    <div class="section-label">Section 05</div>
+    <h2>Simulating the Drone Camera (Development)</h2>
+    <p>
+      Since you don't have a physical drone, FFmpeg acts as the camera.
+      It pushes a video stream into MediaMTX exactly the same way a real
+      drone would. There are two approaches:
+    </p>
+
+    <h3>Option A — Loop a real video file</h3>
+    <p>
+      Use any <span class="inline-code">.mp4</span> file — drone footage from YouTube,
+      a GoPro clip, anything. The <span class="inline-code">-stream_loop -1</span>
+      flag loops it indefinitely.
+    </p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="cmd">ffmpeg</span> \
+  -re \
+  -stream_loop -1 \
+  -i your_footage.mp4 \
+  -c:v libx264 \
+  -preset ultrafast \
+  -tune zerolatency \
+  -f rtsp \
+  rtsp://localhost:8554/sherlock-01</code></pre>
+    </div>
+
+    <h3>Option B — Synthetic test pattern (no video file needed)</h3>
+    <p>
+      FFmpeg can generate a test card with an animated text overlay purely
+      in software. No input file required at all.
+    </p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="cmd">ffmpeg</span> \
+  -re \
+  -f lavfi \
+  -i <span class="str">"testsrc2=size=1280x720:rate=30,drawtext=text='DRONE CAM SIM':fontsize=36:fontcolor=lime"</span> \
+  -c:v libx264 \
+  -preset ultrafast \
+  -tune zerolatency \
+  -f rtsp \
+  rtsp://localhost:8554/sherlock-01</code></pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-title">Why sherlock-01?</div>
+      <p>
+        The drone ID in the app is <span class="inline-code">SHERLOCK-01</span>.
+        The backend lowercases it to build the MediaMTX path, so the RTSP path
+        must be <span class="inline-code">sherlock-01</span> (all lowercase, hyphen).
+        If you push to a different path, the frontend's HLS URL won't match and
+        the video won't play.
+      </p>
+    </div>
+
+    <h3>Full development workflow (step by step)</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Terminal 1 — start the Docker stack</div>
+          <div class="code-block" style="margin-top:.5rem">
+            <pre><code><span class="cmd">docker compose up --build</span></code></pre>
+          </div>
+          <p class="step-desc">Wait for <span class="inline-code">Started SherlockApplication</span>.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Terminal 2 — start the camera simulator</div>
+          <div class="code-block" style="margin-top:.5rem">
+            <pre><code><span class="cmd">ffmpeg</span> -re -stream_loop -1 -i footage.mp4 \
+  -c:v libx264 -preset ultrafast -tune zerolatency \
+  -f rtsp rtsp://localhost:8554/sherlock-01</code></pre>
+          </div>
+          <p class="step-desc">You should see FFmpeg printing frame counts. Keep this running.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Browser — open the dashboard</div>
+          <p class="step-desc">
+            Go to <a href="http://localhost">http://localhost</a>.
+            Click <strong>SHERLOCK-01</strong> on the globe overlay to select the drone.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Click SETTINGS → LIVE VIDEO: OFF</div>
+          <p class="step-desc">
+            The SETTINGS button is in the top-right header, next to the drone name.
+            Click it, then click <strong>LIVE VIDEO: OFF</strong> to toggle it on.
+            A 240×240 video window will appear over the bottom-right of the map.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Wait ~5–10 seconds for the first HLS segment</div>
+          <p class="step-desc">
+            The window will show <strong>ACQUIRING FEED…</strong> while MediaMTX
+            buffers the first segments. Then video plays automatically.
+            If you see <strong>⚠ FEED ERROR</strong>, check that FFmpeg is still running
+            and pushing to the correct RTSP path.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr />
+
+  <!-- ═══════════════════════════════ UI TOUR ═══════════════════════════════ -->
+  <section id="ui-tour">
+    <div class="section-label">Section 06</div>
+    <h2>UI Tour</h2>
+
+    <h3>Header (top bar)</h3>
+    <table>
+      <thead><tr><th>Element</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>UTC clock</td><td>Live UTC time, updated every second</td></tr>
+        <tr><td>LINK ACTIVE / CONNECTING…</td><td>Green = WebSocket connected; yellow blinking = reconnecting</td></tr>
+        <tr><td>SHERLOCK-01</td><td>Selected drone name</td></tr>
+        <tr><td>SETTINGS button</td><td>Opens dropdown with FREE MODE and LIVE VIDEO toggles</td></tr>
+        <tr><td>✕ button</td><td>Deselects the drone, closes live video, resets all state</td></tr>
+        <tr><td>◈ TRAINING MODE ◈</td><td>Reminder that all data is simulated</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Left panel — Telemetry</h3>
+    <p>
+      Shows live lat/lon/altitude/<wbr/>speed/battery/heading. Only visible when
+      a drone is selected <em>and</em> Free Mode is off. Battery below 20% turns
+      <span style="color:var(--caution)">caution yellow</span>;
+      below 10% turns <span style="color:var(--danger)">danger red</span>.
+    </p>
+
+    <h3>Globe (centre)</h3>
+    <p>
+      Powered by CesiumJS. The drone icon tracks the live position. A glowing
+      polyline shows the flight path (last 200 points). Press <strong>D</strong>
+      to dim the imagery for better contrast at night. The camera auto-flies to the
+      drone on first position fix.
+    </p>
+    <p>
+      When no drone is selected, a selection overlay lists available assets and
+      shows their last known position from the database.
+    </p>
+
+    <h3>Right panel — System</h3>
+    <p>
+      Compass rose (tracks heading), mission elapsed clock, altitude trend
+      mini-chart, and a scrollable telemetry event log.
+    </p>
+
+    <h3>Bottom bar — Status</h3>
+    <table>
+      <thead><tr><th>Indicator</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>MISSION ● ACTIVE</td><td>WebSocket is live and receiving data</td></tr>
+        <tr><td>PLATFORM SHERLOCK-01</td><td>Selected drone ID</td></tr>
+        <tr><td>POS 51.5074°N…</td><td>Live lat/lon (hidden in Free Mode)</td></tr>
+        <tr><td>LOW PERF ON/OFF</td><td>Toggles Cesium performance mode (disables OSM buildings on low hardware)</td></tr>
+        <tr><td>⚠ LOW BATTERY / CRITICAL</td><td>Alerts when battery drops below 20% / 10%</td></tr>
+        <tr><td>PKT RATE 2 Hz</td><td>Fixed label — telemetry arrives at 2 packets/second</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Free Mode</h3>
+    <p>
+      Activated via SETTINGS → FREE MODE. Hides the left and right panels so the
+      globe fills the screen. Also switches the WebSocket subscription to the
+      <span class="inline-code">/topic/telemetry/lite</span> stream (omits speed +
+      battery) to reduce bandwidth — useful for mobile or slow connections.
+    </p>
+
+    <h3>Live Video Window</h3>
+    <p>
+      A 240×240 floating window anchored to the bottom-right of the globe.
+      Has a title bar with a <strong>✕</strong> close button.
+      Shows <strong>ACQUIRING FEED…</strong> while buffering,
+      <strong>⚠ FEED ERROR</strong> if the stream URL fetch fails,
+      and the video once the stream is ready.
+    </p>
+
+    <div class="callout">
+      <div class="callout-title">Keyboard shortcuts</div>
+      <p>
+        <strong>D</strong> — toggle map dimming (Cesium imagery brightness)<br/>
+        No other keyboard shortcuts are currently defined.
+      </p>
+    </div>
+  </section>
+
+  <hr />
+
+  <!-- ═══════════════════════════════ TROUBLESHOOTING ═══════════════════════════════ -->
+  <section id="troubleshooting">
+    <div class="section-label">Section 07</div>
+    <h2>Common Problems</h2>
+
+    <h3>Dashboard is blank / no globe</h3>
+    <p>
+      The backend probably hasn't started yet, or Postgres isn't healthy.
+      Check <span class="inline-code">docker compose logs backend</span>.
+      Wait for <span class="inline-code">Started SherlockApplication</span>.
+    </p>
+
+    <h3>CONNECTING… never turns to LINK ACTIVE</h3>
+    <p>
+      The browser can't reach the WebSocket. Make sure you opened
+      <span class="inline-code">http://localhost</span> (port 80, nginx),
+      not <span class="inline-code">localhost:8080</span> directly.
+      The WebSocket is proxied through nginx.
+    </p>
+
+    <h3>Live Video shows ⚠ FEED ERROR</h3>
+    <p>
+      The backend returned an error for
+      <span class="inline-code">GET /api/drones/SHERLOCK-01/stream</span> — or
+      MediaMTX isn't running. Check
+      <span class="inline-code">docker compose logs mediamtx</span>.
+    </p>
+
+    <h3>Live Video shows ACQUIRING FEED… indefinitely</h3>
+    <p>
+      MediaMTX is running but nothing is pushing RTSP to it.
+      Start the FFmpeg command from Section 05.
+      Also confirm the RTSP path is exactly
+      <span class="inline-code">sherlock-01</span> (lowercase, hyphen).
+    </p>
+
+    <h3>No flight path on the globe</h3>
+    <p>
+      The drone history query returned nothing — Postgres might be empty on a
+      fresh start. Wait 10–20 seconds for the simulator to accumulate some
+      telemetry points, then re-select the drone.
+    </p>
+
+    <div class="callout warn">
+      <div class="callout-title">After any docker compose down</div>
+      <p>
+        Postgres data persists in a named Docker volume (<span class="inline-code">postgres_data</span>).
+        To wipe it completely and start fresh, run
+        <span class="inline-code">docker compose down -v</span>.
+        Without <span class="inline-code">-v</span> your telemetry history survives restarts.
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <span>SHERLOCK GCS</span> — SKYTRACK v1.0 — WALKTHROUGH REFERENCE — ◈ TRAINING MODE ◈
+</footer>
+
+<script>
+  function copyCode(btn) {
+    const pre = btn.closest('.code-block').querySelector('pre');
+    const text = pre.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+</script>
+
+</body>
+</html>
