@@ -81,6 +81,7 @@ export default function MapComponent({
   const selectedPathRef = useRef<Cesium.Entity | null>(null);
   const pathPositionsRef = useRef<Cesium.Cartesian3[]>([]);
   const initialFlyDoneRef = useRef(false);
+  const initialCenteringRef = useRef(false);
   const lastPathTimestampRef = useRef<string | null>(null);
   const fleetPointCollectionRef = useRef<Cesium.PointPrimitiveCollection | null>(null);
   const fleetBillboardCollectionRef = useRef<Cesium.BillboardCollection | null>(null);
@@ -187,6 +188,7 @@ export default function MapComponent({
 
     resetSelectedEntities(viewer, selectedDroneRef, selectedPathRef, pathPositionsRef);
     initialFlyDoneRef.current = false;
+    initialCenteringRef.current = false;
     lastPathTimestampRef.current = null;
   }, [viewer, selectedDrone]);
 
@@ -210,15 +212,19 @@ export default function MapComponent({
     }
 
     if (!initialFlyDoneRef.current) {
-      viewer.trackedEntity = undefined;
-      flyToAsset(viewer, selectedDisplayTelemetry, () => {
-        if (viewer.isDestroyed()) {
-          return;
-        }
-        initialFlyDoneRef.current = true;
-        viewer.trackedEntity = freeMode ? undefined : entity;
-        viewer.scene.requestRender();
-      });
+      if (!initialCenteringRef.current) {
+        initialCenteringRef.current = true;
+        viewer.trackedEntity = undefined;
+        flyToAsset(viewer, selectedDisplayTelemetry, () => {
+          if (viewer.isDestroyed()) {
+            return;
+          }
+          initialCenteringRef.current = false;
+          initialFlyDoneRef.current = true;
+          viewer.trackedEntity = freeMode ? undefined : entity;
+          viewer.scene.requestRender();
+        });
+      }
       return;
     }
 
