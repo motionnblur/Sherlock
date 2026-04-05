@@ -26,6 +26,7 @@ src/
 ├── main.tsx                     # ReactDOM.createRoot entry point; wraps tree in <AuthProvider>
 ├── index.css                    # Tailwind directives + Cesium widget overrides
 ├── constants/
+│   ├── performance.ts           # Performance-stage model and stage-cycling helper
 │   └── telemetry.ts             # Shared frontend domain constants (asset id, history/path limits)
 ├── contexts/
 │   └── AuthContext.tsx          # AuthProvider: JWT state in sessionStorage, login(), logout()
@@ -216,7 +217,7 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 
 `src/components/MapComponent.tsx` owns the Cesium `Viewer` instance, selected-drone entity/path, fleet point layer, and map UI overlays.
 
-**Props:** `{ telemetry, fleetTelemetry, lastKnownTelemetry, lowPerf, selectedDrone, freeMode, showAllAssets, onSelectDrone }`
+**Props:** `{ telemetry, fleetTelemetry, lastKnownTelemetry, performanceStage, selectedDrone, freeMode, showAllAssets, onSelectDrone }`
 
 **Imagery:** `UrlTemplateImageryProvider` (OpenStreetMap) is used by default — no Cesium Ion token required. If `VITE_CESIUM_TOKEN` is set in `.env`, Ion features (World Terrain, premium imagery) unlock automatically.
 
@@ -224,7 +225,11 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 
 **Map dimming:** pressing `D` toggles map-only dimming for the Cesium imagery layer. The dim level is data-driven from `frontend/configs/map-settings.json` via `darkenPercent` (0-100), and the component applies `brightness = 1 - darkenPercent / 100` to imagery layers only. Do not dim the surrounding React layout.
 
-**Low perf mode:** `MapComponent` owns Cesium performance tuning. It applies the low/high performance profile and is solely responsible for attaching/removing the optional OSM buildings tileset. Do not remove generic `Cesium3DTileset` primitives by scanning the entire scene.
+**Low perf mode:** `MapComponent` owns Cesium performance tuning using a 3-stage profile:
+- **Stage 0 (normal):** full map quality profile; optional OSM buildings may be attached.
+- **Stage 1 (low):** existing low-perf behavior (reduced terrain quality + no buildings).
+- **Stage 2 (minimal map):** stronger map-only degradation (higher terrain error, reduced tile cache/preload behavior, nearest-neighbor imagery sampling) while keeping drone entities/path rendering unchanged.
+`MapComponent` is solely responsible for attaching/removing the optional OSM buildings tileset. Do not remove generic `Cesium3DTileset` primitives by scanning the entire scene.
 
 **Drone selection overlay:** when `selectedDrone` is null, a centred overlay panel is rendered over the map listing available assets. Clicking an entry calls `onSelectDrone(id)`. Last-known values come from `useLastKnownTelemetry` (`POST /api/telemetry/last-known`) so startup avoids per-drone history requests.
 

@@ -1,4 +1,9 @@
 import type { StatusBarProps } from '../interfaces/components';
+import {
+  PERFORMANCE_STAGE_LABELS,
+  PERFORMANCE_STAGE_LOW,
+  PERFORMANCE_STAGE_MINIMAL_MAP,
+} from '../constants/performance';
 import { PACKET_RATE_LABEL } from '../constants/telemetry';
 import { formatCoordinatePair } from '../utils/formatters';
 
@@ -7,12 +12,19 @@ export default function StatusBar({
   connected,
   selectedDrone,
   freeMode,
-  lowPerf,
-  onToggleLowPerf,
+  performanceStage,
+  onCyclePerformanceStage,
 }: StatusBarProps) {
   const battery = t?.battery ?? null;
   const isBatteryLow = battery != null && battery < 20;
   const isBatteryCritical = battery != null && battery < 10;
+  const isLowPerfStage = performanceStage >= PERFORMANCE_STAGE_LOW;
+  const isMinimalMapStage = performanceStage === PERFORMANCE_STAGE_MINIMAL_MAP;
+  const lowPerfButtonClassName = isMinimalMapStage
+    ? 'text-danger bg-panel'
+    : isLowPerfStage
+      ? 'text-caution bg-panel'
+      : 'text-muted hover:text-neon';
 
   return (
     <footer className="flex items-center justify-between px-4 h-7 bg-elevated border-t border-line text-[10px] tracking-wider shrink-0">
@@ -47,10 +59,10 @@ export default function StatusBar({
 
         <span className="text-line">|</span>
         <button
-          onClick={onToggleLowPerf}
-          className={`font-bold tracking-widest px-2 py-0.5 border border-line ${lowPerf ? 'text-caution bg-panel' : 'text-muted hover:text-neon'}`}
+          onClick={onCyclePerformanceStage}
+          className={`font-bold tracking-widest px-2 py-0.5 border border-line ${lowPerfButtonClassName}`}
         >
-          LOW PERF {lowPerf ? 'ON' : 'OFF'}
+          LOW PERF {PERFORMANCE_STAGE_LABELS[performanceStage]}
         </button>
       </div>
 

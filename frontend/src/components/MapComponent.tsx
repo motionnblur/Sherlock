@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { DRONE_IDS, FLIGHT_PATH_POINT_LIMIT } from '../constants/telemetry';
+import { PERFORMANCE_STAGE_NORMAL } from '../constants/performance';
 import type { MapComponentProps } from '../interfaces/components';
 import type { DroneId, TelemetryPoint } from '../interfaces/telemetry';
 import { formatFixed } from '../utils/formatters';
@@ -67,7 +68,7 @@ export default function MapComponent({
   telemetry,
   fleetTelemetry,
   lastKnownTelemetry,
-  lowPerf,
+  performanceStage,
   selectedDrone,
   freeMode,
   showAllAssets,
@@ -76,7 +77,7 @@ export default function MapComponent({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
   const buildingsRef = useRef<Cesium.Cesium3DTileset | null>(null);
-  const lowPerfRef = useRef(lowPerf);
+  const performanceStageRef = useRef(performanceStage);
   const selectedDroneRef = useRef<Cesium.Entity | null>(null);
   const selectedPathRef = useRef<Cesium.Entity | null>(null);
   const pathPositionsRef = useRef<Cesium.Cartesian3[]>([]);
@@ -98,8 +99,8 @@ export default function MapComponent({
     : null;
 
   useEffect(() => {
-    lowPerfRef.current = lowPerf;
-  }, [lowPerf]);
+    performanceStageRef.current = performanceStage;
+  }, [performanceStage]);
 
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) {
@@ -173,13 +174,17 @@ export default function MapComponent({
       return;
     }
 
-    applyPerformanceProfile(viewer, lowPerf);
-    if (lowPerf) {
+    applyPerformanceProfile(viewer, performanceStage);
+    if (performanceStage !== PERFORMANCE_STAGE_NORMAL) {
       removeBuildings(viewer, buildingsRef);
       return;
     }
-    void ensureBuildings(viewer, buildingsRef, () => !lowPerfRef.current);
-  }, [viewer, lowPerf]);
+    void ensureBuildings(
+      viewer,
+      buildingsRef,
+      () => performanceStageRef.current === PERFORMANCE_STAGE_NORMAL,
+    );
+  }, [viewer, performanceStage]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {

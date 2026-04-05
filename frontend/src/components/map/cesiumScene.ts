@@ -1,6 +1,12 @@
 import type { MutableRefObject } from 'react';
 import * as Cesium from 'cesium';
 import mapSettings from '../../../configs/map-settings.json';
+import {
+  PERFORMANCE_STAGE_LOW,
+  PERFORMANCE_STAGE_MINIMAL_MAP,
+  PERFORMANCE_STAGE_NORMAL,
+  type PerformanceStage,
+} from '../../constants/performance';
 import type { DroneId, TelemetryPoint } from '../../interfaces/telemetry';
 import type { MapSettingsConfig } from '../../interfaces/components';
 
@@ -14,8 +20,14 @@ export const MAP_BRIGHTNESS = 1 - MAP_DARKEN_PERCENT / 88;
 
 const CAMERA_FLY_ALTITUDE = 8000;
 const FLEET_POINT_SIZE = 1;
+const PERFORMANCE_STAGE_ONE_MAX_SCREEN_SPACE_ERROR = 8;
+const PERFORMANCE_STAGE_TWO_MAX_SCREEN_SPACE_ERROR = 20;
 const NEON = Cesium.Color.fromCssColorString('#00FF41');
 const DANGER = Cesium.Color.fromCssColorString('#FF3B30');
+let defaultTileCacheSize: number | null = null;
+let defaultLoadingDescendantLimit: number | null = null;
+let defaultPreloadAncestors: boolean | null = null;
+let defaultPreloadSiblings: boolean | null = null;
 
 const DRONE_ICON = (() => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
@@ -156,16 +168,62 @@ export async function ensureBuildings(
   }
 }
 
-export function applyPerformanceProfile(viewer: Cesium.Viewer, lowPerf: boolean): void {
+export function applyPerformanceProfile(
+  viewer: Cesium.Viewer,
+  lowPerfStage: PerformanceStage,
+): void {
   const scene = viewer.scene;
   const globe = scene.globe;
+  const imageryLayers = viewer.imageryLayers;
+  const isLowPerfStage = lowPerfStage >= PERFORMANCE_STAGE_LOW;
+  const isMinimalMapStage = lowPerfStage === PERFORMANCE_STAGE_MINIMAL_MAP;
+
+  if (defaultTileCacheSize == null) {
+    defaultTileCacheSize = globe.tileCacheSize;
+  }
+  if (defaultLoadingDescendantLimit == null) {
+    defaultLoadingDescendantLimit = globe.loadingDescendantLimit;
+  }
+  if (defaultPreloadAncestors == null) {
+    defaultPreloadAncestors = globe.preloadAncestors;
+  }
+  if (defaultPreloadSiblings == null) {
+    defaultPreloadSiblings = globe.preloadSiblings;
+  }
 
   viewer.resolutionScale = 1;
   globe.enableLighting = false;
-  globe.maximumScreenSpaceError = lowPerf ? 8 : 2;
-  globe.depthTestAgainstTerrain = !lowPerf;
+  globe.maximumScreenSpaceError = isMinimalMapStage
+    ? PERFORMANCE_STAGE_TWO_MAX_SCREEN_SPACE_ERROR
+    : isLowPerfStage
+      ? PERFORMANCE_STAGE_ONE_MAX_SCREEN_SPACE_ERROR
+      : 2;
+  globe.depthTestAgainstTerrain = lowPerfStage === PERFORMANCE_STAGE_NORMAL;
+  globe.tileCacheSize = isMinimalMapStage
+    ? Math.max(16, Math.floor(defaultTileCacheSize * 0.4))
+    : defaultTileCacheSize;
+  globe.loadingDescendantLimit = isMinimalMapStage
+    ? Math.max(1, Math.floor(defaultLoadingDescendantLimit * 0.4))
+    : defaultLoadingDescendantLimit;
+  globe.preloadAncestors = isMinimalMapStage ? false : defaultPreloadAncestors;
+  globe.preloadSiblings = isMinimalMapStage ? false : defaultPreloadSiblings;
   scene.fog.enabled = false;
-  (scene as unknown as { fxaa: boolean }).fxaa = !lowPerf;
+  (scene as unknown as { fxaa: boolean }).fxaa = !isLowPerfStage;
+
+  for (let index = 0; index < imageryLayers.length; index += 1) {
+    const layer = imageryLayers.get(index);
+    if (!layer) {
+      continue;
+    }
+
+    layer.minificationFilter = isMinimalMapStage
+      ? Cesium.TextureMinificationFilter.NEAREST
+      : Cesium.TextureMinificationFilter.LINEAR;
+    layer.magnificationFilter = isMinimalMapStage
+      ? Cesium.TextureMagnificationFilter.NEAREST
+      : Cesium.TextureMagnificationFilter.LINEAR;
+  }
+
   scene.requestRender();
 }
 

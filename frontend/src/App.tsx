@@ -4,6 +4,10 @@ import { useTelemetry } from './hooks/useTelemetry';
 import { useStreamUrl } from './hooks/useStreamUrl';
 import { useLastKnownTelemetry } from './hooks/useLastKnownTelemetry';
 import { DRONE_IDS } from './constants/telemetry';
+import {
+  getNextPerformanceStage,
+  PERFORMANCE_STAGE_NORMAL,
+} from './constants/performance';
 import Header from './components/Header';
 import TelemetryPanel from './components/TelemetryPanel';
 import MapComponent from './components/MapComponent';
@@ -20,7 +24,7 @@ export default function App() {
 
   const [selectedDrone, setSelectedDrone] = useState<DroneId | null>(null);
   const [freeMode, setFreeMode] = useState(false);
-  const [lowPerf, setLowPerf] = useState(false);
+  const [performanceStage, setPerformanceStage] = useState(PERFORMANCE_STAGE_NORMAL);
   const [isLiveVideoOpen, setIsLiveVideoOpen] = useState(false);
   const [showAllAssets, setShowAllAssets] = useState(false);
 
@@ -113,7 +117,7 @@ export default function App() {
             telemetry={telemetry}
             fleetTelemetry={fleetTelemetry}
             lastKnownTelemetry={lastKnownTelemetry}
-            lowPerf={lowPerf}
+            performanceStage={performanceStage}
             selectedDrone={selectedDrone}
             freeMode={freeMode}
             showAllAssets={showAllAssets}
@@ -140,8 +144,8 @@ export default function App() {
         connected={connected}
         selectedDrone={selectedDrone}
         freeMode={freeMode}
-        lowPerf={lowPerf}
-        onToggleLowPerf={() => setLowPerf((value) => !value)}
+        performanceStage={performanceStage}
+        onCyclePerformanceStage={() => setPerformanceStage(getNextPerformanceStage)}
       />
     </div>
   );

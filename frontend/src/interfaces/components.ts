@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { PerformanceStage } from '../constants/performance';
 import type { DroneId, TelemetryByDrone, TelemetryPoint } from './telemetry';
 
 export interface HeaderProps {
@@ -29,7 +30,7 @@ export interface MapComponentProps {
   telemetry: TelemetryPoint | null;
   fleetTelemetry: TelemetryByDrone;
   lastKnownTelemetry: TelemetryByDrone;
-  lowPerf: boolean;
+  performanceStage: PerformanceStage;
   selectedDrone: DroneId | null;
   freeMode: boolean;
   showAllAssets: boolean;
@@ -46,8 +47,8 @@ export interface StatusBarProps {
   connected: boolean;
   selectedDrone: DroneId | null;
   freeMode: boolean;
-  lowPerf: boolean;
-  onToggleLowPerf: () => void;
+  performanceStage: PerformanceStage;
+  onCyclePerformanceStage: () => void;
 }
 
 export interface SystemPanelProps {
