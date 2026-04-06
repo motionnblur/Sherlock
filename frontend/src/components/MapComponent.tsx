@@ -201,6 +201,24 @@ export default function MapComponent({
       return;
     }
 
+    if (freeMode && showAllAssets) {
+      // In SHOW ALL mode every drone is a uniform fleet asset — hide the selected entity.
+      if (selectedDroneRef.current) {
+        selectedDroneRef.current.show = false;
+      }
+      if (selectedPathRef.current) {
+        selectedPathRef.current.show = false;
+      }
+      return;
+    }
+
+    if (selectedDroneRef.current) {
+      selectedDroneRef.current.show = true;
+    }
+    if (selectedPathRef.current) {
+      selectedPathRef.current.show = true;
+    }
+
     const position = toCartesian(selectedDisplayTelemetry);
     const entity = ensureSelectedDroneEntity(viewer, selectedDrone, position, selectedDroneRef);
     const isLiveTick = selectedLiveTelemetry?.timestamp !== undefined
@@ -234,7 +252,7 @@ export default function MapComponent({
 
     viewer.trackedEntity = freeMode ? undefined : entity;
     viewer.scene.requestRender();
-  }, [freeMode, selectedDisplayTelemetry, selectedDrone, selectedLiveTelemetry, viewer]);
+  }, [freeMode, showAllAssets, selectedDisplayTelemetry, selectedDrone, selectedLiveTelemetry, viewer]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
@@ -254,8 +272,9 @@ export default function MapComponent({
     }
 
     const visibleIds = new Set<DroneId>();
+    const isShowAll = freeMode && showAllAssets;
     for (const droneId of DRONE_IDS) {
-      if (selectedDrone && droneId === selectedDrone) {
+      if (!isShowAll && selectedDrone && droneId === selectedDrone) {
         continue;
       }
       const telemetryPoint = fleetTelemetry[droneId] ?? lastKnownTelemetry[droneId];

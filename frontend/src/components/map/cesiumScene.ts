@@ -23,7 +23,6 @@ const FLEET_POINT_SIZE = 1;
 const PERFORMANCE_STAGE_ONE_MAX_SCREEN_SPACE_ERROR = 8;
 const PERFORMANCE_STAGE_TWO_MAX_SCREEN_SPACE_ERROR = 20;
 const NEON = Cesium.Color.fromCssColorString('#00FF41');
-const DANGER = Cesium.Color.fromCssColorString('#FF3B30');
 let defaultTileCacheSize: number | null = null;
 let defaultLoadingDescendantLimit: number | null = null;
 let defaultPreloadAncestors: boolean | null = null;
@@ -46,22 +45,6 @@ const DRONE_ICON = (() => {
   return `data:image/svg+xml;base64,${btoa(svg)}`;
 })();
 
-const DRONE_ICON_RED = (() => {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
-    <line x1="10" y1="10" x2="18" y2="18" stroke="#FF3B30" stroke-width="1.5"/>
-    <line x1="26" y1="10" x2="18" y2="18" stroke="#FF3B30" stroke-width="1.5"/>
-    <line x1="10" y1="26" x2="18" y2="18" stroke="#FF3B30" stroke-width="1.5"/>
-    <line x1="26" y1="26" x2="18" y2="18" stroke="#FF3B30" stroke-width="1.5"/>
-    <circle cx="18" cy="18" r="4" fill="#FF3B30" opacity="0.9"/>
-    <circle cx="18" cy="18" r="6" fill="none" stroke="#FF3B30" stroke-width="0.8" opacity="0.4"/>
-    <circle cx="10" cy="10" r="4" fill="none" stroke="#FF3B30" stroke-width="1.5"/>
-    <circle cx="26" cy="10" r="4" fill="none" stroke="#FF3B30" stroke-width="1.5"/>
-    <circle cx="10" cy="26" r="4" fill="none" stroke="#FF3B30" stroke-width="1.5"/>
-    <circle cx="26" cy="26" r="4" fill="none" stroke="#FF3B30" stroke-width="1.5"/>
-  </svg>`;
-
-  return `data:image/svg+xml;base64,${btoa(svg)}`;
-})();
 
 if (HAS_TOKEN) {
   Cesium.Ion.defaultAccessToken = ION_TOKEN;
@@ -403,8 +386,8 @@ export function upsertFleetAsset(
   const point = pointCollection.add({
     position,
     pixelSize: FLEET_POINT_SIZE + 1.5,
-    color: DANGER.withAlpha(0.9),
-    outlineColor: DANGER,
+    color: NEON.withAlpha(0.9),
+    outlineColor: NEON,
     outlineWidth: 1,
     distanceDisplayCondition: new Cesium.DistanceDisplayCondition(8000, Number.POSITIVE_INFINITY),
     disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -412,7 +395,7 @@ export function upsertFleetAsset(
 
   const billboard = billboardCollection.add({
     position,
-    image: DRONE_ICON_RED,
+    image: DRONE_ICON,
     scale: 0.9,
     distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 8000),
     disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -421,7 +404,7 @@ export function upsertFleetAsset(
   const polyline = polylineCollection.add({
     positions: [position],
     width: 1.5,
-    material: Cesium.Material.fromType('PolylineGlow', { glowPower: 0.15, color: DANGER.withAlpha(0.65) }),
+    material: Cesium.Material.fromType('PolylineGlow', { glowPower: 0.15, color: NEON.withAlpha(0.65) }),
     distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 8000),
   });
 
@@ -429,7 +412,7 @@ export function upsertFleetAsset(
     position,
     text: `◆ ${droneId}`,
     font: '11px "JetBrains Mono", monospace',
-    fillColor: DANGER,
+    fillColor: NEON,
     outlineColor: Cesium.Color.BLACK,
     outlineWidth: 2,
     style: Cesium.LabelStyle.FILL_AND_OUTLINE,
