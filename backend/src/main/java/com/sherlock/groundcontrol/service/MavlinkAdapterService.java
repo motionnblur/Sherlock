@@ -207,6 +207,16 @@ public class MavlinkAdapterService {
                 .findFirst();
     }
 
+    /** Returns true when the active snapshot reports an armed vehicle state. */
+    public boolean isDroneArmed(int systemId) {
+        DroneSnapshot snapshot = snapshots.get(systemId);
+        if (snapshot == null) {
+            return false;
+        }
+        Instant cutoff = Instant.now().minusSeconds(SNAPSHOT_STALE_SECONDS);
+        return isSnapshotCommandable(snapshot, cutoff) && Boolean.TRUE.equals(snapshot.getArmed());
+    }
+
     public int nextSeqNum() {
         return outboundSeq.getAndIncrement() & 0xFF;
     }

@@ -103,7 +103,7 @@ Extended fields (`roll`–`flightMode`) are null in the lite fleet stream and wh
 | REST history             | `GET /api/telemetry/history`                   |
 | REST bulk last-known     | `POST /api/telemetry/last-known`               |
 | REST stream URL          | `GET /api/drones/{droneId}/stream`             |
-| **C2 command**           | `POST /api/drones/{droneId}/command` — body: `{ commandType: "RTH" \| "ARM" \| "DISARM" }` |
+| **C2 command**           | `POST /api/drones/{droneId}/command` — body: `{ commandType: "RTH" \| "ARM" \| "DISARM" \| "TAKEOFF" }` |
 | MAVLink ingest (UDP)     | `udp://localhost:14550` — drone or SITL targets this |
 | RTSP ingest (MediaMTX)   | `rtsp://localhost:8554/{droneId}` (push)       |
 | HLS output (MediaMTX)    | `http://localhost:8888/{droneId}/index.m3u8`   |

@@ -14,6 +14,7 @@ public class DroneCommandDTO {
     public enum CommandType {
         RTH,
         ARM,
-        DISARM
+        DISARM,
+        TAKEOFF
     }
 }

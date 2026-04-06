@@ -38,7 +38,7 @@ src/
 │   └── index.ts                 # Barrel exports
 ├── hooks/
 │   ├── useAuth.ts               # Consumes AuthContext; throws if used outside <AuthProvider>
-│   ├── useCommand.ts            # POST /api/drones/{id}/command — RTH/ARM/DISARM; returns sendCommand, isSending, commandError; 401 → logout
+│   ├── useCommand.ts            # POST /api/drones/{id}/command — RTH/ARM/DISARM/TAKEOFF; returns sendCommand, isSending, commandError; 401 → logout
 │   ├── useLastKnownTelemetry.ts # One-shot bulk bootstrap from POST /api/telemetry/last-known
 │   ├── useLogin.ts              # Login form submission logic; calls POST /api/auth/login
 │   ├── useTelemetry.ts          # STOMP client; selected stream + bounded fleet summary; auto-logout on auth error
@@ -172,7 +172,7 @@ const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTele
 
 ```ts
 const { sendCommand, isSending, commandError } = useCommand(selectedDrone, authToken);
-// sendCommand('RTH' | 'ARM' | 'DISARM')
+// sendCommand('RTH' | 'ARM' | 'DISARM' | 'TAKEOFF')
 // commandError: 'DRONE NOT CONNECTED' | 'MAVLINK DISABLED' | 'CMD FAILED (xxx)' | null
 ```
 

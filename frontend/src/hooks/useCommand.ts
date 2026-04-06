@@ -3,7 +3,7 @@ import type { AuthToken } from '../interfaces/auth';
 import type { DroneId } from '../interfaces/telemetry';
 import { useAuth } from './useAuth';
 
-export type CommandType = 'RTH' | 'ARM' | 'DISARM';
+export type CommandType = 'RTH' | 'ARM' | 'DISARM' | 'TAKEOFF';
 
 export interface UseCommandReturn {
   sendCommand: (commandType: CommandType) => Promise<void>;
@@ -14,7 +14,7 @@ export interface UseCommandReturn {
 const COMMAND_PATH = (droneId: string) => `/api/drones/${droneId}/command`;
 
 /**
- * Sends operator commands (RTH / ARM / DISARM) to the backend C2 endpoint.
+ * Sends operator commands (RTH / ARM / DISARM / TAKEOFF) to the backend C2 endpoint.
  * When MAVLink is disabled server-side, the endpoint returns 503 and commandError is set.
  * A 401 response forces logout so the operator is returned to LoginPage.
  */

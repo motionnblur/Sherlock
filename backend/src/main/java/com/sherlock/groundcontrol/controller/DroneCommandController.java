@@ -17,7 +17,7 @@ import java.util.Optional;
  * Exposes the C2 command endpoint.
  *
  * POST /api/drones/{droneId}/command
- * Body: { "commandType": "RTH" | "ARM" | "DISARM" }
+ * Body: { "commandType": "RTH" | "ARM" | "DISARM" | "TAKEOFF" }
  *
  * Returns 202 Accepted if the packet was dispatched.
  * Returns 503 if MAVLink adapter is not enabled.

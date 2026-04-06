@@ -203,7 +203,14 @@ export default function SystemPanel({ telemetry: t, history, connected, onSendCo
 
         <SectionHeader title="COMMANDS" />
         <div className="py-1 space-y-1">
-          <div className="flex gap-1">
+          <div className="grid grid-cols-2 gap-1">
+            <CommandButton
+              label="TAKEOFF"
+              commandType="TAKEOFF"
+              isSending={isCommandSending}
+              colorClass="border-neon text-neon"
+              onSend={onSendCommand}
+            />
             <CommandButton
               label="RTH"
               commandType="RTH"
