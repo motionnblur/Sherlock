@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Client, type IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { FLEET_LITE_TOPIC, TELEMETRY_HISTORY_LIMIT } from '../constants/telemetry';
+import { BATTERY_ALERT_TOPIC, BATTERY_CRITICAL_THRESHOLD, BATTERY_WARN_THRESHOLD, FLEET_LITE_TOPIC, TELEMETRY_HISTORY_LIMIT } from '../constants/telemetry';
 import type { UseTelemetryResult } from '../interfaces/hooks';
-import type { TelemetryByDrone, TelemetryPoint } from '../interfaces/telemetry';
-import { parseTelemetryListMessage, parseTelemetryMessage } from '../utils/telemetry';
+import type { LowBatteryAlert, TelemetryByDrone, TelemetryPoint } from '../interfaces/telemetry';
+import { parseBatteryAlertMessage, parseTelemetryListMessage, parseTelemetryMessage } from '../utils/telemetry';
 import { useAuth } from './useAuth';
 
 const WS_URL = import.meta.env.VITE_WS_URL || '/ws-skytrack';
@@ -20,6 +20,7 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
   const [fleetTelemetry, setFleetTelemetry] = useState<TelemetryByDrone>({});
   const [connected, setConnected] = useState(false);
   const [history, setHistory] = useState<TelemetryPoint[]>([]);
+  const [batteryAlertMap, setBatteryAlertMap] = useState<Record<string, LowBatteryAlert>>({});
   const clientRef = useRef<Client | null>(null);
 
   useEffect(() => {
@@ -28,6 +29,7 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
       setTelemetry(null);
       setFleetTelemetry({});
       setHistory([]);
+      setBatteryAlertMap({});
     };
 
     const appendHistory = (point: TelemetryPoint) => {
@@ -54,6 +56,28 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
       appendHistory(nextTelemetry);
     };
 
+    const handleBatteryAlertMessage = (message: IMessage) => {
+      const alert = parseBatteryAlertMessage(message.body);
+      if (!alert) {
+        return;
+      }
+
+      setBatteryAlertMap((previous) => {
+        if (alert.battery >= BATTERY_WARN_THRESHOLD) {
+          const { [alert.droneId]: _removed, ...rest } = previous;
+          return rest;
+        }
+        return {
+          ...previous,
+          [alert.droneId]: {
+            droneId: alert.droneId,
+            battery: alert.battery,
+            isCritical: alert.battery < BATTERY_CRITICAL_THRESHOLD,
+          },
+        };
+      });
+    };
+
     const handleFleetTelemetryMessage = (message: IMessage) => {
       const fleetUpdate = parseTelemetryListMessage(message.body);
       if (fleetUpdate.length === 0) {
@@ -63,7 +87,13 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
       setFleetTelemetry((previousFleetTelemetry) => {
         const nextFleetTelemetry = { ...previousFleetTelemetry };
         for (const point of fleetUpdate) {
-          nextFleetTelemetry[point.droneId] = point;
+          const previous = nextFleetTelemetry[point.droneId];
+          // Lite payloads omit battery and speed — keep values from the full stream if present.
+          nextFleetTelemetry[point.droneId] = {
+            ...point,
+            battery: point.battery ?? previous?.battery,
+            speed: point.speed ?? previous?.speed,
+          };
         }
         return nextFleetTelemetry;
       });
@@ -96,6 +126,7 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
         client.subscribe(`/topic/telemetry/${droneId}`, handleTelemetryMessage);
         if (freeMode && showAllAssets) {
           client.subscribe(FLEET_LITE_TOPIC, handleFleetTelemetryMessage);
+          client.subscribe(BATTERY_ALERT_TOPIC, handleBatteryAlertMessage);
         }
       },
 
@@ -123,5 +154,7 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
     };
   }, [droneId, freeMode, showAllAssets, authToken, logout]);
 
-  return { telemetry, fleetTelemetry, connected, history };
+  const batteryAlerts = Object.values(batteryAlertMap).sort((a, b) => a.battery - b.battery);
+
+  return { telemetry, fleetTelemetry, connected, history, batteryAlerts };
 }

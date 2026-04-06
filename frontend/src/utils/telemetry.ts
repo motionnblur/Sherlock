@@ -45,6 +45,22 @@ export function parseTelemetryListMessage(messageBody: string): TelemetryPoint[]
   }
 }
 
+export function parseBatteryAlertMessage(body: string): { droneId: string; battery: number } | null {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+    const candidate = parsed as Record<string, unknown>;
+    if (typeof candidate.droneId !== 'string' || !isFiniteNumber(candidate.battery)) {
+      return null;
+    }
+    return { droneId: candidate.droneId, battery: candidate.battery as number };
+  } catch {
+    return null;
+  }
+}
+
 export function parseLastKnownTelemetryMap(payload: unknown): TelemetryByDrone {
   if (!payload || typeof payload !== 'object') {
     return {};

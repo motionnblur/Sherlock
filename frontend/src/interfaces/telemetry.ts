@@ -12,3 +12,9 @@ export interface TelemetryPoint {
 }
 
 export type TelemetryByDrone = Record<DroneId, TelemetryPoint>;
+
+export interface LowBatteryAlert {
+  droneId: DroneId;
+  battery: number;
+  isCritical: boolean;
+}

@@ -41,7 +41,8 @@ src/
 │   ├── useLastKnownTelemetry.ts # One-shot bulk bootstrap from POST /api/telemetry/last-known
 │   ├── useLogin.ts              # Login form submission logic; calls POST /api/auth/login
 │   ├── useTelemetry.ts          # STOMP client; selected stream + bounded fleet summary; auto-logout on auth error
-│   └── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
+│   ├── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
+│   └── useBatteryAlerts — removed; battery alerts are now sourced from /topic/alerts/battery via useTelemetry
 ├── utils/
 │   ├── formatters.ts            # Shared UI formatting helpers for coordinates, UTC time, cardinal heading
 │   └── telemetry.ts             # Runtime parsing/validation helpers for external telemetry payloads
@@ -55,6 +56,7 @@ src/
     ├── LoginPage.tsx            # Full-screen operator authentication form (shown when unauthenticated)
     ├── MapComponent.tsx         # CesiumJS viewer shell, selected-drone entity/path, fleet point layer
     ├── SectionHeader.tsx        # Shared panel section divider/header component
+    ├── LowBatteryWindow.tsx     # Floating bottom-right panel; battery alerts in FREE MODE + SHOW ALL only
     ├── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
     ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, log (hidden when no drone selected)
     └── TelemetryPanel.tsx       # Left sidebar: lat/lon/alt/speed/battery (hidden when no drone selected)
@@ -141,7 +143,7 @@ Pattern for a section header inside a panel:
 `src/hooks/useTelemetry.ts` — the single source of truth for live data.
 
 ```ts
-const { telemetry, fleetTelemetry, connected, history } = useTelemetry(
+const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTelemetry(
   selectedDrone,
   freeMode,
   showAllAssets,
@@ -160,10 +162,11 @@ const { telemetry, fleetTelemetry, connected, history } = useTelemetry(
 | `fleetTelemetry`| `Record<string, TelemetryPoint>` | Latest fleet-lite points keyed by drone ID |
 | `connected`     | `boolean`                | STOMP link status                        |
 | `history`       | `TelemetryPoint[]`       | Last 150 selected-drone telemetry packets |
+| `batteryAlerts` | `LowBatteryAlert[]`      | Active low-battery alerts, sorted by battery ascending; sourced from `/topic/alerts/battery` (event-driven, emitted only on threshold crossing) |
 
 Subscription model:
 - Always subscribes to selected full stream: `/topic/telemetry/{droneId}`
-- In Free Mode + SHOW ASSET ALL, also subscribes to `/topic/telemetry/lite/fleet`
+- In Free Mode + SHOW ASSET ALL, also subscribes to `/topic/telemetry/lite/fleet` and `/topic/alerts/battery`
 - Never opens one STOMP subscription per drone in all-assets mode
 
 Incoming STOMP payloads are parsed through `src/utils/telemetry.ts`. Malformed payloads are ignored rather than pushed directly into React state.

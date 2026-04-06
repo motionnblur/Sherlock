@@ -1,8 +1,9 @@
-import type { TelemetryByDrone, TelemetryPoint } from './telemetry';
+import type { LowBatteryAlert, TelemetryByDrone, TelemetryPoint } from './telemetry';
 
 export interface UseTelemetryResult {
   telemetry: TelemetryPoint | null;
   fleetTelemetry: TelemetryByDrone;
   connected: boolean;
   history: TelemetryPoint[];
+  batteryAlerts: LowBatteryAlert[];
 }

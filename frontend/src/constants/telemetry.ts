@@ -5,6 +5,7 @@ const MIN_DRONE_ID_WIDTH = 2;
 
 export const TOTAL_DRONE_COUNT = DEFAULT_FLEET_SIZE;
 export const FLEET_LITE_TOPIC = '/topic/telemetry/lite/fleet';
+export const BATTERY_ALERT_TOPIC = '/topic/alerts/battery';
 
 function formatDroneId(index: number, fleetSize: number): DroneId {
   const idWidth = Math.max(MIN_DRONE_ID_WIDTH, String(fleetSize).length);
@@ -16,6 +17,8 @@ export const DRONE_IDS: DroneId[] = Array.from(
   (_, index) => formatDroneId(index + 1, TOTAL_DRONE_COUNT),
 );
 
+export const BATTERY_WARN_THRESHOLD = 20;
+export const BATTERY_CRITICAL_THRESHOLD = 5;
 export const PACKET_RATE_LABEL = '2 Hz';
 export const TELEMETRY_HISTORY_LIMIT = 150;
 export const FLIGHT_PATH_POINT_LIMIT = 200;

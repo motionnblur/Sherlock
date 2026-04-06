@@ -1,5 +1,6 @@
 package com.sherlock.groundcontrol.service;
 
+import com.sherlock.groundcontrol.dto.BatteryAlertDTO;
 import com.sherlock.groundcontrol.dto.TelemetryDTO;
 import com.sherlock.groundcontrol.dto.TelemetryLiteDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -10,7 +11,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 /**
@@ -25,6 +28,9 @@ public class TelemetrySimulator {
     private static final int MIN_DRONE_ID_WIDTH = 2;
     private static final String TELEMETRY_TOPIC_PREFIX = "/topic/telemetry/";
     private static final String FLEET_LITE_TOPIC = "/topic/telemetry/lite/fleet";
+    private static final String BATTERY_ALERT_TOPIC = "/topic/alerts/battery";
+    private static final double BATTERY_WARN_THRESHOLD = 20.0;
+    private static final double BATTERY_CRITICAL_THRESHOLD = 5.0;
     private static final double EARTH_RADIUS_KM = 6371.0;
     private static final double BASE_LATITUDE = 37.9838;
     private static final double BASE_LONGITUDE = 23.7275;
@@ -34,6 +40,7 @@ public class TelemetrySimulator {
     private final TelemetryService telemetryService;
     private final List<DroneState> fleet;
     private final int droneIdWidth;
+    private final Map<String, BatteryAlertLevel> batteryAlertStates;
 
     public TelemetrySimulator(
             SimpMessagingTemplate messagingTemplate,
@@ -45,6 +52,10 @@ public class TelemetrySimulator {
         int fleetSize = Math.max(1, configuredFleetSize);
         this.droneIdWidth = Math.max(MIN_DRONE_ID_WIDTH, String.valueOf(fleetSize).length());
         this.fleet = initializeFleet(fleetSize);
+        this.batteryAlertStates = new HashMap<>(fleetSize * 2);
+        for (DroneState state : this.fleet) {
+            batteryAlertStates.put(state.droneId, BatteryAlertLevel.NORMAL);
+        }
     }
 
     @Scheduled(fixedRate = TELEMETRY_INTERVAL_MS)
@@ -69,6 +80,7 @@ public class TelemetrySimulator {
 
             telemetryBatch.add(dto);
             messagingTemplate.convertAndSend(TELEMETRY_TOPIC_PREFIX + state.droneId, dto);
+            emitBatteryAlertIfStateChanged(dto.getDroneId(), dto.getBattery());
 
             TelemetryLiteDTO liteDto = TelemetryLiteDTO.builder()
                     .droneId(dto.getDroneId())
@@ -129,6 +141,27 @@ public class TelemetrySimulator {
     private double roundTo(double value, int decimals) {
         double factor = Math.pow(10, decimals);
         return Math.round(value * factor) / factor;
+    }
+
+    private void emitBatteryAlertIfStateChanged(String droneId, double battery) {
+        BatteryAlertLevel current = battery < BATTERY_CRITICAL_THRESHOLD
+                ? BatteryAlertLevel.CRITICAL
+                : battery < BATTERY_WARN_THRESHOLD
+                        ? BatteryAlertLevel.WARN
+                        : BatteryAlertLevel.NORMAL;
+
+        BatteryAlertLevel previous = batteryAlertStates.put(droneId, current);
+        if (current != previous) {
+            messagingTemplate.convertAndSend(BATTERY_ALERT_TOPIC,
+                    BatteryAlertDTO.builder()
+                            .droneId(droneId)
+                            .battery(battery)
+                            .build());
+        }
+    }
+
+    private enum BatteryAlertLevel {
+        NORMAL, WARN, CRITICAL
     }
 
     private static class DroneState {

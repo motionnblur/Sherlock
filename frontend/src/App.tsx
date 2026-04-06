@@ -16,6 +16,7 @@ import StatusBar from './components/StatusBar';
 import LiveVideoWindow from './components/LiveVideoWindow';
 import LoginPage from './components/LoginPage';
 import AssetSelectionOverlay from './components/AssetSelectionOverlay';
+import LowBatteryWindow from './components/LowBatteryWindow';
 import type { DroneId } from './interfaces/telemetry';
 
 const AUTH_LOGOUT_PATH = '/api/auth/logout';
@@ -29,7 +30,7 @@ export default function App() {
   const [isLiveVideoOpen, setIsLiveVideoOpen] = useState(false);
   const [showAllAssets, setShowAllAssets] = useState(false);
 
-  const { telemetry, fleetTelemetry, connected, history } = useTelemetry(selectedDrone, freeMode, showAllAssets);
+  const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTelemetry(selectedDrone, freeMode, showAllAssets);
   const lastKnownTelemetry = useLastKnownTelemetry(DRONE_IDS, selectedDrone !== null);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
 
@@ -134,6 +135,10 @@ export default function App() {
                   fetchError={fetchError}
                   onClose={handleCloseLiveVideo}
                 />
+              )}
+
+              {freeMode && showAllAssets && batteryAlerts.length > 0 && (
+                <LowBatteryWindow alerts={batteryAlerts} />
               )}
             </>
           ) : (

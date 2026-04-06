@@ -38,6 +38,7 @@ com.sherlock.groundcontrol
 │   ├── LastKnownTelemetryDTO.java     # Compact last-known payload used by bulk bootstrap
 │   ├── LoginRequestDTO.java        # Wire: { username, password }
 │   ├── LoginResponseDTO.java       # Wire: { token, username, expiresAt }
+│   ├── BatteryAlertDTO.java        # Wire object: { droneId, battery } — emitted on threshold crossing
 │   ├── TelemetryDTO.java           # Wire object (no JPA annotations)
 │   ├── TelemetryLiteDTO.java       # Minimal wire object for Free Mode
 │   └── StreamUrlDTO.java           # Wire object: { streamUrl } for live video
@@ -66,7 +67,7 @@ com.sherlock.groundcontrol
     ├── DevDataInitializer.java      # ApplicationRunner — creates seed operator when DEV_SEED_USER/DEV_SEED_PASSWORD are set
     ├── DroneStreamService.java      # Resolves HLS stream URL from MEDIAMTX_HLS_BASE_URL
     ├── TelemetryService.java        # persistBatch() + history lookup + bounded last-known cache
-    └── TelemetrySimulator.java      # @Scheduled 500ms fleet tick, per-drone full stream + fleet-lite summary
+    └── TelemetrySimulator.java      # @Scheduled 500ms fleet tick, per-drone full stream + fleet-lite summary + event-driven battery alerts
 ```
 
 **Rule:** never let a layer reach past its neighbour.  
