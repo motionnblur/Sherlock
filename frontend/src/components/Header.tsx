@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { NAVIGATION_DIRECTIONS, NAVIGATION_DIRECTION_ALL } from '../constants/navigation';
+import { NAVIGATION_DIRECTION_ALL } from '../constants/navigation';
 import type { HeaderProps } from '../interfaces/components';
+import type { NavigationDirection } from '../interfaces/telemetry';
+
+// Compass rose layout: row-major 3×3 grid, null = empty center cell
+const COMPASS_ROSE: (NavigationDirection | null)[][] = [
+  ['NW', 'N',  'NE'],
+  ['W',  null, 'E' ],
+  ['SW', 'S',  'SE'],
+];
 
 function UtcClock() {
   const [time, setTime] = useState('');
@@ -197,21 +205,38 @@ export default function Header({
                             </button>
 
                             {isNavigationFilterOpen && (
-                              <div className="grid grid-cols-3 gap-1 pt-1">
-                                {NAVIGATION_DIRECTIONS.map((direction) => (
-                                  <button
-                                    key={direction}
-                                    type="button"
-                                    onClick={() => onSelectNavigationDirection(direction)}
-                                    className={`text-[9px] tracking-widest border px-1 py-1 transition-colors ${
-                                      selectedNavigationDirection === direction
-                                        ? 'text-neon border-neon bg-elevated'
-                                        : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
-                                    }`}
-                                  >
-                                    {direction}
-                                  </button>
-                                ))}
+                              <div className="flex flex-col gap-1 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => onSelectNavigationDirection(NAVIGATION_DIRECTION_ALL)}
+                                  className={`w-full text-[9px] tracking-widest border px-1 py-1 transition-colors ${
+                                    selectedNavigationDirection === NAVIGATION_DIRECTION_ALL
+                                      ? 'text-neon border-neon bg-elevated'
+                                      : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
+                                  }`}
+                                >
+                                  ALL
+                                </button>
+                                <div className="grid grid-cols-3 gap-1">
+                                  {COMPASS_ROSE.flat().map((direction, index) =>
+                                    direction ? (
+                                      <button
+                                        key={direction}
+                                        type="button"
+                                        onClick={() => onSelectNavigationDirection(direction)}
+                                        className={`text-[9px] tracking-widest border px-1 py-1 transition-colors ${
+                                          selectedNavigationDirection === direction
+                                            ? 'text-neon border-neon bg-elevated'
+                                            : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
+                                        }`}
+                                      >
+                                        {direction}
+                                      </button>
+                                    ) : (
+                                      <div key={index} />
+                                    )
+                                  )}
+                                </div>
                               </div>
                             )}
                           </>
