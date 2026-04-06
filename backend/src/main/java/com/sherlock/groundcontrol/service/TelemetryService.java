@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.time.Instant;
 
 @Service
 public class TelemetryService {
@@ -109,10 +110,10 @@ public class TelemetryService {
                 .latitude(dto.getLatitude())
                 .longitude(dto.getLongitude())
                 .altitude(dto.getAltitude())
-                .speed(dto.getSpeed())
-                .battery(dto.getBattery())
-                .heading(dto.getHeading())
-                .timestamp(dto.getTimestamp())
+                .speed(orDefault(dto.getSpeed(), 0d))
+                .battery(orDefault(dto.getBattery(), 0d))
+                .heading(orDefault(dto.getHeading(), 0d))
+                .timestamp(dto.getTimestamp() != null ? dto.getTimestamp() : Instant.now())
                 .roll(dto.getRoll())
                 .pitch(dto.getPitch())
                 .hdop(dto.getHdop())
@@ -164,5 +165,9 @@ public class TelemetryService {
                 .isArmed(entity.getArmed())
                 .flightMode(entity.getFlightMode())
                 .build();
+    }
+
+    private static double orDefault(Double value, double fallback) {
+        return value != null ? value : fallback;
     }
 }

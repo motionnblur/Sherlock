@@ -1,10 +1,15 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useTelemetry } from './hooks/useTelemetry';
 import { useStreamUrl } from './hooks/useStreamUrl';
 import { useLastKnownTelemetry } from './hooks/useLastKnownTelemetry';
 import { useCommand } from './hooks/useCommand';
 import { useDroneRegistry } from './hooks/useDroneRegistry';
+import {
+  DRIVER_DEFAULT_ALTITUDE_METERS,
+  DRIVER_REACHED_HORIZONTAL_METERS,
+  DRIVER_REACHED_VERTICAL_METERS,
+} from './constants/driver';
 import { NAVIGATION_DIRECTION_ALL } from './constants/navigation';
 import {
   getNextPerformanceStage,
@@ -19,7 +24,8 @@ import LiveVideoWindow from './components/LiveVideoWindow';
 import LoginPage from './components/LoginPage';
 import AssetSelectionOverlay from './components/AssetSelectionOverlay';
 import LowBatteryWindow from './components/LowBatteryWindow';
-import type { DroneId, NavigationDirection } from './interfaces/telemetry';
+import type { DriverWaypoint, DroneId, NavigationDirection } from './interfaces/telemetry';
+import { horizontalDistanceMeters } from './utils/geo';
 import { matchesNavigationDirection } from './utils/navigation';
 
 const AUTH_LOGOUT_PATH = '/api/auth/logout';
@@ -34,15 +40,25 @@ export default function App() {
   const [showAllAssets, setShowAllAssets] = useState(false);
   const [selectedNavigationDirection, setSelectedNavigationDirection] =
     useState<NavigationDirection>(NAVIGATION_DIRECTION_ALL);
+  const [isDriverModeEnabled, setIsDriverModeEnabled] = useState(false);
+  const [driverWaypoints, setDriverWaypoints] = useState<DriverWaypoint[]>([]);
+  const [isDriverDispatching, setIsDriverDispatching] = useState(false);
+  const driverWaypointIdRef = useRef(1);
 
   const { droneIds } = useDroneRegistry(authToken);
   const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTelemetry(selectedDrone, freeMode, showAllAssets);
   const lastKnownTelemetry = useLastKnownTelemetry(droneIds, selectedDrone !== null);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
   const { sendCommand, isSending: isCommandSending, commandError } = useCommand(selectedDrone, authToken);
+  const isDriverModeAvailable = Boolean(selectedDrone?.startsWith('MAVLINK-')) && !freeMode;
 
   const resetNavigationDirection = useCallback(() => {
     setSelectedNavigationDirection(NAVIGATION_DIRECTION_ALL);
+  }, []);
+
+  const clearDriverRoute = useCallback(() => {
+    setDriverWaypoints([]);
+    setIsDriverDispatching(false);
   }, []);
 
   const handleToggleLiveVideo = useCallback(() => {
@@ -69,13 +85,15 @@ export default function App() {
       if (nextFreeMode) {
         setIsLiveVideoOpen(false);
         clearStreamUrl();
+        setIsDriverModeEnabled(false);
+        clearDriverRoute();
       } else {
         setShowAllAssets(false);
         resetNavigationDirection();
       }
       return nextFreeMode;
     });
-  }, [clearStreamUrl, resetNavigationDirection]);
+  }, [clearDriverRoute, clearStreamUrl, resetNavigationDirection]);
 
   const handleToggleShowAllAssets = useCallback(() => {
     setShowAllAssets((current) => {
@@ -90,17 +108,51 @@ export default function App() {
   const handleActivateDrone = useCallback((id: DroneId) => {
     setSelectedDrone(id);
     setFreeMode(false);
+    setIsDriverModeEnabled(false);
+    clearDriverRoute();
     resetNavigationDirection();
-  }, [resetNavigationDirection]);
+  }, [clearDriverRoute, resetNavigationDirection]);
 
   const handleDeselect = useCallback(() => {
     setSelectedDrone(null);
     setFreeMode(false);
+    setIsDriverModeEnabled(false);
     setIsLiveVideoOpen(false);
     clearStreamUrl();
     setShowAllAssets(false);
+    clearDriverRoute();
     resetNavigationDirection();
-  }, [clearStreamUrl, resetNavigationDirection]);
+  }, [clearDriverRoute, clearStreamUrl, resetNavigationDirection]);
+
+  const handleToggleDriverMode = useCallback(() => {
+    if (!isDriverModeAvailable) {
+      return;
+    }
+    setIsDriverModeEnabled((currentMode) => {
+      const nextMode = !currentMode;
+      if (!nextMode) {
+        clearDriverRoute();
+      }
+      return nextMode;
+    });
+  }, [clearDriverRoute, isDriverModeAvailable]);
+
+  const handleAddDriverWaypoint = useCallback((latitude: number, longitude: number) => {
+    if (!isDriverModeEnabled || !selectedDrone || freeMode) {
+      return;
+    }
+    const baseAltitude = DRIVER_DEFAULT_ALTITUDE_METERS;
+
+    const waypoint: DriverWaypoint = {
+      id: driverWaypointIdRef.current,
+      latitude,
+      longitude,
+      altitude: baseAltitude,
+      status: 'queued',
+    };
+    driverWaypointIdRef.current += 1;
+    setDriverWaypoints((currentRoute) => [...currentRoute, waypoint]);
+  }, [freeMode, isDriverModeEnabled, selectedDrone]);
 
   const filteredBatteryAlerts = useMemo(() => {
     if (!freeMode || !showAllAssets) {
@@ -135,6 +187,83 @@ export default function App() {
     }
     logout();
   }, [authToken, logout]);
+
+  useEffect(() => {
+    if (!isDriverModeEnabled || !isDriverModeAvailable || isDriverDispatching || isCommandSending) {
+      return;
+    }
+    if (telemetry?.isArmed !== true) {
+      return;
+    }
+    if (driverWaypoints.some((waypoint) => waypoint.status === 'active')) {
+      return;
+    }
+    const queuedWaypoint = driverWaypoints.find((waypoint) => waypoint.status === 'queued');
+    if (!queuedWaypoint) {
+      return;
+    }
+
+    let isCancelled = false;
+    const dispatchGoto = async () => {
+      setIsDriverDispatching(true);
+      const wasSent = await sendCommand('GOTO', {
+        latitude: queuedWaypoint.latitude,
+        longitude: queuedWaypoint.longitude,
+        altitude: queuedWaypoint.altitude,
+      });
+      if (isCancelled) {
+        return;
+      }
+      setDriverWaypoints((currentRoute) =>
+        currentRoute.map((waypoint) => {
+          if (waypoint.id !== queuedWaypoint.id) {
+            return waypoint;
+          }
+          return { ...waypoint, status: wasSent ? 'active' : 'failed' };
+        }),
+      );
+      setIsDriverDispatching(false);
+    };
+
+    void dispatchGoto();
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    driverWaypoints,
+    isCommandSending,
+    isDriverDispatching,
+    isDriverModeAvailable,
+    isDriverModeEnabled,
+    sendCommand,
+    telemetry,
+  ]);
+
+  useEffect(() => {
+    if (!isDriverModeEnabled || !isDriverModeAvailable || !telemetry) {
+      return;
+    }
+    const activeWaypoint = driverWaypoints.find((waypoint) => waypoint.status === 'active');
+    if (!activeWaypoint) {
+      return;
+    }
+    const horizontalDistance = horizontalDistanceMeters(
+      telemetry.latitude,
+      telemetry.longitude,
+      activeWaypoint.latitude,
+      activeWaypoint.longitude,
+    );
+    const verticalDistance = Math.abs(telemetry.altitude - activeWaypoint.altitude);
+
+    if (horizontalDistance > DRIVER_REACHED_HORIZONTAL_METERS || verticalDistance > DRIVER_REACHED_VERTICAL_METERS) {
+      return;
+    }
+    setDriverWaypoints((currentRoute) =>
+      currentRoute.map((waypoint) =>
+        waypoint.id === activeWaypoint.id ? { ...waypoint, status: 'reached' } : waypoint,
+      ),
+    );
+  }, [driverWaypoints, isDriverModeAvailable, isDriverModeEnabled, telemetry]);
 
   if (!authToken) {
     return <LoginPage />;
@@ -173,6 +302,9 @@ export default function App() {
                 freeMode={freeMode}
                 showAllAssets={showAllAssets}
                 selectedNavigationDirection={selectedNavigationDirection}
+                isDriverModeEnabled={isDriverModeEnabled}
+                driverWaypoints={driverWaypoints}
+                onAddDriverWaypoint={handleAddDriverWaypoint}
                 onSelectDrone={handleActivateDrone}
               />
 
@@ -202,6 +334,10 @@ export default function App() {
             onSendCommand={sendCommand}
             isCommandSending={isCommandSending}
             commandError={commandError}
+            isDriverModeEnabled={isDriverModeEnabled}
+            isDriverModeAvailable={isDriverModeAvailable}
+            onToggleDriverMode={handleToggleDriverMode}
+            driverWaypointCount={driverWaypoints.length}
           />
         )}
       </div>

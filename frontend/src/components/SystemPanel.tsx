@@ -130,7 +130,18 @@ function CommandButton({ label, commandType, isSending, colorClass, onSend }: Co
   );
 }
 
-export default function SystemPanel({ telemetry: t, history, connected, onSendCommand, isCommandSending, commandError }: SystemPanelProps) {
+export default function SystemPanel({
+  telemetry: t,
+  history,
+  connected,
+  onSendCommand,
+  isCommandSending,
+  commandError,
+  isDriverModeEnabled,
+  isDriverModeAvailable,
+  onToggleDriverMode,
+  driverWaypointCount,
+}: SystemPanelProps) {
   const recentLog = [...history].reverse().slice(0, 8);
 
   return (
@@ -233,6 +244,24 @@ export default function SystemPanel({ telemetry: t, history, connected, onSendCo
               onSend={onSendCommand}
             />
           </div>
+          <button
+            className={`w-full py-1 text-[9px] font-bold tracking-widest border transition-colors ${
+              isDriverModeEnabled
+                ? 'border-neon text-neon bg-elevated'
+                : isDriverModeAvailable
+                  ? 'border-line text-muted hover:bg-elevated'
+                  : 'border-line text-muted opacity-50 cursor-not-allowed'
+            }`}
+            onClick={onToggleDriverMode}
+            disabled={isCommandSending || !isDriverModeAvailable}
+          >
+            DRIVER MODE
+          </button>
+          {isDriverModeEnabled && (
+            <div className="text-[9px] text-caution tracking-widest">
+              L-CLICK MAP TO ADD WAYPOINTS ({driverWaypointCount}) — AIRBORNE REQUIRED
+            </div>
+          )}
           {commandError && (
             <div className="text-[9px] text-danger tracking-widest pt-0.5">
               ⚠ {commandError}

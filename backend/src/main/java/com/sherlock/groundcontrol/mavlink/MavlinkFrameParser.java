@@ -28,6 +28,10 @@ public final class MavlinkFrameParser {
 
     // CRC extra bytes per message ID (MAGIC_EXTRA from MAVLink spec)
     private static final int CRCX_COMMAND_LONG = 152;
+    private static final int CRCX_SET_POSITION_TARGET_GLOBAL_INT = 5;
+
+    private static final int MAVLINK_MSG_ID_COMMAND_LONG = 76;
+    private static final int MAVLINK_MSG_ID_SET_POSITION_TARGET_GLOBAL_INT = 86;
 
     private MavlinkFrameParser() {}
 
@@ -124,7 +128,7 @@ public final class MavlinkFrameParser {
         packet[2] = (byte) (seqNum & 0xFF);
         packet[3] = (byte) GCS_SYSTEM_ID;
         packet[4] = (byte) GCS_COMPONENT_ID;
-        packet[5] = 76; // COMMAND_LONG message ID
+        packet[5] = (byte) MAVLINK_MSG_ID_COMMAND_LONG;
 
         ByteBuffer buf = ByteBuffer.wrap(packet, V1_HEADER_LENGTH, payloadLen)
                                    .order(ByteOrder.LITTLE_ENDIAN);
@@ -140,6 +144,68 @@ public final class MavlinkFrameParser {
         packet[V1_HEADER_LENGTH + payloadLen]     = (byte) (crc & 0xFF);
         packet[V1_HEADER_LENGTH + payloadLen + 1] = (byte) ((crc >> 8) & 0xFF);
 
+        return packet;
+    }
+
+    /**
+     * Builds a MAVLink v1 SET_POSITION_TARGET_GLOBAL_INT packet (message ID 86)
+     * configured for position-only control.
+     *
+     * @param targetSysId destination system ID
+     * @param latitudeDeg target latitude in decimal degrees
+     * @param longitudeDeg target longitude in decimal degrees
+     * @param altitudeRelativeMeters target altitude relative to home in meters
+     * @param seqNum packet sequence number (caller manages counter)
+     */
+    public static byte[] buildSetPositionTargetGlobalInt(
+            int targetSysId,
+            double latitudeDeg,
+            double longitudeDeg,
+            double altitudeRelativeMeters,
+            int seqNum
+    ) {
+        // Payload fields (53 bytes):
+        // time_boot_ms, lat_int, lon_int, alt, vx, vy, vz, afx, afy, afz, yaw, yaw_rate,
+        // type_mask, target_system, target_component, coordinate_frame
+        final int payloadLen = 53;
+        final int totalLen = V1_HEADER_LENGTH + payloadLen + CRC_LENGTH;
+        final int typeMaskPositionOnly = (1 << 3) | (1 << 4) | (1 << 5)
+                | (1 << 6) | (1 << 7) | (1 << 8) | (1 << 10) | (1 << 11);
+        final int mavFrameGlobalRelativeAltInt = 6;
+
+        int latitudeInt = (int) Math.round(latitudeDeg * 1e7);
+        int longitudeInt = (int) Math.round(longitudeDeg * 1e7);
+
+        byte[] packet = new byte[totalLen];
+        packet[0] = (byte) MAVLINK_V1_START;
+        packet[1] = (byte) payloadLen;
+        packet[2] = (byte) (seqNum & 0xFF);
+        packet[3] = (byte) GCS_SYSTEM_ID;
+        packet[4] = (byte) GCS_COMPONENT_ID;
+        packet[5] = (byte) MAVLINK_MSG_ID_SET_POSITION_TARGET_GLOBAL_INT;
+
+        ByteBuffer buf = ByteBuffer.wrap(packet, V1_HEADER_LENGTH, payloadLen)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        buf.putInt(0); // time_boot_ms optional
+        buf.putInt(latitudeInt);
+        buf.putInt(longitudeInt);
+        buf.putFloat((float) altitudeRelativeMeters);
+        buf.putFloat(0f); // vx
+        buf.putFloat(0f); // vy
+        buf.putFloat(0f); // vz
+        buf.putFloat(0f); // afx
+        buf.putFloat(0f); // afy
+        buf.putFloat(0f); // afz
+        buf.putFloat(0f); // yaw
+        buf.putFloat(0f); // yaw_rate
+        buf.putShort((short) typeMaskPositionOnly);
+        buf.put((byte) targetSysId);
+        buf.put((byte) 1); // target_component = autopilot
+        buf.put((byte) mavFrameGlobalRelativeAltInt);
+
+        int crc = computeX25Crc(packet, 1, V1_HEADER_LENGTH - 1 + payloadLen, CRCX_SET_POSITION_TARGET_GLOBAL_INT);
+        packet[V1_HEADER_LENGTH + payloadLen] = (byte) (crc & 0xFF);
+        packet[V1_HEADER_LENGTH + payloadLen + 1] = (byte) ((crc >> 8) & 0xFF);
         return packet;
     }
 
@@ -174,6 +240,7 @@ public final class MavlinkFrameParser {
             case 30  -> 39;   // ATTITUDE
             case 33  -> 104;  // GLOBAL_POSITION_INT
             case 76  -> 152;  // COMMAND_LONG
+            case 86  -> 5;    // SET_POSITION_TARGET_GLOBAL_INT
             case 109 -> 185;  // RADIO_STATUS
             default  -> -1;   // unknown — unsupported
         };

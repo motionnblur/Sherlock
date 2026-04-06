@@ -26,6 +26,7 @@ src/
 ├── main.tsx                     # ReactDOM.createRoot entry point; wraps tree in <AuthProvider>
 ├── index.css                    # Tailwind directives + Cesium widget overrides
 ├── constants/
+│   ├── driver.ts                # Driver-mode navigation thresholds/defaults
 │   ├── performance.ts           # Performance-stage model and stage-cycling helper
 │   └── telemetry.ts             # Shared frontend domain constants (asset id, history/path limits)
 ├── contexts/
@@ -38,7 +39,7 @@ src/
 │   └── index.ts                 # Barrel exports
 ├── hooks/
 │   ├── useAuth.ts               # Consumes AuthContext; throws if used outside <AuthProvider>
-│   ├── useCommand.ts            # POST /api/drones/{id}/command — RTH/ARM/DISARM/TAKEOFF; returns sendCommand, isSending, commandError; 401 → logout
+│   ├── useCommand.ts            # POST /api/drones/{id}/command — RTH/ARM/DISARM/TAKEOFF/GOTO; returns sendCommand(..., options), isSending, commandError; 401 → logout
 │   ├── useLastKnownTelemetry.ts # One-shot bulk bootstrap from POST /api/telemetry/last-known
 │   ├── useLogin.ts              # Login form submission logic; calls POST /api/auth/login
 │   ├── useTelemetry.ts          # STOMP client; selected stream + bounded fleet summary; auto-logout on auth error
@@ -46,6 +47,7 @@ src/
 │   └── useDroneRegistry.ts      # Polls GET /api/drones every 30s; 401 → logout
 ├── utils/
 │   ├── formatters.ts            # Shared UI formatting helpers for coordinates, UTC time, cardinal heading
+│   ├── geo.ts                   # Haversine distance helpers used by driver-mode waypoint tracking
 │   └── telemetry.ts             # Runtime parsing/validation helpers; extended fields are optional-passthrough
 ├── configs/
 │   └── map-settings.json        # Map-only dimming config for Cesium imagery
@@ -56,11 +58,11 @@ src/
     ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings
     ├── LiveVideoWindow.tsx      # Floating 240×240 HLS video window; uses hls.js; mounted inside <main> over the map
     ├── LoginPage.tsx            # Full-screen operator authentication form (shown when unauthenticated)
-    ├── MapComponent.tsx         # CesiumJS viewer shell, selected-drone entity/path, fleet point layer
+    ├── MapComponent.tsx         # CesiumJS viewer shell + driver-mode route drawing + left-click waypoint capture
     ├── SectionHeader.tsx        # Shared panel section divider/header component
     ├── LowBatteryWindow.tsx     # Floating bottom-right panel; battery alerts in FREE MODE + SHOW ALL only
     ├── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
-    ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, datalink (RSSI/arm/mode), C2 command buttons
+    ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, datalink (RSSI/arm/mode), C2 command buttons + DRIVER MODE toggle
     └── TelemetryPanel.tsx       # Left sidebar: position/kinematics/battery + attitude indicator + GPS quality
     └── map/
         └── cesiumScene.ts       # Cesium viewer + entity/primitive helper functions/constants
@@ -172,8 +174,8 @@ const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTele
 
 ```ts
 const { sendCommand, isSending, commandError } = useCommand(selectedDrone, authToken);
-// sendCommand('RTH' | 'ARM' | 'DISARM' | 'TAKEOFF')
-// commandError: 'DRONE NOT CONNECTED' | 'TAKEOFF NOT READY' | 'MAVLINK DISABLED' | 'CMD FAILED (xxx)' | null
+// sendCommand('RTH' | 'ARM' | 'DISARM' | 'TAKEOFF' | 'GOTO', { latitude?, longitude?, altitude? })
+// commandError: 'DRONE NOT CONNECTED' | 'VEHICLE NOT READY' | 'INVALID COMMAND' | 'MAVLINK DISABLED' | 'CMD FAILED (xxx)' | null
 ```
 
 When `app.mavlink.enabled=false` on the server, `sendCommand` will set `commandError = 'MAVLINK DISABLED'` without crashing. The hook is always instantiated — it is safe to call even on simulated drones (server returns 503).
@@ -236,7 +238,9 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 
 `src/components/MapComponent.tsx` owns the Cesium `Viewer` instance, selected-drone entity/path, fleet point layer, and map UI overlays.
 
-**Props:** `{ telemetry, fleetTelemetry, lastKnownTelemetry, performanceStage, selectedDrone, freeMode, showAllAssets, selectedNavigationDirection, onSelectDrone }`
+**Props:** `{ telemetry, fleetTelemetry, lastKnownTelemetry, performanceStage, selectedDrone, freeMode, showAllAssets, selectedNavigationDirection, isDriverModeEnabled, driverWaypoints, onAddDriverWaypoint, onSelectDrone }`
+
+**Driver Mode:** when enabled from `SystemPanel`, left-click on the map appends waypoints to a visible route polyline. Waypoints are sent sequentially as backend `GOTO` commands; the next point is dispatched only after the active point is reached within configured horizontal/vertical thresholds.
 
 **Imagery:** `UrlTemplateImageryProvider` (OpenStreetMap) is used by default — no Cesium Ion token required. If `VITE_CESIUM_TOKEN` is set in `.env`, Ion features (World Terrain, premium imagery) unlock automatically.
 

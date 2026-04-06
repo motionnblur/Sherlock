@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { PerformanceStage } from '../constants/performance';
 import type { CommandType } from '../hooks/useCommand';
-import type { DroneId, LowBatteryAlert, NavigationDirection, TelemetryByDrone, TelemetryPoint } from './telemetry';
+import type { DriverWaypoint, DroneId, LowBatteryAlert, NavigationDirection, TelemetryByDrone, TelemetryPoint } from './telemetry';
 
 export interface HeaderProps {
   connected: boolean;
@@ -39,6 +39,9 @@ export interface MapComponentProps {
   freeMode: boolean;
   showAllAssets: boolean;
   selectedNavigationDirection: NavigationDirection;
+  isDriverModeEnabled: boolean;
+  driverWaypoints: DriverWaypoint[];
+  onAddDriverWaypoint: (latitude: number, longitude: number) => void;
   onSelectDrone: (id: DroneId) => void;
 }
 
@@ -61,9 +64,13 @@ export interface SystemPanelProps {
   telemetry: TelemetryPoint | null;
   history: TelemetryPoint[];
   connected: boolean;
-  onSendCommand: (commandType: CommandType) => Promise<void>;
+  onSendCommand: (commandType: CommandType) => Promise<boolean>;
   isCommandSending: boolean;
   commandError: string | null;
+  isDriverModeEnabled: boolean;
+  isDriverModeAvailable: boolean;
+  onToggleDriverMode: () => void;
+  driverWaypointCount: number;
 }
 
 export interface AttitudeIndicatorProps {

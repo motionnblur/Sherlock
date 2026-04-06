@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { FLIGHT_PATH_POINT_LIMIT } from '../constants/telemetry';
 import { NAVIGATION_DIRECTION_ALL } from '../constants/navigation';
 import { PERFORMANCE_STAGE_NORMAL } from '../constants/performance';
 import type { MapComponentProps } from '../interfaces/components';
-import type { DroneId, TelemetryPoint } from '../interfaces/telemetry';
+import type { DriverWaypoint, DroneId, TelemetryPoint } from '../interfaces/telemetry';
 import { formatFixed } from '../utils/formatters';
 import { matchesNavigationDirection } from '../utils/navigation';
 import FreeModeAssetWindow from './FreeModeAssetWindow';
@@ -75,6 +75,9 @@ export default function MapComponent({
   freeMode,
   showAllAssets,
   selectedNavigationDirection,
+  isDriverModeEnabled,
+  driverWaypoints,
+  onAddDriverWaypoint,
   onSelectDrone,
 }: MapComponentProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -92,6 +95,8 @@ export default function MapComponent({
   const fleetPolylineCollectionRef = useRef<Cesium.PolylineCollection | null>(null);
   const fleetLabelCollectionRef = useRef<Cesium.LabelCollection | null>(null);
   const fleetAssetMapRef = useRef<Map<DroneId, FleetAssetPrimitives>>(new Map());
+  const driverRouteRef = useRef<Cesium.Entity | null>(null);
+  const driverWaypointEntitiesRef = useRef<Cesium.Entity[]>([]);
 
   const [viewer, setViewer] = useState<Cesium.Viewer | null>(null);
   const [isMapDimmed, setIsMapDimmed] = useState(false);
@@ -134,11 +139,19 @@ export default function MapComponent({
       if (fleetLabelCollectionRef.current) {
         viewerRef.current.scene.primitives.remove(fleetLabelCollectionRef.current);
       }
+      if (driverRouteRef.current) {
+        viewerRef.current.entities.remove(driverRouteRef.current);
+      }
+      for (const entity of driverWaypointEntitiesRef.current) {
+        viewerRef.current.entities.remove(entity);
+      }
       fleetPointCollectionRef.current = null;
       fleetBillboardCollectionRef.current = null;
       fleetPolylineCollectionRef.current = null;
       fleetLabelCollectionRef.current = null;
       fleetAssetMapRef.current.clear();
+      driverRouteRef.current = null;
+      driverWaypointEntitiesRef.current = [];
       viewerRef.current.destroy();
       viewerRef.current = null;
       setViewer(null);
@@ -195,6 +208,7 @@ export default function MapComponent({
     }
 
     resetSelectedEntities(viewer, selectedDroneRef, selectedPathRef, pathPositionsRef);
+    clearDriverRouteEntities(viewer, driverRouteRef, driverWaypointEntitiesRef);
     initialFlyDoneRef.current = false;
     initialCenteringRef.current = false;
     lastPathTimestampRef.current = null;
@@ -262,6 +276,89 @@ export default function MapComponent({
     if (!viewer || viewer.isDestroyed()) {
       return;
     }
+    clearDriverRouteEntities(viewer, driverRouteRef, driverWaypointEntitiesRef);
+    if (!selectedDrone || freeMode || driverWaypoints.length === 0) {
+      viewer.scene.requestRender();
+      return;
+    }
+
+    const routePositions = driverWaypoints.map((waypoint) =>
+      Cesium.Cartesian3.fromDegrees(waypoint.longitude, waypoint.latitude, waypoint.altitude),
+    );
+
+    driverRouteRef.current = viewer.entities.add({
+      name: `driver-route-${selectedDrone}`,
+      polyline: {
+        positions: routePositions,
+        width: 2,
+        material: new Cesium.PolylineGlowMaterialProperty({
+          glowPower: 0.2,
+          color: Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.9),
+        }),
+        clampToGround: false,
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+
+    driverWaypointEntitiesRef.current = driverWaypoints.map((waypoint, waypointIndex) =>
+      viewer.entities.add({
+        name: `driver-waypoint-${waypoint.id}`,
+        position: Cesium.Cartesian3.fromDegrees(waypoint.longitude, waypoint.latitude, waypoint.altitude),
+        point: {
+          pixelSize: waypoint.status === 'active' ? 8 : 6,
+          color: waypointColor(waypoint.status),
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 1,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+        label: {
+          text: `${waypointIndex + 1}`,
+          font: '11px "JetBrains Mono", monospace',
+          fillColor: Cesium.Color.fromCssColorString('#00FF41'),
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          pixelOffset: new Cesium.Cartesian2(0, -16),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      }),
+    );
+
+    viewer.scene.requestRender();
+  }, [driverWaypoints, freeMode, selectedDrone, viewer]);
+
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed()) {
+      return;
+    }
+
+    const onLeftClick = (movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      if (!isDriverModeEnabled || freeMode || !selectedDrone) {
+        return;
+      }
+      const pickedPosition = viewer.camera.pickEllipsoid(movement.position, viewer.scene.globe.ellipsoid);
+      if (!pickedPosition) {
+        return;
+      }
+      const cartographic = Cesium.Cartographic.fromCartesian(pickedPosition);
+      onAddDriverWaypoint(
+        Cesium.Math.toDegrees(cartographic.latitude),
+        Cesium.Math.toDegrees(cartographic.longitude),
+      );
+      viewer.scene.requestRender();
+    };
+
+    viewer.screenSpaceEventHandler.setInputAction(onLeftClick, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    return () => {
+      viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    };
+  }, [freeMode, isDriverModeEnabled, onAddDriverWaypoint, selectedDrone, viewer]);
+
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed()) {
+      return;
+    }
 
     const { pointCollection, billboardCollection, polylineCollection, labelCollection } = ensureFleetCollections(viewer, fleetPointCollectionRef, fleetBillboardCollectionRef, fleetPolylineCollectionRef, fleetLabelCollectionRef);
     const shouldRenderFleet = !selectedDrone || (freeMode && showAllAssets);
@@ -313,6 +410,7 @@ export default function MapComponent({
         return;
       }
       resetSelectedEntities(viewer, selectedDroneRef, selectedPathRef, pathPositionsRef);
+      clearDriverRouteEntities(viewer, driverRouteRef, driverWaypointEntitiesRef);
     };
   }, [viewer]);
 
@@ -333,4 +431,32 @@ export default function MapComponent({
 
     </div>
   );
+}
+
+function clearDriverRouteEntities(
+  viewer: Cesium.Viewer,
+  driverRouteRef: MutableRefObject<Cesium.Entity | null>,
+  driverWaypointEntitiesRef: MutableRefObject<Cesium.Entity[]>,
+) {
+  if (driverRouteRef.current) {
+    viewer.entities.remove(driverRouteRef.current);
+    driverRouteRef.current = null;
+  }
+  for (const waypointEntity of driverWaypointEntitiesRef.current) {
+    viewer.entities.remove(waypointEntity);
+  }
+  driverWaypointEntitiesRef.current = [];
+}
+
+function waypointColor(status: DriverWaypoint['status']): Cesium.Color {
+  switch (status) {
+    case 'active':
+      return Cesium.Color.fromCssColorString('#FFB400');
+    case 'reached':
+      return Cesium.Color.fromCssColorString('#00FF41');
+    case 'failed':
+      return Cesium.Color.fromCssColorString('#FF3B30');
+    default:
+      return Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.7);
+  }
 }

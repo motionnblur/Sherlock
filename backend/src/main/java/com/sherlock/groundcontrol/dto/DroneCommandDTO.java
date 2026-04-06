@@ -10,11 +10,15 @@ import lombok.Setter;
 public class DroneCommandDTO {
 
     private CommandType commandType;
+    private Double latitude;
+    private Double longitude;
+    private Double altitude;
 
     public enum CommandType {
         RTH,
         ARM,
         DISARM,
-        TAKEOFF
+        TAKEOFF,
+        GOTO
     }
 }

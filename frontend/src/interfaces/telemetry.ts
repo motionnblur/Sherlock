@@ -29,3 +29,13 @@ export interface LowBatteryAlert {
   battery: number;
   isCritical: boolean;
 }
+
+export type DriverWaypointStatus = 'queued' | 'active' | 'reached' | 'failed';
+
+export interface DriverWaypoint {
+  id: number;
+  latitude: number;
+  longitude: number;
+  altitude: number;
+  status: DriverWaypointStatus;
+}

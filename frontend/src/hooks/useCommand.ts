@@ -3,10 +3,16 @@ import type { AuthToken } from '../interfaces/auth';
 import type { DroneId } from '../interfaces/telemetry';
 import { useAuth } from './useAuth';
 
-export type CommandType = 'RTH' | 'ARM' | 'DISARM' | 'TAKEOFF';
+export type CommandType = 'RTH' | 'ARM' | 'DISARM' | 'TAKEOFF' | 'GOTO';
+
+export interface CommandOptions {
+  latitude?: number;
+  longitude?: number;
+  altitude?: number;
+}
 
 export interface UseCommandReturn {
-  sendCommand: (commandType: CommandType) => Promise<void>;
+  sendCommand: (commandType: CommandType, options?: CommandOptions) => Promise<boolean>;
   isSending: boolean;
   commandError: string | null;
 }
@@ -14,7 +20,7 @@ export interface UseCommandReturn {
 const COMMAND_PATH = (droneId: string) => `/api/drones/${droneId}/command`;
 
 /**
- * Sends operator commands (RTH / ARM / DISARM / TAKEOFF) to the backend C2 endpoint.
+ * Sends operator commands (RTH / ARM / DISARM / TAKEOFF / GOTO) to the backend C2 endpoint.
  * When MAVLink is disabled server-side, the endpoint returns 503 and commandError is set.
  * A 401 response forces logout so the operator is returned to LoginPage.
  */
@@ -26,9 +32,9 @@ export function useCommand(
   const [isSending, setIsSending] = useState(false);
   const [commandError, setCommandError] = useState<string | null>(null);
 
-  const sendCommand = useCallback(async (commandType: CommandType) => {
+  const sendCommand = useCallback(async (commandType: CommandType, options?: CommandOptions): Promise<boolean> => {
     if (!selectedDrone || !authToken) {
-      return;
+      return false;
     }
 
     setIsSending(true);
@@ -41,20 +47,26 @@ export function useCommand(
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authToken.token}`,
         },
-        body: JSON.stringify({ commandType }),
+        body: JSON.stringify({
+          commandType,
+          ...(options ?? {}),
+        }),
       });
 
       if (response.status === 401) {
         logout();
-        return;
+        return false;
       }
 
       if (!response.ok) {
         const errorText = errorMessageForStatus(response.status);
         setCommandError(errorText);
+        return false;
       }
+      return true;
     } catch {
       setCommandError('NETWORK ERROR');
+      return false;
     } finally {
       setIsSending(false);
     }
@@ -66,7 +78,8 @@ export function useCommand(
 function errorMessageForStatus(status: number): string {
   switch (status) {
     case 422: return 'DRONE NOT CONNECTED';
-    case 409: return 'TAKEOFF NOT READY';
+    case 409: return 'VEHICLE NOT READY';
+    case 400: return 'INVALID COMMAND';
     case 503: return 'MAVLINK DISABLED';
     default:  return `CMD FAILED (${status})`;
   }

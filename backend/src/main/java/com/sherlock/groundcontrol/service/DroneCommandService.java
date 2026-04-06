@@ -1,5 +1,6 @@
 package com.sherlock.groundcontrol.service;
 
+import com.sherlock.groundcontrol.dto.DroneCommandDTO;
 import com.sherlock.groundcontrol.dto.DroneCommandDTO.CommandType;
 import com.sherlock.groundcontrol.mavlink.MavlinkFrameParser;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +23,8 @@ public class DroneCommandService {
     public enum DispatchResult {
         DISPATCHED,
         DRONE_UNAVAILABLE,
-        TAKEOFF_NOT_READY
+        TAKEOFF_NOT_READY,
+        NAVIGATION_NOT_READY
     }
 
     // MAVLink command IDs (MAV_CMD enum)
@@ -40,6 +42,8 @@ public class DroneCommandService {
     private static final long COMMAND_SEQUENCE_DELAY_MS = 500L;
     private static final long TAKEOFF_RETRY_DELAY_MS = 1500L;
     private static final int TAKEOFF_MAX_ATTEMPTS = 8;
+    private static final int GOTO_GUIDED_RETRIES = 3;
+    private static final long GOTO_GUIDED_RETRY_DELAY_MS = 500L;
 
     private final MavlinkAdapterService mavlinkAdapterService;
 
@@ -47,12 +51,13 @@ public class DroneCommandService {
      * Sends a command to the specified drone.
      *
      * @param droneId     the GCS-side drone ID (e.g. "MAVLINK-01")
-     * @param commandType the command to send
-     * @return true if the packet was dispatched; false if the drone is not connected
+     * @param commandDTO the command payload to send
+     * @return dispatch result for API status mapping
      */
-    public DispatchResult sendCommand(String droneId, CommandType commandType) {
+    public DispatchResult sendCommand(String droneId, DroneCommandDTO commandDTO) {
+        CommandType commandType = commandDTO.getCommandType();
         return mavlinkAdapterService.resolveSystemId(droneId)
-                .map(sysId -> dispatchResultFor(commandType, dispatch(sysId, commandType)))
+                .map(sysId -> dispatchResultFor(commandType, dispatch(sysId, commandDTO)))
                 .orElseGet(() -> {
                     log.warn("sendCommand: drone '{}' not found in active MAVLink connections", droneId);
                     return DispatchResult.DRONE_UNAVAILABLE;
@@ -63,15 +68,18 @@ public class DroneCommandService {
         if (dispatched) {
             return DispatchResult.DISPATCHED;
         }
-        return commandType == CommandType.TAKEOFF
-                ? DispatchResult.TAKEOFF_NOT_READY
-                : DispatchResult.DRONE_UNAVAILABLE;
+        return switch (commandType) {
+            case TAKEOFF -> DispatchResult.TAKEOFF_NOT_READY;
+            case GOTO -> DispatchResult.NAVIGATION_NOT_READY;
+            case RTH, ARM, DISARM -> DispatchResult.DRONE_UNAVAILABLE;
+        };
     }
 
-    private boolean dispatch(int sysId, CommandType commandType) {
-        return switch (commandType) {
+    private boolean dispatch(int sysId, DroneCommandDTO commandDTO) {
+        return switch (commandDTO.getCommandType()) {
             case TAKEOFF -> dispatchTakeoff(sysId);
-            case RTH, ARM, DISARM -> dispatchSingle(sysId, commandType);
+            case GOTO -> dispatchGoto(sysId, commandDTO);
+            case RTH, ARM, DISARM -> dispatchSingle(sysId, commandDTO.getCommandType());
         };
     }
 
@@ -107,6 +115,69 @@ public class DroneCommandService {
                 "TAKEOFF sequence failed for sysId={} after {} attempts; vehicle is likely not ready (EKF/GPS/home)",
                 sysId, TAKEOFF_MAX_ATTEMPTS
         );
+        return false;
+    }
+
+    private boolean dispatchGoto(int sysId, DroneCommandDTO commandDTO) {
+        if (!isGotoPayloadValid(commandDTO)) {
+            log.warn("GOTO rejected: invalid payload lat={}, lon={}, alt={}",
+                    commandDTO.getLatitude(), commandDTO.getLongitude(), commandDTO.getAltitude());
+            return false;
+        }
+        if (!mavlinkAdapterService.isDroneArmed(sysId)) {
+            log.info("GOTO deferred for sysId={} because vehicle is not armed yet", sysId);
+            return false;
+        }
+
+        if (!ensureGuidedMode(sysId)) {
+            return false;
+        }
+
+        byte[] packet = MavlinkFrameParser.buildSetPositionTargetGlobalInt(
+                sysId,
+                commandDTO.getLatitude(),
+                commandDTO.getLongitude(),
+                commandDTO.getAltitude(),
+                mavlinkAdapterService.nextSeqNum()
+        );
+        boolean sent = sendPacket(sysId, packet);
+        if (sent) {
+            log.info(
+                    "Sent GOTO to sysId={} lat={}, lon={}, alt={}m",
+                    sysId, commandDTO.getLatitude(), commandDTO.getLongitude(), commandDTO.getAltitude()
+            );
+        }
+        return sent;
+    }
+
+    private static boolean isGotoPayloadValid(DroneCommandDTO commandDTO) {
+        if (commandDTO.getLatitude() == null || commandDTO.getLongitude() == null || commandDTO.getAltitude() == null) {
+            return false;
+        }
+        double latitude = commandDTO.getLatitude();
+        double longitude = commandDTO.getLongitude();
+        double altitude = commandDTO.getAltitude();
+        return Double.isFinite(latitude)
+                && Double.isFinite(longitude)
+                && Double.isFinite(altitude)
+                && latitude >= -90d && latitude <= 90d
+                && longitude >= -180d && longitude <= 180d
+                && altitude >= -500d && altitude <= 20000d;
+    }
+
+    private boolean ensureGuidedMode(int sysId) {
+        for (int attempt = 1; attempt <= GOTO_GUIDED_RETRIES; attempt++) {
+            boolean modeSent = sendPacket(sysId, buildGuidedModePacket(sysId));
+            if (!modeSent) {
+                return false;
+            }
+            if (waitDelay(COMMAND_SEQUENCE_DELAY_MS)) {
+                return true;
+            }
+            if (attempt < GOTO_GUIDED_RETRIES && !waitDelay(GOTO_GUIDED_RETRY_DELAY_MS)) {
+                return false;
+            }
+        }
         return false;
     }
 
@@ -164,6 +235,7 @@ public class DroneCommandService {
                     seqNum
             );
             case TAKEOFF -> throw new IllegalArgumentException("TAKEOFF must use buildTakeoffPacket()");
+            case GOTO -> throw new IllegalArgumentException("GOTO must use buildSetPositionTargetGlobalInt()");
         };
     }
 

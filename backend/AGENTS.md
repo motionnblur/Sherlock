@@ -29,14 +29,14 @@ com.sherlock.groundcontrol
 │   └── WebSocketConfig.java        # STOMP broker, /ws-skytrack endpoint, channel interceptor
 ├── controller/
 │   ├── AuthController.java         # POST /api/auth/login, POST /api/auth/logout
-│   ├── DroneCommandController.java # POST /api/drones/{droneId}/command — RTH/ARM/DISARM/TAKEOFF
+│   ├── DroneCommandController.java # POST /api/drones/{droneId}/command — RTH/ARM/DISARM/TAKEOFF/GOTO
 │   ├── GlobalExceptionHandler.java # @RestControllerAdvice — auth + generic errors
 │   ├── TelemetryController.java    # REST: GET /api/telemetry/history + POST /api/telemetry/last-known
 │   └── DroneStreamController.java  # REST: GET /api/drones/{droneId}/stream
 ├── dto/
 │   ├── BulkLastKnownRequestDTO.java   # Wire object: { droneIds: string[] }
 │   ├── BulkLastKnownResponseDTO.java  # Wire object: { telemetry: LastKnownTelemetryDTO[] }
-│   ├── DroneCommandDTO.java           # Wire: { commandType: RTH|ARM|DISARM|TAKEOFF }
+│   ├── DroneCommandDTO.java           # Wire: { commandType: RTH|ARM|DISARM|TAKEOFF|GOTO, latitude?, longitude?, altitude? }
 │   ├── LastKnownTelemetryDTO.java     # Compact last-known payload used by bulk bootstrap
 │   ├── LoginRequestDTO.java        # Wire: { username, password }
 │   ├── LoginResponseDTO.java       # Wire: { token, username, expiresAt }
@@ -72,7 +72,7 @@ com.sherlock.groundcontrol
     ├── AuthAuditService.java        # Persists every login attempt to auth_audit_log
     ├── AuthService.java             # authenticate(), logout(), lockout, blacklist purge
     ├── DevDataInitializer.java      # ApplicationRunner — creates seed operator when DEV_SEED_USER/DEV_SEED_PASSWORD are set
-    ├── DroneCommandService.java     # Translates RTH/ARM/DISARM/TAKEOFF → COMMAND_LONG via MavlinkAdapterService (@ConditionalOnProperty)
+    ├── DroneCommandService.java     # Translates RTH/ARM/DISARM/TAKEOFF/GOTO → MAVLink command packets via MavlinkAdapterService (@ConditionalOnProperty)
     ├── DroneStreamService.java      # Resolves HLS stream URL from MEDIAMTX_HLS_BASE_URL
     ├── MavlinkAdapterService.java   # UDP :14550 listener + snapshot merge + @Scheduled STOMP publish (@ConditionalOnProperty)
     ├── TelemetryService.java        # persistBatch() + history lookup + bounded last-known cache
@@ -188,7 +188,7 @@ Decoded message types: `HEARTBEAT` (arm/mode), `SYS_STATUS` (battery), `GPS_RAW_
 ### Outbound C2
 
 ```
-POST /api/drones/MAVLINK-01/command  { commandType: "TAKEOFF" }
+POST /api/drones/MAVLINK-01/command  { commandType: "GOTO", latitude: -35.3632, longitude: 149.1653, altitude: 20 }
         │
         ▼
 DroneCommandController → DroneCommandService.sendCommand()
@@ -202,7 +202,8 @@ MavlinkAdapterService.sendPacket()      ← UDP back to drone's source address
 
 `POST /api/drones/{droneId}/command` response semantics:
 - `202 Accepted` when command packets are dispatched
-- `409 Conflict` when `TAKEOFF` is requested before navigation readiness (position estimate not ready)
+- `400 Bad Request` when payload is invalid (for example `GOTO` without latitude/longitude/altitude)
+- `409 Conflict` when `TAKEOFF` or `GOTO` is requested before navigation readiness (for example no position estimate / not armed)
 - `422 Unprocessable Entity` when the MAVLink drone is not currently connected/commandable
 - `503 Service Unavailable` when MAVLink integration is disabled
 
@@ -214,6 +215,7 @@ MavlinkAdapterService.sendPacket()      ← UDP back to drone's source address
 | `ARM`       | 400 — COMPONENT_ARM_DISARM | param1=1, param2=21196 (force) |
 | `DISARM`    | 400 — COMPONENT_ARM_DISARM | param1=0 |
 | `TAKEOFF`   | 176 + 400 + 22 sequence | Sends GUIDED mode, force-arm, then NAV_TAKEOFF to 20m with bounded retries; returns HTTP 409 if EKF/GPS/home is not ready yet |
+| `GOTO`      | 176 + 86 sequence | Ensures GUIDED mode, then sends SET_POSITION_TARGET_GLOBAL_INT (GLOBAL_RELATIVE_ALT_INT) to requested lat/lon/altitude |
 
 ### Testing with SITL
 
