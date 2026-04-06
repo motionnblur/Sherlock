@@ -83,17 +83,6 @@ export default function Header({
 
         <div className="w-px h-5 bg-line" />
 
-        <button
-          type="button"
-          onClick={onLogout}
-          className="text-[9px] text-muted tracking-widest border border-line px-1.5 py-0.5 hover:text-danger hover:border-danger transition-colors"
-          title="Log out"
-        >
-          LOG OUT
-        </button>
-
-        <div className="w-px h-5 bg-line" />
-
         {selectedDrone ? (
           <>
             <div className="flex items-center gap-2 text-xs">
@@ -181,10 +170,14 @@ export default function Header({
             </div>
           </>
         ) : (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="w-1.5 h-1.5 bg-muted" />
-            <span className="font-bold tracking-wider text-muted">OFFLINE</span>
-          </div>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="text-[9px] text-muted tracking-widest border border-line px-1.5 py-0.5 hover:text-danger hover:border-danger transition-colors"
+            title="Log out"
+          >
+            LOG OUT
+          </button>
         )}
       </div>
     </header>
