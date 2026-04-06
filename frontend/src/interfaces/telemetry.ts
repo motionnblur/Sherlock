@@ -1,4 +1,5 @@
 export type DroneId = string;
+export type NavigationDirection = 'ALL' | 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
 
 export interface TelemetryPoint {
   droneId: DroneId;

@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { DRONE_IDS, FLIGHT_PATH_POINT_LIMIT } from '../constants/telemetry';
+import { NAVIGATION_DIRECTION_ALL } from '../constants/navigation';
 import { PERFORMANCE_STAGE_NORMAL } from '../constants/performance';
 import type { MapComponentProps } from '../interfaces/components';
 import type { DroneId, TelemetryPoint } from '../interfaces/telemetry';
 import { formatFixed } from '../utils/formatters';
+import { matchesNavigationDirection } from '../utils/navigation';
 import FreeModeAssetWindow from './FreeModeAssetWindow';
 import {
   applyImageryBrightness,
@@ -71,6 +73,7 @@ export default function MapComponent({
   selectedDrone,
   freeMode,
   showAllAssets,
+  selectedNavigationDirection,
   onSelectDrone,
 }: MapComponentProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -273,12 +276,16 @@ export default function MapComponent({
 
     const visibleIds = new Set<DroneId>();
     const isShowAll = freeMode && showAllAssets;
+    const shouldFilterByDirection = isShowAll && selectedNavigationDirection !== NAVIGATION_DIRECTION_ALL;
     for (const droneId of DRONE_IDS) {
       if (!isShowAll && selectedDrone && droneId === selectedDrone) {
         continue;
       }
       const telemetryPoint = fleetTelemetry[droneId] ?? lastKnownTelemetry[droneId];
       if (!telemetryPoint) {
+        continue;
+      }
+      if (shouldFilterByDirection && !matchesNavigationDirection(telemetryPoint.heading, selectedNavigationDirection)) {
         continue;
       }
       upsertFleetAsset(pointCollection, billboardCollection, polylineCollection, labelCollection, fleetAssetMapRef, droneId, telemetryPoint);
@@ -297,7 +304,7 @@ export default function MapComponent({
     }
 
     viewer.scene.requestRender();
-  }, [fleetTelemetry, freeMode, lastKnownTelemetry, selectedDrone, showAllAssets, viewer]);
+  }, [fleetTelemetry, freeMode, lastKnownTelemetry, selectedDrone, selectedNavigationDirection, showAllAssets, viewer]);
 
   useEffect(() => {
     return () => {

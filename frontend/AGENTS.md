@@ -51,12 +51,12 @@ src/
 └── components/
     ├── AssetSelectionOverlay.tsx# Virtualized startup asset selector with last-known telemetry rows
     ├── VirtualizedAssetList.tsx # Shared fixed-row virtualization primitive for large asset lists
-    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings
+    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings (FREE MODE toggles, SHOW ASSETS BY NAW)
     ├── LiveVideoWindow.tsx      # Floating 240×240 HLS video window; uses hls.js; mounted inside <main> over the map
     ├── LoginPage.tsx            # Full-screen operator authentication form (shown when unauthenticated)
     ├── MapComponent.tsx         # CesiumJS viewer shell, selected-drone entity/path, fleet point layer
     ├── SectionHeader.tsx        # Shared panel section divider/header component
-    ├── LowBatteryWindow.tsx     # Floating bottom-right panel; battery alerts in FREE MODE + SHOW ALL only
+    ├── LowBatteryWindow.tsx     # Floating bottom-right panel; battery alerts in FREE MODE + SHOW ALL only (direction-filtered when NAW filter active)
     ├── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
     ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, log (hidden when no drone selected)
     └── TelemetryPanel.tsx       # Left sidebar: lat/lon/alt/speed/battery (hidden when no drone selected)
@@ -168,6 +168,7 @@ Subscription model:
 - Always subscribes to selected full stream: `/topic/telemetry/{droneId}`
 - In Free Mode + SHOW ASSET ALL, also subscribes to `/topic/telemetry/lite/fleet` and `/topic/alerts/battery`
 - Never opens one STOMP subscription per drone in all-assets mode
+- SHOW ASSETS BY NAW filtering is client-side (heading-based) and does not create extra backend topics or subscriptions
 
 Incoming STOMP payloads are parsed through `src/utils/telemetry.ts`. Malformed payloads are ignored rather than pushed directly into React state.
 
@@ -220,7 +221,7 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 
 `src/components/MapComponent.tsx` owns the Cesium `Viewer` instance, selected-drone entity/path, fleet point layer, and map UI overlays.
 
-**Props:** `{ telemetry, fleetTelemetry, lastKnownTelemetry, performanceStage, selectedDrone, freeMode, showAllAssets, onSelectDrone }`
+**Props:** `{ telemetry, fleetTelemetry, lastKnownTelemetry, performanceStage, selectedDrone, freeMode, showAllAssets, selectedNavigationDirection, onSelectDrone }`
 
 **Imagery:** `UrlTemplateImageryProvider` (OpenStreetMap) is used by default — no Cesium Ion token required. If `VITE_CESIUM_TOKEN` is set in `.env`, Ion features (World Terrain, premium imagery) unlock automatically.
 
@@ -240,6 +241,7 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 - **Selected drone:** one full-detail Cesium `Entity` + optional live path polyline (expensive path features only here).
 - **Non-selected drones:** lightweight `PointPrimitiveCollection` entries (no per-drone path entities, no per-drone labels).
 - **All-assets view:** points are fed by fleet summary topic updates, not per-drone REST fetches or per-drone STOMP subscriptions.
+- **NAW direction filter:** available only when `freeMode && showAllAssets`; filters all-assets fleet points by telemetry `heading` buckets (`N, NE, E, SE, S, SW, W, NW`, plus `ALL` reset).
 
 Whenever `selectedDrone` changes, `MapComponent` resets selected entity/path refs before creating the next selected state.
 

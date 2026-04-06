@@ -1,9 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useTelemetry } from './hooks/useTelemetry';
 import { useStreamUrl } from './hooks/useStreamUrl';
 import { useLastKnownTelemetry } from './hooks/useLastKnownTelemetry';
 import { DRONE_IDS } from './constants/telemetry';
+import { NAVIGATION_DIRECTION_ALL } from './constants/navigation';
 import {
   getNextPerformanceStage,
   PERFORMANCE_STAGE_NORMAL,
@@ -17,7 +18,8 @@ import LiveVideoWindow from './components/LiveVideoWindow';
 import LoginPage from './components/LoginPage';
 import AssetSelectionOverlay from './components/AssetSelectionOverlay';
 import LowBatteryWindow from './components/LowBatteryWindow';
-import type { DroneId } from './interfaces/telemetry';
+import type { DroneId, NavigationDirection } from './interfaces/telemetry';
+import { matchesNavigationDirection } from './utils/navigation';
 
 const AUTH_LOGOUT_PATH = '/api/auth/logout';
 
@@ -29,10 +31,16 @@ export default function App() {
   const [performanceStage, setPerformanceStage] = useState(PERFORMANCE_STAGE_NORMAL);
   const [isLiveVideoOpen, setIsLiveVideoOpen] = useState(false);
   const [showAllAssets, setShowAllAssets] = useState(false);
+  const [selectedNavigationDirection, setSelectedNavigationDirection] =
+    useState<NavigationDirection>(NAVIGATION_DIRECTION_ALL);
 
   const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTelemetry(selectedDrone, freeMode, showAllAssets);
   const lastKnownTelemetry = useLastKnownTelemetry(DRONE_IDS, selectedDrone !== null);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
+
+  const resetNavigationDirection = useCallback(() => {
+    setSelectedNavigationDirection(NAVIGATION_DIRECTION_ALL);
+  }, []);
 
   const handleToggleLiveVideo = useCallback(() => {
     if (!selectedDrone || freeMode) return;
@@ -60,26 +68,59 @@ export default function App() {
         clearStreamUrl();
       } else {
         setShowAllAssets(false);
+        resetNavigationDirection();
       }
       return nextFreeMode;
     });
-  }, [clearStreamUrl]);
+  }, [clearStreamUrl, resetNavigationDirection]);
 
   const handleToggleShowAllAssets = useCallback(() => {
-    setShowAllAssets((current) => !current);
-  }, []);
+    setShowAllAssets((current) => {
+      const nextShowAllAssets = !current;
+      if (!nextShowAllAssets) {
+        resetNavigationDirection();
+      }
+      return nextShowAllAssets;
+    });
+  }, [resetNavigationDirection]);
 
   const handleActivateDrone = useCallback((id: DroneId) => {
     setSelectedDrone(id);
     setFreeMode(false);
-  }, []);
+    resetNavigationDirection();
+  }, [resetNavigationDirection]);
 
   const handleDeselect = useCallback(() => {
     setSelectedDrone(null);
     setFreeMode(false);
     setIsLiveVideoOpen(false);
     clearStreamUrl();
-  }, [clearStreamUrl]);
+    setShowAllAssets(false);
+    resetNavigationDirection();
+  }, [clearStreamUrl, resetNavigationDirection]);
+
+  const filteredBatteryAlerts = useMemo(() => {
+    if (!freeMode || !showAllAssets) {
+      return [];
+    }
+    if (selectedNavigationDirection === NAVIGATION_DIRECTION_ALL) {
+      return batteryAlerts;
+    }
+    return batteryAlerts.filter((alert) => {
+      const directionSource = fleetTelemetry[alert.droneId] ?? lastKnownTelemetry[alert.droneId];
+      if (!directionSource) {
+        return false;
+      }
+      return matchesNavigationDirection(directionSource.heading, selectedNavigationDirection);
+    });
+  }, [
+    batteryAlerts,
+    fleetTelemetry,
+    freeMode,
+    lastKnownTelemetry,
+    selectedNavigationDirection,
+    showAllAssets,
+  ]);
 
   const handleLogout = useCallback(async () => {
     if (authToken) {
@@ -104,10 +145,12 @@ export default function App() {
         freeMode={freeMode}
         isLiveVideoOpen={isLiveVideoOpen}
         showAllAssets={showAllAssets}
+        selectedNavigationDirection={selectedNavigationDirection}
         onToggleFreeMode={handleToggleFreeMode}
         onDeselect={handleDeselect}
         onToggleLiveVideo={handleToggleLiveVideo}
         onToggleShowAllAssets={handleToggleShowAllAssets}
+        onSelectNavigationDirection={setSelectedNavigationDirection}
         onLogout={handleLogout}
       />
 
@@ -125,6 +168,7 @@ export default function App() {
                 selectedDrone={selectedDrone}
                 freeMode={freeMode}
                 showAllAssets={showAllAssets}
+                selectedNavigationDirection={selectedNavigationDirection}
                 onSelectDrone={handleActivateDrone}
               />
 
@@ -137,8 +181,8 @@ export default function App() {
                 />
               )}
 
-              {freeMode && showAllAssets && batteryAlerts.length > 0 && (
-                <LowBatteryWindow alerts={batteryAlerts} />
+              {freeMode && showAllAssets && filteredBatteryAlerts.length > 0 && (
+                <LowBatteryWindow alerts={filteredBatteryAlerts} />
               )}
             </>
           ) : (

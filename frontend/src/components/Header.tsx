@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { NAVIGATION_DIRECTIONS, NAVIGATION_DIRECTION_ALL } from '../constants/navigation';
 import type { HeaderProps } from '../interfaces/components';
 
 function UtcClock() {
@@ -27,13 +28,16 @@ export default function Header({
   freeMode,
   isLiveVideoOpen,
   showAllAssets,
+  selectedNavigationDirection,
   onToggleFreeMode,
   onDeselect,
   onToggleLiveVideo,
   onToggleShowAllAssets,
+  onSelectNavigationDirection,
   onLogout,
 }: HeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isNavigationFilterOpen, setIsNavigationFilterOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -53,6 +57,18 @@ export default function Header({
     window.addEventListener('mousedown', onPointerDown);
     return () => window.removeEventListener('mousedown', onPointerDown);
   }, [settingsOpen]);
+
+  useEffect(() => {
+    if (!settingsOpen) {
+      setIsNavigationFilterOpen(false);
+    }
+  }, [settingsOpen]);
+
+  useEffect(() => {
+    if (!freeMode || !showAllAssets) {
+      setIsNavigationFilterOpen(false);
+    }
+  }, [freeMode, showAllAssets]);
 
   return (
     <header className="flex items-center justify-between px-4 h-11 bg-panel border-b border-line shrink-0">
@@ -123,7 +139,7 @@ export default function Header({
                 </button>
 
                 {settingsOpen && (
-                  <div className="absolute right-0 top-6 w-36 bg-panel border border-line p-2 z-20 flex flex-col gap-1">
+                  <div className="absolute right-0 top-6 w-44 bg-panel border border-line p-2 z-20 flex flex-col gap-1">
                     <button
                       id="free-mode-toggle-btn"
                       type="button"
@@ -151,18 +167,56 @@ export default function Header({
                       </button>
                     )}
                     {freeMode && (
-                      <button
-                        id="show-all-assets-btn"
-                        type="button"
-                        onClick={onToggleShowAllAssets}
-                        className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
-                          showAllAssets
-                            ? 'text-neon border-neon bg-elevated'
-                            : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
-                        }`}
-                      >
-                        SHOW ASSET: {showAllAssets ? 'ALL' : 'PARTICULAR'}
-                      </button>
+                      <>
+                        <button
+                          id="show-all-assets-btn"
+                          type="button"
+                          onClick={onToggleShowAllAssets}
+                          className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
+                            showAllAssets
+                              ? 'text-neon border-neon bg-elevated'
+                              : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
+                          }`}
+                        >
+                          SHOW ASSET: {showAllAssets ? 'ALL' : 'PARTICULAR'}
+                        </button>
+
+                        {showAllAssets && (
+                          <>
+                            <button
+                              id="show-assets-by-naw-btn"
+                              type="button"
+                              onClick={() => setIsNavigationFilterOpen((open) => !open)}
+                              className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
+                                selectedNavigationDirection === NAVIGATION_DIRECTION_ALL
+                                  ? 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
+                                  : 'text-neon border-neon bg-elevated'
+                              }`}
+                            >
+                              SHOW ASSETS BY NAW
+                            </button>
+
+                            {isNavigationFilterOpen && (
+                              <div className="grid grid-cols-3 gap-1 pt-1">
+                                {NAVIGATION_DIRECTIONS.map((direction) => (
+                                  <button
+                                    key={direction}
+                                    type="button"
+                                    onClick={() => onSelectNavigationDirection(direction)}
+                                    className={`text-[9px] tracking-widest border px-1 py-1 transition-colors ${
+                                      selectedNavigationDirection === direction
+                                        ? 'text-neon border-neon bg-elevated'
+                                        : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
+                                    }`}
+                                  >
+                                    {direction}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </>
                     )}
                   </div>
                 )}

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { PerformanceStage } from '../constants/performance';
-import type { DroneId, LowBatteryAlert, TelemetryByDrone, TelemetryPoint } from './telemetry';
+import type { DroneId, LowBatteryAlert, NavigationDirection, TelemetryByDrone, TelemetryPoint } from './telemetry';
 
 export interface HeaderProps {
   connected: boolean;
@@ -8,10 +8,12 @@ export interface HeaderProps {
   freeMode: boolean;
   isLiveVideoOpen: boolean;
   showAllAssets: boolean;
+  selectedNavigationDirection: NavigationDirection;
   onToggleFreeMode: () => void;
   onDeselect: () => void;
   onToggleLiveVideo: () => void;
   onToggleShowAllAssets: () => void;
+  onSelectNavigationDirection: (direction: NavigationDirection) => void;
   onLogout: () => void;
 }
 
@@ -34,6 +36,7 @@ export interface MapComponentProps {
   selectedDrone: DroneId | null;
   freeMode: boolean;
   showAllAssets: boolean;
+  selectedNavigationDirection: NavigationDirection;
   onSelectDrone: (id: DroneId) => void;
 }
 
