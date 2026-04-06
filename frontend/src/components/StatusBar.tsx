@@ -57,13 +57,17 @@ export default function StatusBar({
           </>
         )}
 
-        <span className="text-line">|</span>
-        <button
-          onClick={onCyclePerformanceStage}
-          className={`font-bold tracking-widest px-2 py-0.5 border border-line ${lowPerfButtonClassName}`}
-        >
-          LOW PERF {PERFORMANCE_STAGE_LABELS[performanceStage]}
-        </button>
+        {selectedDrone && (
+          <>
+            <span className="text-line">|</span>
+            <button
+              onClick={onCyclePerformanceStage}
+              className={`font-bold tracking-widest px-2 py-0.5 border border-line ${lowPerfButtonClassName}`}
+            >
+              LOW PERF {PERFORMANCE_STAGE_LABELS[performanceStage]}
+            </button>
+          </>
+        )}
       </div>
 
       <div className="flex items-center gap-3">
