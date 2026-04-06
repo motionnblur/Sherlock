@@ -173,7 +173,7 @@ const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTele
 ```ts
 const { sendCommand, isSending, commandError } = useCommand(selectedDrone, authToken);
 // sendCommand('RTH' | 'ARM' | 'DISARM' | 'TAKEOFF')
-// commandError: 'DRONE NOT CONNECTED' | 'MAVLINK DISABLED' | 'CMD FAILED (xxx)' | null
+// commandError: 'DRONE NOT CONNECTED' | 'TAKEOFF NOT READY' | 'MAVLINK DISABLED' | 'CMD FAILED (xxx)' | null
 ```
 
 When `app.mavlink.enabled=false` on the server, `sendCommand` will set `commandError = 'MAVLINK DISABLED'` without crashing. The hook is always instantiated — it is safe to call even on simulated drones (server returns 503).

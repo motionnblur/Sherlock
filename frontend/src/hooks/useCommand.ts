@@ -66,6 +66,7 @@ export function useCommand(
 function errorMessageForStatus(status: number): string {
   switch (status) {
     case 422: return 'DRONE NOT CONNECTED';
+    case 409: return 'TAKEOFF NOT READY';
     case 503: return 'MAVLINK DISABLED';
     default:  return `CMD FAILED (${status})`;
   }

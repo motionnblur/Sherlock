@@ -2,6 +2,7 @@ package com.sherlock.groundcontrol.controller;
 
 import com.sherlock.groundcontrol.dto.DroneCommandDTO;
 import com.sherlock.groundcontrol.service.DroneCommandService;
+import com.sherlock.groundcontrol.service.DroneCommandService.DispatchResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ import java.util.Optional;
  * Body: { "commandType": "RTH" | "ARM" | "DISARM" | "TAKEOFF" }
  *
  * Returns 202 Accepted if the packet was dispatched.
+ * Returns 409 if TAKEOFF was requested before the vehicle became navigation-ready.
  * Returns 503 if MAVLink adapter is not enabled.
  * Returns 422 if the drone is not currently connected.
  */
@@ -46,10 +48,12 @@ public class DroneCommandController {
 
         return droneCommandService
                 .map(service -> {
-                    boolean dispatched = service.sendCommand(droneId, commandDTO.getCommandType());
-                    return dispatched
-                            ? ResponseEntity.accepted().<Void>build()
-                            : ResponseEntity.unprocessableEntity().<Void>build();
+                    DispatchResult dispatchResult = service.sendCommand(droneId, commandDTO.getCommandType());
+                    return switch (dispatchResult) {
+                        case DISPATCHED -> ResponseEntity.accepted().<Void>build();
+                        case TAKEOFF_NOT_READY -> ResponseEntity.status(HttpStatus.CONFLICT).<Void>build();
+                        case DRONE_UNAVAILABLE -> ResponseEntity.unprocessableEntity().<Void>build();
+                    };
                 })
                 .orElseGet(() -> {
                     log.warn("Command request for '{}' rejected — MAVLink adapter not enabled", droneId);

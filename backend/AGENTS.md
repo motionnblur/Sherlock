@@ -200,6 +200,12 @@ MavlinkFrameParser.buildCommandLong()   ← MAVLink v1 COMMAND_LONG (id=76)
 MavlinkAdapterService.sendPacket()      ← UDP back to drone's source address
 ```
 
+`POST /api/drones/{droneId}/command` response semantics:
+- `202 Accepted` when command packets are dispatched
+- `409 Conflict` when `TAKEOFF` is requested before navigation readiness (position estimate not ready)
+- `422 Unprocessable Entity` when the MAVLink drone is not currently connected/commandable
+- `503 Service Unavailable` when MAVLink integration is disabled
+
 **Supported commands:**
 
 | CommandType | MAV_CMD | Notes |
@@ -207,7 +213,7 @@ MavlinkAdapterService.sendPacket()      ← UDP back to drone's source address
 | `RTH`       | 20 — NAV_RETURN_TO_LAUNCH | No parameters required |
 | `ARM`       | 400 — COMPONENT_ARM_DISARM | param1=1, param2=21196 (force) |
 | `DISARM`    | 400 — COMPONENT_ARM_DISARM | param1=0 |
-| `TAKEOFF`   | 176 + 400 + 22 sequence | Sends GUIDED mode, force-arm, then NAV_TAKEOFF to 20m with bounded retries |
+| `TAKEOFF`   | 176 + 400 + 22 sequence | Sends GUIDED mode, force-arm, then NAV_TAKEOFF to 20m with bounded retries; returns HTTP 409 if EKF/GPS/home is not ready yet |
 
 ### Testing with SITL
 

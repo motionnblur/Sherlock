@@ -19,6 +19,12 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class DroneCommandService {
 
+    public enum DispatchResult {
+        DISPATCHED,
+        DRONE_UNAVAILABLE,
+        TAKEOFF_NOT_READY
+    }
+
     // MAVLink command IDs (MAV_CMD enum)
     private static final int MAV_CMD_NAV_RETURN_TO_LAUNCH    = 20;
     private static final int MAV_CMD_NAV_TAKEOFF             = 22;
@@ -33,7 +39,7 @@ public class DroneCommandService {
 
     private static final long COMMAND_SEQUENCE_DELAY_MS = 500L;
     private static final long TAKEOFF_RETRY_DELAY_MS = 1500L;
-    private static final int TAKEOFF_MAX_ATTEMPTS = 4;
+    private static final int TAKEOFF_MAX_ATTEMPTS = 8;
 
     private final MavlinkAdapterService mavlinkAdapterService;
 
@@ -44,13 +50,22 @@ public class DroneCommandService {
      * @param commandType the command to send
      * @return true if the packet was dispatched; false if the drone is not connected
      */
-    public boolean sendCommand(String droneId, CommandType commandType) {
+    public DispatchResult sendCommand(String droneId, CommandType commandType) {
         return mavlinkAdapterService.resolveSystemId(droneId)
-                .map(sysId -> dispatch(sysId, commandType))
+                .map(sysId -> dispatchResultFor(commandType, dispatch(sysId, commandType)))
                 .orElseGet(() -> {
                     log.warn("sendCommand: drone '{}' not found in active MAVLink connections", droneId);
-                    return false;
+                    return DispatchResult.DRONE_UNAVAILABLE;
                 });
+    }
+
+    private DispatchResult dispatchResultFor(CommandType commandType, boolean dispatched) {
+        if (dispatched) {
+            return DispatchResult.DISPATCHED;
+        }
+        return commandType == CommandType.TAKEOFF
+                ? DispatchResult.TAKEOFF_NOT_READY
+                : DispatchResult.DRONE_UNAVAILABLE;
     }
 
     private boolean dispatch(int sysId, CommandType commandType) {
@@ -88,11 +103,11 @@ public class DroneCommandService {
             }
         }
 
-        log.info(
-                "Sent TAKEOFF sequence to sysId={} but armed state is not confirmed yet; vehicle may still transition once EKF/home is ready",
-                sysId
+        log.warn(
+                "TAKEOFF sequence failed for sysId={} after {} attempts; vehicle is likely not ready (EKF/GPS/home)",
+                sysId, TAKEOFF_MAX_ATTEMPTS
         );
-        return true;
+        return false;
     }
 
     private boolean sendTakeoffAttempt(int sysId) {
