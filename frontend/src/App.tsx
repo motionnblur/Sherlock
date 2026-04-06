@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth';
 import { useTelemetry } from './hooks/useTelemetry';
 import { useStreamUrl } from './hooks/useStreamUrl';
 import { useLastKnownTelemetry } from './hooks/useLastKnownTelemetry';
+import { useCommand } from './hooks/useCommand';
 import { DRONE_IDS } from './constants/telemetry';
 import { NAVIGATION_DIRECTION_ALL } from './constants/navigation';
 import {
@@ -37,6 +38,7 @@ export default function App() {
   const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTelemetry(selectedDrone, freeMode, showAllAssets);
   const lastKnownTelemetry = useLastKnownTelemetry(DRONE_IDS, selectedDrone !== null);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
+  const { sendCommand, isSending: isCommandSending, commandError } = useCommand(selectedDrone, authToken);
 
   const resetNavigationDirection = useCallback(() => {
     setSelectedNavigationDirection(NAVIGATION_DIRECTION_ALL);
@@ -191,7 +193,14 @@ export default function App() {
         </main>
 
         {selectedDrone && !freeMode && (
-          <SystemPanel telemetry={telemetry} history={history} connected={connected} />
+          <SystemPanel
+            telemetry={telemetry}
+            history={history}
+            connected={connected}
+            onSendCommand={sendCommand}
+            isCommandSending={isCommandSending}
+            commandError={commandError}
+          />
         )}
       </div>
 

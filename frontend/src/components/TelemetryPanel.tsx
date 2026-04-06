@@ -5,6 +5,7 @@ import type {
 } from '../interfaces/components';
 import { PACKET_RATE_LABEL } from '../constants/telemetry';
 import SectionHeader from './SectionHeader';
+import AttitudeIndicator from './AttitudeIndicator';
 import {
   BLANK_VALUE,
   clamp,
@@ -62,6 +63,21 @@ function DataRow({ label, value, unit = '', accent = false, critical = false }: 
   );
 }
 
+const FIX_TYPE_LABELS: Record<number, string> = {
+  0: 'NO FIX',
+  1: 'NO FIX',
+  2: '2D FIX',
+  3: '3D FIX',
+  4: 'DGPS',
+  5: 'RTK FLT',
+  6: 'RTK FXD',
+};
+
+function formatFixType(fixType: number | undefined): string {
+  if (fixType == null) return BLANK_VALUE;
+  return FIX_TYPE_LABELS[fixType] ?? `FIX ${fixType}`;
+}
+
 export default function TelemetryPanel({ telemetry: t }: TelemetryPanelProps) {
   const heading = t?.heading ?? null;
   const headingDir = heading != null ? getCardinalDirection(heading) : BLANK_VALUE;
@@ -104,6 +120,35 @@ export default function TelemetryPanel({ telemetry: t }: TelemetryPanelProps) {
           </div>
           <BatteryBar value={t?.battery} />
         </div>
+
+        <SectionHeader title="ATTITUDE" />
+        <div className="flex items-center gap-3 py-1.5">
+          <AttitudeIndicator roll={t?.roll} pitch={t?.pitch} size={96} />
+          <div className="flex flex-col gap-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-[9px] text-muted tracking-widest">ROLL</span>
+              <span className="text-xs font-bold tabular-nums text-neon">
+                {t?.roll != null ? `${formatFixed(t.roll, 1)}°` : BLANK_VALUE}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-[9px] text-muted tracking-widest">PITCH</span>
+              <span className="text-xs font-bold tabular-nums text-neon">
+                {t?.pitch != null ? `${formatFixed(t.pitch, 1)}°` : BLANK_VALUE}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <SectionHeader title="GPS QUALITY" />
+        <DataRow
+          label="FIX"
+          value={formatFixType(t?.fixType)}
+          accent={t?.fixType !== undefined && t.fixType < 3}
+          critical={t?.fixType !== undefined && t.fixType < 2}
+        />
+        <DataRow label="HDOP" value={t?.hdop != null ? formatFixed(t.hdop, 2) : BLANK_VALUE} />
+        <DataRow label="SATS" value={t?.satelliteCount != null ? String(t.satelliteCount) : BLANK_VALUE} />
 
         <SectionHeader title="TIMING" />
         <DataRow

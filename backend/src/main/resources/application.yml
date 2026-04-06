@@ -8,6 +8,12 @@ app:
     fleet-size: ${SIMULATOR_FLEET_SIZE:5}
   telemetry:
     last-known-cache-size: ${TELEMETRY_LAST_KNOWN_CACHE_SIZE:10000}
+  mavlink:
+    # Set MAVLINK_ENABLED=true to activate the UDP listener and C2 command endpoint.
+    # When false (default) the MAVLink bean is not created and simulator runs alone.
+    enabled: ${MAVLINK_ENABLED:false}
+    # Standard MAVLink GCS ground port — drone or SITL must target this address.
+    udp-port: ${MAVLINK_UDP_PORT:14550}
 
 spring:
   datasource:

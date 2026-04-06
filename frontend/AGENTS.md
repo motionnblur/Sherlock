@@ -22,7 +22,7 @@
 
 ```
 src/
-├── App.tsx                      # Root layout shell; auth gate (renders LoginPage when unauthenticated)
+├── App.tsx                      # Root layout shell; auth gate; wires useCommand → SystemPanel
 ├── main.tsx                     # ReactDOM.createRoot entry point; wraps tree in <AuthProvider>
 ├── index.css                    # Tailwind directives + Cesium widget overrides
 ├── constants/
@@ -32,34 +32,35 @@ src/
 │   └── AuthContext.tsx          # AuthProvider: JWT state in sessionStorage, login(), logout()
 ├── interfaces/
 │   ├── auth.ts                  # LoginCredentials, AuthToken interfaces
-│   ├── telemetry.ts             # Shared domain models (TelemetryPoint, DroneId)
-│   ├── components.ts            # Component prop interfaces and map settings interface
+│   ├── telemetry.ts             # Shared domain models (TelemetryPoint, DroneId) — includes extended fields
+│   ├── components.ts            # Component prop interfaces (SystemPanelProps includes command props; AttitudeIndicatorProps added)
 │   ├── hooks.ts                 # Hook return interfaces
 │   └── index.ts                 # Barrel exports
 ├── hooks/
 │   ├── useAuth.ts               # Consumes AuthContext; throws if used outside <AuthProvider>
+│   ├── useCommand.ts            # POST /api/drones/{id}/command — RTH/ARM/DISARM; returns sendCommand, isSending, commandError
 │   ├── useLastKnownTelemetry.ts # One-shot bulk bootstrap from POST /api/telemetry/last-known
 │   ├── useLogin.ts              # Login form submission logic; calls POST /api/auth/login
 │   ├── useTelemetry.ts          # STOMP client; selected stream + bounded fleet summary; auto-logout on auth error
-│   ├── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
-│   └── useBatteryAlerts — removed; battery alerts are now sourced from /topic/alerts/battery via useTelemetry
+│   └── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
 ├── utils/
 │   ├── formatters.ts            # Shared UI formatting helpers for coordinates, UTC time, cardinal heading
-│   └── telemetry.ts             # Runtime parsing/validation helpers for external telemetry payloads
+│   └── telemetry.ts             # Runtime parsing/validation helpers; extended fields are optional-passthrough
 ├── configs/
 │   └── map-settings.json        # Map-only dimming config for Cesium imagery
 └── components/
     ├── AssetSelectionOverlay.tsx# Virtualized startup asset selector with last-known telemetry rows
+    ├── AttitudeIndicator.tsx    # SVG artificial horizon; props: roll, pitch (degrees), size (px)
     ├── VirtualizedAssetList.tsx # Shared fixed-row virtualization primitive for large asset lists
-    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings (FREE MODE toggles, SHOW ASSETS BY NAW)
+    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings
     ├── LiveVideoWindow.tsx      # Floating 240×240 HLS video window; uses hls.js; mounted inside <main> over the map
     ├── LoginPage.tsx            # Full-screen operator authentication form (shown when unauthenticated)
     ├── MapComponent.tsx         # CesiumJS viewer shell, selected-drone entity/path, fleet point layer
     ├── SectionHeader.tsx        # Shared panel section divider/header component
-    ├── LowBatteryWindow.tsx     # Floating bottom-right panel; battery alerts in FREE MODE + SHOW ALL only (direction-filtered when NAW filter active)
+    ├── LowBatteryWindow.tsx     # Floating bottom-right panel; battery alerts in FREE MODE + SHOW ALL only
     ├── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
-    ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, log (hidden when no drone selected)
-    └── TelemetryPanel.tsx       # Left sidebar: lat/lon/alt/speed/battery (hidden when no drone selected)
+    ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, datalink (RSSI/arm/mode), C2 command buttons
+    └── TelemetryPanel.tsx       # Left sidebar: position/kinematics/battery + attitude indicator + GPS quality
     └── map/
         └── cesiumScene.ts       # Cesium viewer + entity/primitive helper functions/constants
 ```
@@ -158,11 +159,23 @@ const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTele
 
 | Return value    | Type                     | Description                              |
 |-----------------|--------------------------|------------------------------------------|
-| `telemetry`     | `TelemetryPoint \| null` | Latest telemetry packet for selected drone |
+| `telemetry`     | `TelemetryPoint \| null` | Latest telemetry packet for selected drone (includes extended fields when available) |
 | `fleetTelemetry`| `Record<string, TelemetryPoint>` | Latest fleet-lite points keyed by drone ID |
 | `connected`     | `boolean`                | STOMP link status                        |
 | `history`       | `TelemetryPoint[]`       | Last 150 selected-drone telemetry packets |
 | `batteryAlerts` | `LowBatteryAlert[]`      | Active low-battery alerts, sorted by battery ascending; sourced from `/topic/alerts/battery` (event-driven, emitted only on threshold crossing) |
+
+### useCommand
+
+`src/hooks/useCommand.ts` — sends C2 commands to the backend.
+
+```ts
+const { sendCommand, isSending, commandError } = useCommand(selectedDrone, authToken);
+// sendCommand('RTH' | 'ARM' | 'DISARM')
+// commandError: 'DRONE NOT CONNECTED' | 'MAVLINK DISABLED' | 'CMD FAILED (xxx)' | null
+```
+
+When `app.mavlink.enabled=false` on the server, `sendCommand` will set `commandError = 'MAVLINK DISABLED'` without crashing. The hook is always instantiated — it is safe to call even on simulated drones (server returns 503).
 
 Subscription model:
 - Always subscribes to selected full stream: `/topic/telemetry/{droneId}`

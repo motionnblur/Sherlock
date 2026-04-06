@@ -35,6 +35,16 @@ public class TelemetrySimulator {
     private static final double BASE_LATITUDE = 37.9838;
     private static final double BASE_LONGITUDE = 23.7275;
     private static final double FLEET_SPACING_DEGREES = 0.02;
+    private static final double ROLL_MAX_DEGREES = 25.0;
+    private static final double PITCH_MAX_DEGREES = 15.0;
+    private static final double HDOP_BASE = 0.8;
+    private static final double HDOP_RANGE = 0.7;
+    private static final int SAT_COUNT_BASE = 14;
+    private static final int SAT_COUNT_RANGE = 5;
+    private static final int SIMULATED_FIX_TYPE = 3;
+    private static final int RSSI_BASE = 80;
+    private static final int RSSI_RANGE = 20;
+    private static final String SIMULATED_FLIGHT_MODE = "LOITER";
 
     private final SimpMessagingTemplate messagingTemplate;
     private final TelemetryService telemetryService;
@@ -76,6 +86,14 @@ public class TelemetrySimulator {
                     .battery(roundTo(state.battery, 2))
                     .heading(roundTo(normalizeHeading(state.heading), 1))
                     .timestamp(timestamp)
+                    .roll(roundTo(state.roll, 1))
+                    .pitch(roundTo(state.pitch, 1))
+                    .hdop(roundTo(state.hdop, 2))
+                    .satelliteCount(state.satelliteCount)
+                    .fixType(state.fixType)
+                    .rssi(state.rssi)
+                    .isArmed(true)
+                    .flightMode(SIMULATED_FLIGHT_MODE)
                     .build();
 
             telemetryBatch.add(dto);
@@ -173,10 +191,22 @@ public class TelemetrySimulator {
         private double speed;
         private double battery;
         private double heading;
+        private double roll;
+        private double pitch;
+        private double hdop;
+        private int satelliteCount;
+        private int fixType;
+        private int rssi;
 
         private DroneState(String droneId, int seedOffset) {
             this.droneId = droneId;
             this.random = new Random(1_000L + seedOffset);
+            this.roll = 0.0;
+            this.pitch = 0.0;
+            this.hdop = HDOP_BASE;
+            this.satelliteCount = SAT_COUNT_BASE;
+            this.fixType = SIMULATED_FIX_TYPE;
+            this.rssi = RSSI_BASE + RSSI_RANGE / 2;
         }
 
         private void updateState() {
@@ -206,6 +236,18 @@ public class TelemetrySimulator {
             // Battery: realistic drain rate (~0.025% per 500ms ≈ 3%/min)
             battery -= 0.025 + random.nextDouble() * 0.005;
             battery  = Math.max(0.0, battery);
+
+            // Roll/pitch: small oscillations simulating banked turns and turbulence
+            roll  += (random.nextDouble() - 0.5) * 4.0;
+            roll   = clamp(roll, -ROLL_MAX_DEGREES, ROLL_MAX_DEGREES);
+            pitch += (random.nextDouble() - 0.5) * 2.0;
+            pitch  = clamp(pitch, -PITCH_MAX_DEGREES, PITCH_MAX_DEGREES);
+
+            // GPS quality: stable 3D fix with minor jitter
+            hdop           = HDOP_BASE + random.nextDouble() * HDOP_RANGE;
+            satelliteCount = SAT_COUNT_BASE + random.nextInt(SAT_COUNT_RANGE);
+            fixType        = SIMULATED_FIX_TYPE;
+            rssi           = RSSI_BASE + random.nextInt(RSSI_RANGE);
         }
 
         private double clamp(double value, double min, double max) {

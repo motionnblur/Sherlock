@@ -113,19 +113,35 @@ public class TelemetryService {
                 .battery(dto.getBattery())
                 .heading(dto.getHeading())
                 .timestamp(dto.getTimestamp())
+                .roll(dto.getRoll())
+                .pitch(dto.getPitch())
+                .hdop(dto.getHdop())
+                .satelliteCount(dto.getSatelliteCount())
+                .fixType(dto.getFixType())
+                .rssi(dto.getRssi())
+                .armed(dto.getIsArmed())
+                .flightMode(dto.getFlightMode())
                 .build();
     }
 
-    private LastKnownTelemetryDTO toLastKnownDTO(TelemetryDTO telemetryDTO) {
+    private LastKnownTelemetryDTO toLastKnownDTO(TelemetryDTO dto) {
         return LastKnownTelemetryDTO.builder()
-                .droneId(telemetryDTO.getDroneId())
-                .latitude(telemetryDTO.getLatitude())
-                .longitude(telemetryDTO.getLongitude())
-                .altitude(telemetryDTO.getAltitude())
-                .speed(telemetryDTO.getSpeed())
-                .battery(telemetryDTO.getBattery())
-                .heading(telemetryDTO.getHeading())
-                .timestamp(telemetryDTO.getTimestamp())
+                .droneId(dto.getDroneId())
+                .latitude(dto.getLatitude())
+                .longitude(dto.getLongitude())
+                .altitude(dto.getAltitude())
+                .speed(dto.getSpeed())
+                .battery(dto.getBattery())
+                .heading(dto.getHeading())
+                .timestamp(dto.getTimestamp())
+                .roll(dto.getRoll())
+                .pitch(dto.getPitch())
+                .hdop(dto.getHdop())
+                .satelliteCount(dto.getSatelliteCount())
+                .fixType(dto.getFixType())
+                .rssi(dto.getRssi())
+                .isArmed(dto.getIsArmed())
+                .flightMode(dto.getFlightMode())
                 .build();
     }
 
@@ -139,6 +155,14 @@ public class TelemetryService {
                 .battery(entity.getBattery())
                 .heading(entity.getHeading())
                 .timestamp(entity.getTimestamp())
+                .roll(entity.getRoll())
+                .pitch(entity.getPitch())
+                .hdop(entity.getHdop())
+                .satelliteCount(entity.getSatelliteCount())
+                .fixType(entity.getFixType())
+                .rssi(entity.getRssi())
+                .isArmed(entity.getArmed())
+                .flightMode(entity.getFlightMode())
                 .build();
     }
 }

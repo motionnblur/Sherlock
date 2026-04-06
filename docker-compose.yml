@@ -50,8 +50,12 @@ services:
       TELEMETRY_LAST_KNOWN_CACHE_SIZE: ${TELEMETRY_LAST_KNOWN_CACHE_SIZE:-10000}
       # /hls is proxied by nginx to mediamtx:8888 inside Docker — browser-reachable
       MEDIAMTX_HLS_BASE_URL: /hls
+      # MAVLink UDP adapter — set MAVLINK_ENABLED=true to activate
+      MAVLINK_ENABLED:  ${MAVLINK_ENABLED:-false}
+      MAVLINK_UDP_PORT: ${MAVLINK_UDP_PORT:-14550}
     ports:
       - "8080:8080"
+      - "14550:14550/udp"   # MAVLink telemetry ingest (drone / SITL → GCS)
     depends_on:
       postgres:
         condition: service_healthy

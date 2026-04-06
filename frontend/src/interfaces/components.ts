@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { PerformanceStage } from '../constants/performance';
+import type { CommandType } from '../hooks/useCommand';
 import type { DroneId, LowBatteryAlert, NavigationDirection, TelemetryByDrone, TelemetryPoint } from './telemetry';
 
 export interface HeaderProps {
@@ -58,6 +59,15 @@ export interface SystemPanelProps {
   telemetry: TelemetryPoint | null;
   history: TelemetryPoint[];
   connected: boolean;
+  onSendCommand: (commandType: CommandType) => Promise<void>;
+  isCommandSending: boolean;
+  commandError: string | null;
+}
+
+export interface AttitudeIndicatorProps {
+  roll?: number;
+  pitch?: number;
+  size?: number;
 }
 
 export interface MissionClockProps {

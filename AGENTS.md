@@ -68,15 +68,25 @@ Additional runtime service (not a build artifact):
 
 The full telemetry stream shares the same field set recursively down the stack. The "lite" stream (used during Free Mode) omits `speed` and `battery`.
 
-| Field       | Type      | Notes                         |
-|-------------|-----------|-------------------------------|
-| `latitude`  | Double    | Decimal degrees               |
-| `longitude` | Double    | Decimal degrees               |
-| `altitude`  | Double    | Meters ASL                    |
-| `speed`     | Double    | km/h                          |
-| `battery`   | Double    | Percentage (0–100)            |
-| `heading`   | Double    | Degrees, 0–360 clockwise from N |
-| `timestamp` | Instant   | ISO-8601 UTC                  |
+| Field            | Type      | Notes                                              |
+|------------------|-----------|----------------------------------------------------|
+| `latitude`       | Double    | Decimal degrees                                    |
+| `longitude`      | Double    | Decimal degrees                                    |
+| `altitude`       | Double    | Meters ASL                                         |
+| `speed`          | Double    | km/h                                               |
+| `battery`        | Double    | Percentage (0–100)                                 |
+| `heading`        | Double    | Degrees, 0–360 clockwise from N                    |
+| `timestamp`      | Instant   | ISO-8601 UTC                                       |
+| `roll`           | Double    | Degrees; negative = left bank. Null in lite stream |
+| `pitch`          | Double    | Degrees; negative = nose down. Null in lite stream |
+| `hdop`           | Double    | Horizontal dilution of precision                   |
+| `satelliteCount` | Integer   | GPS satellite count                                |
+| `fixType`        | Integer   | 0=no fix, 2=2D, 3=3D, 4=DGPS, 5=RTK float, 6=RTK fixed |
+| `rssi`           | Integer   | RF link quality 0–100 %                            |
+| `isArmed`        | Boolean   | MAVLink arm state                                  |
+| `flightMode`     | String    | e.g. "LOITER", "AUTO", "RTL"                       |
+
+Extended fields (`roll`–`flightMode`) are null in the lite fleet stream and when source is the simulator before a specific drone tick populates them.
 
 ---
 
@@ -92,6 +102,8 @@ The full telemetry stream shares the same field set recursively down the stack. 
 | REST history             | `GET /api/telemetry/history`                   |
 | REST bulk last-known     | `POST /api/telemetry/last-known`               |
 | REST stream URL          | `GET /api/drones/{droneId}/stream`             |
+| **C2 command**           | `POST /api/drones/{droneId}/command` — body: `{ commandType: "RTH" \| "ARM" \| "DISARM" }` |
+| MAVLink ingest (UDP)     | `udp://localhost:14550` — drone or SITL targets this |
 | RTSP ingest (MediaMTX)   | `rtsp://localhost:8554/{droneId}` (push)       |
 | HLS output (MediaMTX)    | `http://localhost:8888/{droneId}/index.m3u8`   |
 

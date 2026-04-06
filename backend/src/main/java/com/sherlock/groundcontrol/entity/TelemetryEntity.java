@@ -43,4 +43,29 @@ public class TelemetryEntity {
 
     @Column(nullable = false)
     private Instant timestamp;
+
+    // Extended fields — nullable; populated only when source supports them
+    @Column
+    private Double roll;
+
+    @Column
+    private Double pitch;
+
+    @Column
+    private Double hdop;
+
+    @Column
+    private Integer satelliteCount;
+
+    @Column
+    private Integer fixType;
+
+    @Column
+    private Integer rssi;
+
+    @Column
+    private Boolean armed;
+
+    @Column(length = 32)
+    private String flightMode;
 }

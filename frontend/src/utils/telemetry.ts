@@ -20,6 +20,15 @@ export function isTelemetryPoint(value: unknown): value is TelemetryPoint {
     && (candidate.battery === undefined || isFiniteNumber(candidate.battery))
     && isFiniteNumber(candidate.heading)
     && typeof candidate.timestamp === 'string'
+    // Extended fields are optional — allow any value including null/undefined
+    && (candidate.roll === undefined || candidate.roll === null || isFiniteNumber(candidate.roll))
+    && (candidate.pitch === undefined || candidate.pitch === null || isFiniteNumber(candidate.pitch))
+    && (candidate.hdop === undefined || candidate.hdop === null || isFiniteNumber(candidate.hdop))
+    && (candidate.satelliteCount === undefined || candidate.satelliteCount === null || typeof candidate.satelliteCount === 'number')
+    && (candidate.fixType === undefined || candidate.fixType === null || typeof candidate.fixType === 'number')
+    && (candidate.rssi === undefined || candidate.rssi === null || typeof candidate.rssi === 'number')
+    && (candidate.isArmed === undefined || candidate.isArmed === null || typeof candidate.isArmed === 'boolean')
+    && (candidate.flightMode === undefined || candidate.flightMode === null || typeof candidate.flightMode === 'string')
   );
 }
 

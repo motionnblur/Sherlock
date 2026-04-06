@@ -6,6 +6,7 @@ import type {
   MissionClockProps,
   SystemPanelProps,
 } from '../interfaces/components';
+import type { CommandType } from '../hooks/useCommand';
 import SectionHeader from './SectionHeader';
 import { BLANK_VALUE, formatUtcTime } from '../utils/formatters';
 
@@ -88,7 +89,48 @@ function LogEntry({ entry, index }: LogEntryProps) {
   );
 }
 
-export default function SystemPanel({ telemetry: t, history, connected }: SystemPanelProps) {
+function RssiBar({ value }: { value: number | undefined }) {
+  if (value == null) {
+    return <span className="text-[10px] text-muted">NO DATA</span>;
+  }
+  const filled = Math.round(clamp(value, 0, 100) / 20); // 0-5 blocks
+  const empty  = 5 - filled;
+  const color  = value < 30 ? 'text-danger' : value < 60 ? 'text-caution' : 'text-neon';
+  return (
+    <span className={`text-[10px] font-bold tracking-wider ${color}`}>
+      {'▮'.repeat(filled)}
+      <span className="text-muted">{'▯'.repeat(empty)}</span>
+      <span className="ml-1">{value}%</span>
+    </span>
+  );
+}
+
+function clamp(val: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, val));
+}
+
+interface CommandButtonProps {
+  label: string;
+  commandType: CommandType;
+  isSending: boolean;
+  colorClass: string;
+  onSend: (c: CommandType) => void;
+}
+
+function CommandButton({ label, commandType, isSending, colorClass, onSend }: CommandButtonProps) {
+  return (
+    <button
+      className={`flex-1 py-1 text-[9px] font-bold tracking-widest border ${colorClass}
+        disabled:opacity-40 disabled:cursor-not-allowed hover:bg-elevated transition-colors`}
+      onClick={() => onSend(commandType)}
+      disabled={isSending}
+    >
+      {label}
+    </button>
+  );
+}
+
+export default function SystemPanel({ telemetry: t, history, connected, onSendCommand, isCommandSending, commandError }: SystemPanelProps) {
   const recentLog = [...history].reverse().slice(0, 8);
 
   return (
@@ -139,9 +181,61 @@ export default function SystemPanel({ telemetry: t, history, connected }: System
             <span className="text-neon text-[10px]">STOMP/WS</span>
           </div>
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted text-[10px] tracking-wider">UPLINK</span>
-            <span className="text-neon text-[10px]">2.4 GHz</span>
+            <span className="text-muted text-[10px] tracking-wider">RF LINK</span>
+            <RssiBar value={t?.rssi} />
           </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted text-[10px] tracking-wider">ARMED</span>
+            <span className={`font-bold text-[10px] ${
+              t?.isArmed === true  ? 'text-danger animate-blink' :
+              t?.isArmed === false ? 'text-neon' : 'text-muted'
+            }`}>
+              {t?.isArmed === true ? '⚠ ARMED' : t?.isArmed === false ? 'SAFE' : BLANK_VALUE}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted text-[10px] tracking-wider">MODE</span>
+            <span className="text-neon text-[10px] font-bold tracking-wider">
+              {t?.flightMode ?? BLANK_VALUE}
+            </span>
+          </div>
+        </div>
+
+        <SectionHeader title="COMMANDS" />
+        <div className="py-1 space-y-1">
+          <div className="flex gap-1">
+            <CommandButton
+              label="RTH"
+              commandType="RTH"
+              isSending={isCommandSending}
+              colorClass="border-caution text-caution"
+              onSend={onSendCommand}
+            />
+            <CommandButton
+              label="ARM"
+              commandType="ARM"
+              isSending={isCommandSending}
+              colorClass="border-danger text-danger"
+              onSend={onSendCommand}
+            />
+            <CommandButton
+              label="DISARM"
+              commandType="DISARM"
+              isSending={isCommandSending}
+              colorClass="border-line text-muted"
+              onSend={onSendCommand}
+            />
+          </div>
+          {commandError && (
+            <div className="text-[9px] text-danger tracking-widest pt-0.5">
+              ⚠ {commandError}
+            </div>
+          )}
+          {isCommandSending && (
+            <div className="text-[9px] text-caution tracking-widest animate-pulse">
+              SENDING...
+            </div>
+          )}
         </div>
 
         <SectionHeader title="FLIGHT LOG" />

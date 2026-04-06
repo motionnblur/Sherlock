@@ -23,4 +23,13 @@ public class LastKnownTelemetryDTO {
     private Double battery;
     private Double heading;
     private Instant timestamp;
+
+    private Double roll;
+    private Double pitch;
+    private Double hdop;
+    private Integer satelliteCount;
+    private Integer fixType;
+    private Integer rssi;
+    private Boolean isArmed;
+    private String flightMode;
 }
