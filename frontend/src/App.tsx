@@ -4,7 +4,7 @@ import { useTelemetry } from './hooks/useTelemetry';
 import { useStreamUrl } from './hooks/useStreamUrl';
 import { useLastKnownTelemetry } from './hooks/useLastKnownTelemetry';
 import { useCommand } from './hooks/useCommand';
-import { DRONE_IDS } from './constants/telemetry';
+import { useDroneRegistry } from './hooks/useDroneRegistry';
 import { NAVIGATION_DIRECTION_ALL } from './constants/navigation';
 import {
   getNextPerformanceStage,
@@ -35,8 +35,9 @@ export default function App() {
   const [selectedNavigationDirection, setSelectedNavigationDirection] =
     useState<NavigationDirection>(NAVIGATION_DIRECTION_ALL);
 
+  const { droneIds } = useDroneRegistry(authToken);
   const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTelemetry(selectedDrone, freeMode, showAllAssets);
-  const lastKnownTelemetry = useLastKnownTelemetry(DRONE_IDS, selectedDrone !== null);
+  const lastKnownTelemetry = useLastKnownTelemetry(droneIds, selectedDrone !== null);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
   const { sendCommand, isSending: isCommandSending, commandError } = useCommand(selectedDrone, authToken);
 
@@ -163,6 +164,7 @@ export default function App() {
           {selectedDrone ? (
             <>
               <MapComponent
+                droneIds={droneIds}
                 telemetry={telemetry}
                 fleetTelemetry={fleetTelemetry}
                 lastKnownTelemetry={lastKnownTelemetry}
@@ -188,7 +190,7 @@ export default function App() {
               )}
             </>
           ) : (
-            <AssetSelectionOverlay onSelectDrone={handleActivateDrone} />
+            <AssetSelectionOverlay droneIds={droneIds} onSelectDrone={handleActivateDrone} />
           )}
         </main>
 

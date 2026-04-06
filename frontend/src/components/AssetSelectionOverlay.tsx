@@ -1,13 +1,13 @@
 import {
   ASSET_LIST_OVERSCAN_ROWS,
-  DRONE_IDS,
-  SELECTION_ASSET_LIST_HEIGHT_PX,
+  MAX_SELECTION_VISIBLE_ROWS,
   SELECTION_ASSET_ROW_HEIGHT_PX,
 } from '../constants/telemetry';
 import type { DroneId } from '../interfaces/telemetry';
 import VirtualizedAssetList from './VirtualizedAssetList';
 
 interface AssetSelectionOverlayProps {
+  droneIds: DroneId[];
   onSelectDrone: (id: DroneId) => void;
 }
 
@@ -30,7 +30,9 @@ function AssetRow({
   );
 }
 
-export default function AssetSelectionOverlay({ onSelectDrone }: AssetSelectionOverlayProps) {
+export default function AssetSelectionOverlay({ droneIds, onSelectDrone }: AssetSelectionOverlayProps) {
+  const viewportHeightPx = Math.min(droneIds.length || 1, MAX_SELECTION_VISIBLE_ROWS) * SELECTION_ASSET_ROW_HEIGHT_PX;
+
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
       <div className="bg-panel border border-line w-72 pointer-events-auto shadow-[0_0_0_1px_rgba(0,255,65,0.08)]">
@@ -41,8 +43,8 @@ export default function AssetSelectionOverlay({ onSelectDrone }: AssetSelectionO
         </div>
 
         <VirtualizedAssetList
-          assetIds={DRONE_IDS}
-          viewportHeightPx={SELECTION_ASSET_LIST_HEIGHT_PX}
+          assetIds={droneIds}
+          viewportHeightPx={viewportHeightPx}
           rowHeightPx={SELECTION_ASSET_ROW_HEIGHT_PX}
           overscanRows={ASSET_LIST_OVERSCAN_ROWS}
           renderRow={(assetId) => (

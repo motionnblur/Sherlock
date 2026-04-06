@@ -30,6 +30,7 @@ export interface MapSettingsConfig {
 }
 
 export interface MapComponentProps {
+  droneIds: DroneId[];
   telemetry: TelemetryPoint | null;
   fleetTelemetry: TelemetryByDrone;
   lastKnownTelemetry: TelemetryByDrone;
@@ -42,6 +43,7 @@ export interface MapComponentProps {
 }
 
 export interface AssetWindowProps {
+  droneIds: DroneId[];
   selectedDrone: DroneId | null;
   onActivateDrone: (id: DroneId) => void;
 }

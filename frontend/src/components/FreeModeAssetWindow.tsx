@@ -1,4 +1,3 @@
-import { AVAILABLE_ASSETS } from '../constants/assets';
 import {
   ASSET_LIST_OVERSCAN_ROWS,
   ASSET_LIST_ROW_HEIGHT_PX,
@@ -8,10 +7,11 @@ import type { AssetWindowProps } from '../interfaces/components';
 import VirtualizedAssetList from './VirtualizedAssetList';
 
 export default function FreeModeAssetWindow({
+  droneIds,
   selectedDrone,
   onActivateDrone,
 }: AssetWindowProps) {
-  const assetIds = AVAILABLE_ASSETS;
+  const assetIds = droneIds;
 
   return (
     <div className="absolute top-4 left-4 z-20 w-60 h-[18rem] max-h-[calc(100%-2rem)] pointer-events-none">
@@ -27,7 +27,7 @@ export default function FreeModeAssetWindow({
               </div>
             </div>
             <div className="text-[9px] tracking-widest text-muted uppercase">
-              {AVAILABLE_ASSETS.length} ONLINE
+              {droneIds.length} ONLINE
             </div>
           </div>
         </div>

@@ -68,6 +68,13 @@ public class TelemetrySimulator {
         }
     }
 
+    /** Returns the stable list of simulated drone IDs — fixed at startup, never changes at runtime. */
+    public List<String> getFleetDroneIds() {
+        return fleet.stream()
+                .map(state -> state.droneId)
+                .toList();
+    }
+
     @Scheduled(fixedRate = TELEMETRY_INTERVAL_MS)
     public void broadcastTelemetry() {
         Instant timestamp = Instant.now();

@@ -24,7 +24,7 @@ import java.util.Optional;
  * Returns 422 if the drone is not currently connected.
  */
 @RestController
-@RequestMapping("/api/drones")
+@RequestMapping("/api/drones/{droneId}")
 @Slf4j
 public class DroneCommandController {
 
@@ -35,7 +35,7 @@ public class DroneCommandController {
         this.droneCommandService = droneCommandService;
     }
 
-    @PostMapping("/{droneId}/command")
+    @PostMapping("/command")
     public ResponseEntity<Void> sendCommand(
             @PathVariable String droneId,
             @RequestBody DroneCommandDTO commandDTO

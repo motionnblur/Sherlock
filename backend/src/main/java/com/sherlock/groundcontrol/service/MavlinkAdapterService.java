@@ -213,6 +213,16 @@ public class MavlinkAdapterService {
         }
     }
 
+    /** Returns drone IDs for all snapshots that have a position and are not stale. */
+    public List<String> getActiveDroneIds() {
+        Instant cutoff = Instant.now().minusSeconds(SNAPSHOT_STALE_SECONDS);
+        return snapshots.values().stream()
+                .filter(s -> s.hasPosition() && s.getLastSeen().isAfter(cutoff))
+                .map(s -> droneIdFor(s.getSystemId()))
+                .sorted()
+                .toList();
+    }
+
     /** Returns the MAVLink system ID for a drone ID, or empty if not connected. */
     public Optional<Integer> resolveSystemId(String droneId) {
         return snapshots.entrySet().stream()

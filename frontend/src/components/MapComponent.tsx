@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
-import { DRONE_IDS, FLIGHT_PATH_POINT_LIMIT } from '../constants/telemetry';
+import { FLIGHT_PATH_POINT_LIMIT } from '../constants/telemetry';
 import { NAVIGATION_DIRECTION_ALL } from '../constants/navigation';
 import { PERFORMANCE_STAGE_NORMAL } from '../constants/performance';
 import type { MapComponentProps } from '../interfaces/components';
@@ -66,6 +66,7 @@ function SelectedTelemetryBanner({ telemetry }: { telemetry: TelemetryPoint }) {
 }
 
 export default function MapComponent({
+  droneIds,
   telemetry,
   fleetTelemetry,
   lastKnownTelemetry,
@@ -277,7 +278,7 @@ export default function MapComponent({
     const visibleIds = new Set<DroneId>();
     const isShowAll = freeMode && showAllAssets;
     const shouldFilterByDirection = isShowAll && selectedNavigationDirection !== NAVIGATION_DIRECTION_ALL;
-    for (const droneId of DRONE_IDS) {
+    for (const droneId of droneIds) {
       if (!isShowAll && selectedDrone && droneId === selectedDrone) {
         continue;
       }
@@ -304,7 +305,7 @@ export default function MapComponent({
     }
 
     viewer.scene.requestRender();
-  }, [fleetTelemetry, freeMode, lastKnownTelemetry, selectedDrone, selectedNavigationDirection, showAllAssets, viewer]);
+  }, [droneIds, fleetTelemetry, freeMode, lastKnownTelemetry, selectedDrone, selectedNavigationDirection, showAllAssets, viewer]);
 
   useEffect(() => {
     return () => {
@@ -322,7 +323,7 @@ export default function MapComponent({
       <MapFrameOverlay isMapDimmed={isMapDimmed} />
 
       {freeMode && !showAllAssets && (
-        <FreeModeAssetWindow selectedDrone={selectedDrone} onActivateDrone={onSelectDrone} />
+        <FreeModeAssetWindow droneIds={droneIds} selectedDrone={selectedDrone} onActivateDrone={onSelectDrone} />
       )}
 
       {selectedLiveTelemetry && selectedDrone && !freeMode && (
