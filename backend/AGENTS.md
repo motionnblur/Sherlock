@@ -217,6 +217,23 @@ sim_vehicle.py -v ArduCopter --out=udp:127.0.0.1:14550
 # Then set MAVLINK_ENABLED=true and start the backend
 ```
 
+Docker alternative (when using repository `docker-compose.yml`):
+```bash
+# 1) Ensure .env has:
+# MAVLINK_ENABLED=true
+# ARDUPILOT_REPO=/absolute/path/to/ardupilot
+#
+# 2) Start dev stack + SITL profile together
+docker compose --profile dev --profile sitl up --build
+```
+
+`sitl` service details:
+- Uses image `ardupilot/ardupilot-dev-chibios:latest`
+- Runs `/ardupilot/Tools/autotest/sim_vehicle.py`
+- Auto-initializes ArduPilot git submodules (`git submodule update --init --recursive`) when `modules/waf/waf-light` is missing
+- Auto-installs `pymavlink` and `MAVProxy` on startup if they are not present in the image
+- Sends MAVLink to `backend:${MAVLINK_UDP_PORT}` on the shared Docker network
+
 ---
 
 ## Adding a New REST Endpoint

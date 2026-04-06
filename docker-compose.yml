@@ -104,6 +104,44 @@ services:
     networks:
       - sherlock-net
 
+  # ── ArduPilot SITL — Optional MAVLink source for development ─────────────────
+  sitl:
+    profiles: [sitl]
+    image: ardupilot/ardupilot-dev-chibios:latest
+    container_name: sherlock-sitl
+    working_dir: /ardupilot
+    command: >-
+      /bin/bash -lc "
+      if [ ! -f Tools/autotest/sim_vehicle.py ]; then
+        echo 'Missing ArduPilot checkout at /ardupilot. Set ARDUPILOT_REPO in .env to your local ardupilot path.';
+        exit 1;
+      fi;
+      if [ -d .git ]; then
+        git config --global --add safe.directory /ardupilot;
+      fi;
+      if [ ! -f modules/waf/waf-light ]; then
+        if [ ! -d .git ]; then
+          echo 'ArduPilot submodules are missing and /ardupilot is not a git checkout. Provide a full git clone in ARDUPILOT_REPO.';
+          exit 1;
+        fi;
+        echo 'Initializing ArduPilot git submodules (required for waf)...';
+        git submodule update --init --recursive;
+      fi;
+      if ! python3 -c 'import pymavlink' >/dev/null 2>&1; then
+        echo 'Installing required SITL Python dependencies (pymavlink, MAVProxy)...';
+        python3 -m pip install --no-cache-dir pymavlink MAVProxy;
+      fi;
+      Tools/autotest/sim_vehicle.py -v ${SITL_VEHICLE:-ArduCopter} --out=udp:backend:${MAVLINK_UDP_PORT:-14550}
+      "
+    volumes:
+      - ${ARDUPILOT_REPO:-./ardupilot}:/ardupilot
+    depends_on:
+      - backend
+    stdin_open: true
+    tty: true
+    networks:
+      - sherlock-net
+
   # ── MediaMTX — RTSP/HLS media proxy (drone camera simulator) ─────────────────
   mediamtx:
     image: bluenviron/mediamtx:latest

@@ -67,8 +67,7 @@ public final class MavlinkFrameParser {
         int receivedCrc = (data[V1_HEADER_LENGTH + payloadLen] & 0xFF)
                         | ((data[V1_HEADER_LENGTH + payloadLen + 1] & 0xFF) << 8);
 
-        if (computedCrc != receivedCrc && crcExtra >= 0) {
-            // Unknown message types (crcExtra = -1) skip CRC validation
+        if (crcExtra < 0 || computedCrc != receivedCrc) {
             return Optional.empty();
         }
 
@@ -98,7 +97,7 @@ public final class MavlinkFrameParser {
         int receivedCrc = (data[V2_HEADER_LENGTH + payloadLen] & 0xFF)
                         | ((data[V2_HEADER_LENGTH + payloadLen + 1] & 0xFF) << 8);
 
-        if (computedCrc != receivedCrc && crcExtra >= 0) {
+        if (crcExtra < 0 || computedCrc != receivedCrc) {
             return Optional.empty();
         }
 
@@ -165,7 +164,7 @@ public final class MavlinkFrameParser {
 
     /**
      * Returns the CRC extra byte (MAGIC_EXTRA) for known message IDs.
-     * Returns -1 for unknown IDs, which skips CRC validation for that message.
+     * Returns -1 for unknown IDs, which marks the frame unsupported.
      */
     private static int crcExtraForMessage(int msgId) {
         return switch (msgId) {
@@ -176,7 +175,7 @@ public final class MavlinkFrameParser {
             case 33  -> 104;  // GLOBAL_POSITION_INT
             case 76  -> 152;  // COMMAND_LONG
             case 109 -> 185;  // RADIO_STATUS
-            default  -> -1;   // unknown — skip CRC check
+            default  -> -1;   // unknown — unsupported
         };
     }
 }

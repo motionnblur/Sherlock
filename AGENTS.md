@@ -30,6 +30,7 @@ Sherlock/
 
 Additional runtime service (not a build artifact):
 - **MediaMTX** (`bluenviron/mediamtx`) — RTSP/HLS media proxy. Accepts RTSP push from a real drone (or FFmpeg simulator) on `:8554` and re-serves HLS on `:8888`.
+- **ArduPilot SITL** (`ardupilot/ardupilot-dev-chibios`) — optional simulation container that runs `sim_vehicle.py` and publishes MAVLink UDP to `backend:14550` when profile `sitl` is enabled. The service auto-initializes missing git submodules and auto-installs `pymavlink`/`MAVProxy` if missing.
 
 ---
 
@@ -244,6 +245,9 @@ docker compose --profile dev up --build   # Vite dev server + HMR on :5173
 docker compose --profile prod up --build  # nginx static build on :80
 
 # Individual services — see sub-AGENTS.md files
+
+# Optional: run ArduPilot SITL in Docker (requires ARDUPILOT_REPO in .env)
+docker compose --profile dev --profile sitl up --build
 ```
 
 ---

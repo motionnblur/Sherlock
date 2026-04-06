@@ -111,44 +111,10 @@ public class MavlinkAdapterService {
     private void applyFrame(MavlinkFrame frame, InetSocketAddress source) {
         DroneSnapshot snapshot = snapshots.computeIfAbsent(frame.systemId(), DroneSnapshot::new);
         snapshot.setSourceAddress(source);
-        snapshot.setLastSeen(Instant.now());
-
-        switch (frame.messageId()) {
-            case MavlinkMessageDecoder.MSG_HEARTBEAT ->
-                MavlinkMessageDecoder.decodeHeartbeat(frame.payload()).ifPresent(d -> {
-                    snapshot.setArmed(d.isArmed());
-                    snapshot.setFlightMode(d.flightMode());
-                });
-            case MavlinkMessageDecoder.MSG_SYS_STATUS ->
-                MavlinkMessageDecoder.decodeSysStatus(frame.payload()).ifPresent(d ->
-                    snapshot.setBatteryPercent(d.batteryPercent())
-                );
-            case MavlinkMessageDecoder.MSG_GPS_RAW_INT ->
-                MavlinkMessageDecoder.decodeGpsRawInt(frame.payload()).ifPresent(d -> {
-                    snapshot.setFixType(d.fixType());
-                    snapshot.setHdop(Double.isNaN(d.hdop()) ? null : d.hdop());
-                    snapshot.setSatelliteCount(d.satelliteCount() < 0 ? null : d.satelliteCount());
-                });
-            case MavlinkMessageDecoder.MSG_ATTITUDE ->
-                MavlinkMessageDecoder.decodeAttitude(frame.payload()).ifPresent(d -> {
-                    snapshot.setRoll(d.roll());
-                    snapshot.setPitch(d.pitch());
-                });
-            case MavlinkMessageDecoder.MSG_GLOBAL_POSITION_INT ->
-                MavlinkMessageDecoder.decodeGlobalPositionInt(frame.payload()).ifPresent(d -> {
-                    snapshot.setLatitude(d.latitude());
-                    snapshot.setLongitude(d.longitude());
-                    snapshot.setAltitudeMsl(d.altitudeMsl());
-                    snapshot.setSpeed(d.speed());
-                    if (!Double.isNaN(d.heading())) {
-                        snapshot.setHeading(d.heading());
-                    }
-                });
-            case MavlinkMessageDecoder.MSG_RADIO_STATUS ->
-                MavlinkMessageDecoder.decodeRadioStatus(frame.payload()).ifPresent(d ->
-                    snapshot.setRssiPercent(d.rssiPercent())
-                );
-            default -> { /* unsupported message type — ignore */ }
+        Instant receivedAt = Instant.now();
+        boolean isSupportedTelemetry = applySupportedMessage(frame, snapshot);
+        if (isSupportedTelemetry) {
+            snapshot.setLastSeen(receivedAt);
         }
     }
 
@@ -161,15 +127,18 @@ public class MavlinkAdapterService {
         }
 
         Instant now = Instant.now();
+        Instant staleCutoff = now.minusSeconds(SNAPSHOT_STALE_SECONDS);
         List<TelemetryDTO> batch = new ArrayList<>(snapshots.size());
         List<TelemetryLiteDTO> liteBatch = new ArrayList<>(snapshots.size());
+        List<Integer> staleSystemIds = new ArrayList<>();
 
-        for (DroneSnapshot snapshot : snapshots.values()) {
-            if (!snapshot.hasPosition()) {
+        for (Map.Entry<Integer, DroneSnapshot> entry : snapshots.entrySet()) {
+            DroneSnapshot snapshot = entry.getValue();
+            if (isSnapshotStale(snapshot, staleCutoff)) {
+                staleSystemIds.add(entry.getKey());
                 continue;
             }
-            // Drop snapshots that haven't received data recently
-            if (now.getEpochSecond() - snapshot.getLastSeen().getEpochSecond() > SNAPSHOT_STALE_SECONDS) {
+            if (!snapshot.hasPosition()) {
                 continue;
             }
 
@@ -184,6 +153,10 @@ public class MavlinkAdapterService {
             telemetryService.persistBatch(batch);
             messagingTemplate.convertAndSend(FLEET_LITE_TOPIC, liteBatch);
         }
+
+        for (Integer staleSystemId : staleSystemIds) {
+            snapshots.remove(staleSystemId);
+        }
     }
 
     // ── Command dispatch ─────────────────────────────────────────────────────────
@@ -194,8 +167,9 @@ public class MavlinkAdapterService {
      */
     public boolean sendPacket(int systemId, byte[] packet) {
         DroneSnapshot snapshot = snapshots.get(systemId);
-        if (snapshot == null || snapshot.getSourceAddress() == null) {
-            log.warn("sendPacket: no known address for sysId {}", systemId);
+        Instant staleCutoff = Instant.now().minusSeconds(SNAPSHOT_STALE_SECONDS);
+        if (snapshot == null || !isSnapshotCommandable(snapshot, staleCutoff)) {
+            log.warn("sendPacket: sysId {} is not currently commandable", systemId);
             return false;
         }
         if (socket == null || socket.isClosed()) {
@@ -217,7 +191,7 @@ public class MavlinkAdapterService {
     public List<String> getActiveDroneIds() {
         Instant cutoff = Instant.now().minusSeconds(SNAPSHOT_STALE_SECONDS);
         return snapshots.values().stream()
-                .filter(s -> s.hasPosition() && s.getLastSeen().isAfter(cutoff))
+                .filter(s -> isSnapshotVisible(s, cutoff))
                 .map(s -> droneIdFor(s.getSystemId()))
                 .sorted()
                 .toList();
@@ -225,8 +199,10 @@ public class MavlinkAdapterService {
 
     /** Returns the MAVLink system ID for a drone ID, or empty if not connected. */
     public Optional<Integer> resolveSystemId(String droneId) {
+        Instant cutoff = Instant.now().minusSeconds(SNAPSHOT_STALE_SECONDS);
         return snapshots.entrySet().stream()
                 .filter(e -> droneIdFor(e.getKey()).equals(droneId))
+                .filter(e -> isSnapshotCommandable(e.getValue(), cutoff))
                 .map(Map.Entry::getKey)
                 .findFirst();
     }
@@ -239,6 +215,95 @@ public class MavlinkAdapterService {
 
     private static String droneIdFor(int systemId) {
         return DRONE_ID_PREFIX + String.format("%02d", systemId);
+    }
+
+    private static boolean applySupportedMessage(MavlinkFrame frame, DroneSnapshot snapshot) {
+        return switch (frame.messageId()) {
+            case MavlinkMessageDecoder.MSG_HEARTBEAT -> applyHeartbeat(frame, snapshot);
+            case MavlinkMessageDecoder.MSG_SYS_STATUS -> applySysStatus(frame, snapshot);
+            case MavlinkMessageDecoder.MSG_GPS_RAW_INT -> applyGpsRawInt(frame, snapshot);
+            case MavlinkMessageDecoder.MSG_ATTITUDE -> applyAttitude(frame, snapshot);
+            case MavlinkMessageDecoder.MSG_GLOBAL_POSITION_INT -> applyGlobalPositionInt(frame, snapshot);
+            case MavlinkMessageDecoder.MSG_RADIO_STATUS -> applyRadioStatus(frame, snapshot);
+            default -> false;
+        };
+    }
+
+    private static boolean applyHeartbeat(MavlinkFrame frame, DroneSnapshot snapshot) {
+        Optional<MavlinkMessageDecoder.HeartbeatData> decoded = MavlinkMessageDecoder.decodeHeartbeat(frame.payload());
+        if (decoded.isEmpty()) {
+            return false;
+        }
+        snapshot.setArmed(decoded.get().isArmed());
+        snapshot.setFlightMode(decoded.get().flightMode());
+        return true;
+    }
+
+    private static boolean applySysStatus(MavlinkFrame frame, DroneSnapshot snapshot) {
+        Optional<MavlinkMessageDecoder.SysStatusData> decoded = MavlinkMessageDecoder.decodeSysStatus(frame.payload());
+        if (decoded.isEmpty()) {
+            return false;
+        }
+        snapshot.setBatteryPercent(decoded.get().batteryPercent());
+        return true;
+    }
+
+    private static boolean applyGpsRawInt(MavlinkFrame frame, DroneSnapshot snapshot) {
+        Optional<MavlinkMessageDecoder.GpsRawIntData> decoded = MavlinkMessageDecoder.decodeGpsRawInt(frame.payload());
+        if (decoded.isEmpty()) {
+            return false;
+        }
+        snapshot.setFixType(decoded.get().fixType());
+        snapshot.setHdop(Double.isNaN(decoded.get().hdop()) ? null : decoded.get().hdop());
+        snapshot.setSatelliteCount(decoded.get().satelliteCount() < 0 ? null : decoded.get().satelliteCount());
+        return true;
+    }
+
+    private static boolean applyAttitude(MavlinkFrame frame, DroneSnapshot snapshot) {
+        Optional<MavlinkMessageDecoder.AttitudeData> decoded = MavlinkMessageDecoder.decodeAttitude(frame.payload());
+        if (decoded.isEmpty()) {
+            return false;
+        }
+        snapshot.setRoll(decoded.get().roll());
+        snapshot.setPitch(decoded.get().pitch());
+        return true;
+    }
+
+    private static boolean applyGlobalPositionInt(MavlinkFrame frame, DroneSnapshot snapshot) {
+        Optional<MavlinkMessageDecoder.GlobalPositionIntData> decoded = MavlinkMessageDecoder.decodeGlobalPositionInt(frame.payload());
+        if (decoded.isEmpty()) {
+            return false;
+        }
+        snapshot.setLatitude(decoded.get().latitude());
+        snapshot.setLongitude(decoded.get().longitude());
+        snapshot.setAltitudeMsl(decoded.get().altitudeMsl());
+        snapshot.setSpeed(decoded.get().speed());
+        if (!Double.isNaN(decoded.get().heading())) {
+            snapshot.setHeading(decoded.get().heading());
+        }
+        return true;
+    }
+
+    private static boolean applyRadioStatus(MavlinkFrame frame, DroneSnapshot snapshot) {
+        Optional<MavlinkMessageDecoder.RadioStatusData> decoded = MavlinkMessageDecoder.decodeRadioStatus(frame.payload());
+        if (decoded.isEmpty()) {
+            return false;
+        }
+        snapshot.setRssiPercent(decoded.get().rssiPercent());
+        return true;
+    }
+
+    private static boolean isSnapshotStale(DroneSnapshot snapshot, Instant staleCutoff) {
+        Instant lastSeen = snapshot.getLastSeen();
+        return lastSeen == null || !lastSeen.isAfter(staleCutoff);
+    }
+
+    private static boolean isSnapshotVisible(DroneSnapshot snapshot, Instant staleCutoff) {
+        return snapshot.hasPosition() && !isSnapshotStale(snapshot, staleCutoff);
+    }
+
+    private static boolean isSnapshotCommandable(DroneSnapshot snapshot, Instant staleCutoff) {
+        return isSnapshotVisible(snapshot, staleCutoff) && snapshot.getSourceAddress() != null;
     }
 
     private static TelemetryDTO toDTO(DroneSnapshot s, Instant timestamp) {

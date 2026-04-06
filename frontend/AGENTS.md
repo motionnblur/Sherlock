@@ -38,11 +38,12 @@ src/
 │   └── index.ts                 # Barrel exports
 ├── hooks/
 │   ├── useAuth.ts               # Consumes AuthContext; throws if used outside <AuthProvider>
-│   ├── useCommand.ts            # POST /api/drones/{id}/command — RTH/ARM/DISARM; returns sendCommand, isSending, commandError
+│   ├── useCommand.ts            # POST /api/drones/{id}/command — RTH/ARM/DISARM; returns sendCommand, isSending, commandError; 401 → logout
 │   ├── useLastKnownTelemetry.ts # One-shot bulk bootstrap from POST /api/telemetry/last-known
 │   ├── useLogin.ts              # Login form submission logic; calls POST /api/auth/login
 │   ├── useTelemetry.ts          # STOMP client; selected stream + bounded fleet summary; auto-logout on auth error
-│   └── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
+│   ├── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
+│   └── useDroneRegistry.ts      # Polls GET /api/drones every 30s; 401 → logout
 ├── utils/
 │   ├── formatters.ts            # Shared UI formatting helpers for coordinates, UTC time, cardinal heading
 │   └── telemetry.ts             # Runtime parsing/validation helpers; extended fields are optional-passthrough
@@ -176,6 +177,7 @@ const { sendCommand, isSending, commandError } = useCommand(selectedDrone, authT
 ```
 
 When `app.mavlink.enabled=false` on the server, `sendCommand` will set `commandError = 'MAVLINK DISABLED'` without crashing. The hook is always instantiated — it is safe to call even on simulated drones (server returns 503).
+If the command endpoint returns `401`, the hook immediately calls `logout()` to return the operator to `LoginPage`.
 
 Subscription model:
 - Always subscribes to selected full stream: `/topic/telemetry/{droneId}`
@@ -217,7 +219,7 @@ STOMP connections pass it in `connectHeaders`:
 ```ts
 connectHeaders: { Authorization: `Bearer ${authToken.token}` }
 ```
-Both `useTelemetry` and `useStreamUrl` already do this. Any new hook or service that calls the backend must follow the same pattern.
+`useTelemetry`, `useStreamUrl`, `useLastKnownTelemetry`, `useDroneRegistry`, and `useCommand` already do this. Any new hook or service that calls the backend must follow the same pattern.
 
 ### Handling 401 responses
 A 401 from any endpoint means the token has expired or been revoked. Always respond by calling `logout()` — do not show a retry loop. The user will be returned to `LoginPage` automatically.

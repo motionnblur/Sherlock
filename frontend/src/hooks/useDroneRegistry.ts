@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AuthToken } from '../interfaces/auth';
 import type { DroneId } from '../interfaces/telemetry';
+import { useAuth } from './useAuth';
 
 export interface UseDroneRegistryReturn {
   droneIds: DroneId[];
@@ -16,9 +17,10 @@ const POLL_INTERVAL_MS    = 30_000;
  * drones (SHERLOCK-*) and any live MAVLink drones (MAVLINK-*) that are connected.
  *
  * Polls every 30 s so newly connected drones appear without a page reload.
- * On 401 the caller's auth layer will handle logout — this hook does not.
+ * A 401 response forces logout so the operator is returned to LoginPage.
  */
 export function useDroneRegistry(authToken: AuthToken | null): UseDroneRegistryReturn {
+  const { logout } = useAuth();
   const [droneIds, setDroneIds] = useState<DroneId[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -34,6 +36,11 @@ export function useDroneRegistry(authToken: AuthToken | null): UseDroneRegistryR
         headers: { Authorization: `Bearer ${authToken.token}` },
         signal,
       });
+
+      if (response.status === 401) {
+        logout();
+        return;
+      }
 
       if (!response.ok) {
         return;
@@ -53,7 +60,7 @@ export function useDroneRegistry(authToken: AuthToken | null): UseDroneRegistryR
         setIsLoading(false);
       }
     }
-  }, [authToken]);
+  }, [authToken, logout]);
 
   useEffect(() => {
     const controller = new AbortController();
