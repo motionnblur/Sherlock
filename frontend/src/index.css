@@ -14,16 +14,31 @@
   display: none !important;
 }
 
-/* Scrollbar: dark military style */
-::-webkit-scrollbar {
-  width: 4px;
+/* Scrollbar: green military style */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #00ff41 #050505;
 }
-::-webkit-scrollbar-track {
-  background: #0d1117;
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
-::-webkit-scrollbar-thumb {
-  background: #1e2a3a;
+
+*::-webkit-scrollbar-track {
+  background: #050505;
+  border: 1px solid #1e2a3a;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #00FF41;
+
+*::-webkit-scrollbar-thumb {
+  background-color: #0f3d1f;
+  border: 1px solid #00ff41;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #00ff41;
+}
+
+*::-webkit-scrollbar-corner {
+  background: #050505;
 }
