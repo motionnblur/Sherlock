@@ -46,6 +46,8 @@ public class MavlinkAdapterService {
     private static final String DRONE_ID_PREFIX         = "MAVLINK-";
     private static final int    SNAPSHOT_STALE_SECONDS  = 10;
 
+    public record AltitudeReference(double altitudeMsl, double relativeAltitudeMeters) {}
+
     private final SimpMessagingTemplate messagingTemplate;
     private final TelemetryService telemetryService;
 
@@ -217,6 +219,27 @@ public class MavlinkAdapterService {
         return isSnapshotCommandable(snapshot, cutoff) && Boolean.TRUE.equals(snapshot.getArmed());
     }
 
+    /**
+     * Returns altitude reference values from GLOBAL_POSITION_INT if the drone is commandable.
+     * altitudeMsl is AMSL, relativeAltitudeMeters is altitude above home.
+     */
+    public Optional<AltitudeReference> getAltitudeReference(int systemId) {
+        DroneSnapshot snapshot = snapshots.get(systemId);
+        if (snapshot == null) {
+            return Optional.empty();
+        }
+        Instant cutoff = Instant.now().minusSeconds(SNAPSHOT_STALE_SECONDS);
+        if (!isSnapshotCommandable(snapshot, cutoff)) {
+            return Optional.empty();
+        }
+        Double altitudeMsl = snapshot.getAltitudeMsl();
+        Double relativeAltitudeMeters = snapshot.getRelativeAltitudeMeters();
+        if (altitudeMsl == null || relativeAltitudeMeters == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new AltitudeReference(altitudeMsl, relativeAltitudeMeters));
+    }
+
     public int nextSeqNum() {
         return outboundSeq.getAndIncrement() & 0xFF;
     }
@@ -287,6 +310,7 @@ public class MavlinkAdapterService {
         snapshot.setLatitude(decoded.get().latitude());
         snapshot.setLongitude(decoded.get().longitude());
         snapshot.setAltitudeMsl(decoded.get().altitudeMsl());
+        snapshot.setRelativeAltitudeMeters(decoded.get().relativeAltitudeMeters());
         snapshot.setSpeed(decoded.get().speed());
         if (!Double.isNaN(decoded.get().heading())) {
             snapshot.setHeading(decoded.get().heading());

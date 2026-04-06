@@ -137,11 +137,24 @@ export default function App() {
     });
   }, [clearDriverRoute, isDriverModeAvailable]);
 
+  const resolveDriverWaypointAltitude = useCallback(() => {
+    if (selectedDrone && telemetry?.droneId === selectedDrone) {
+      return telemetry.altitude;
+    }
+    if (selectedDrone && fleetTelemetry[selectedDrone]) {
+      return fleetTelemetry[selectedDrone].altitude;
+    }
+    if (selectedDrone && lastKnownTelemetry[selectedDrone]) {
+      return lastKnownTelemetry[selectedDrone].altitude;
+    }
+    return DRIVER_DEFAULT_ALTITUDE_METERS;
+  }, [fleetTelemetry, lastKnownTelemetry, selectedDrone, telemetry]);
+
   const handleAddDriverWaypoint = useCallback((latitude: number, longitude: number) => {
     if (!isDriverModeEnabled || !selectedDrone || freeMode) {
       return;
     }
-    const baseAltitude = DRIVER_DEFAULT_ALTITUDE_METERS;
+    const baseAltitude = resolveDriverWaypointAltitude();
 
     const waypoint: DriverWaypoint = {
       id: driverWaypointIdRef.current,
@@ -152,7 +165,7 @@ export default function App() {
     };
     driverWaypointIdRef.current += 1;
     setDriverWaypoints((currentRoute) => [...currentRoute, waypoint]);
-  }, [freeMode, isDriverModeEnabled, selectedDrone]);
+  }, [freeMode, isDriverModeEnabled, resolveDriverWaypointAltitude, selectedDrone]);
 
   const filteredBatteryAlerts = useMemo(() => {
     if (!freeMode || !showAllAssets) {

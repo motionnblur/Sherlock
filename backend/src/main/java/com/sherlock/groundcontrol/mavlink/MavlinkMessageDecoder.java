@@ -64,7 +64,7 @@ public final class MavlinkMessageDecoder {
     public record AttitudeData(double roll, double pitch, double yaw) {}
 
     public record GlobalPositionIntData(
-            double latitude, double longitude, double altitudeMsl,
+            double latitude, double longitude, double altitudeMsl, double relativeAltitudeMeters,
             double speed, double heading
     ) {}
 
@@ -142,7 +142,7 @@ public final class MavlinkMessageDecoder {
         double lat      = buf.getInt() * DEG_E7_FACTOR;
         double lon      = buf.getInt() * DEG_E7_FACTOR;
         double alt      = buf.getInt() * MM_TO_M;
-        buf.getInt();                              // relative_alt — skip
+        double relativeAlt = buf.getInt() * MM_TO_M;
         double vx       = buf.getShort();
         double vy       = buf.getShort();
         buf.getShort();                            // vz — skip
@@ -150,7 +150,7 @@ public final class MavlinkMessageDecoder {
 
         double speed    = Math.sqrt(vx * vx + vy * vy) * CM_TO_KMH;
         double heading  = (hdgRaw == UINT16_MAX) ? Double.NaN : hdgRaw * HDG_SCALE;
-        return Optional.of(new GlobalPositionIntData(lat, lon, alt, speed, heading));
+        return Optional.of(new GlobalPositionIntData(lat, lon, alt, relativeAlt, speed, heading));
     }
 
     public static Optional<RadioStatusData> decodeRadioStatus(byte[] payload) {

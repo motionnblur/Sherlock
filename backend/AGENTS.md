@@ -188,7 +188,7 @@ Decoded message types: `HEARTBEAT` (arm/mode), `SYS_STATUS` (battery), `GPS_RAW_
 ### Outbound C2
 
 ```
-POST /api/drones/MAVLINK-01/command  { commandType: "GOTO", latitude: -35.3632, longitude: 149.1653, altitude: 20 }
+POST /api/drones/MAVLINK-01/command  { commandType: "GOTO", latitude: -35.3632, longitude: 149.1653, altitude: 584.0 }
         │
         ▼
 DroneCommandController → DroneCommandService.sendCommand()
@@ -215,7 +215,7 @@ MavlinkAdapterService.sendPacket()      ← UDP back to drone's source address
 | `ARM`       | 400 — COMPONENT_ARM_DISARM | param1=1, param2=21196 (force) |
 | `DISARM`    | 400 — COMPONENT_ARM_DISARM | param1=0 |
 | `TAKEOFF`   | 176 + 400 + 22 sequence | Sends GUIDED mode, force-arm, then NAV_TAKEOFF to 20m with bounded retries; returns HTTP 409 if EKF/GPS/home is not ready yet |
-| `GOTO`      | 176 + 86 sequence | Ensures GUIDED mode, then sends SET_POSITION_TARGET_GLOBAL_INT (GLOBAL_RELATIVE_ALT_INT) to requested lat/lon/altitude |
+| `GOTO`      | 176 + 86 sequence | Ensures GUIDED mode, converts requested AMSL altitude to relative-home altitude using live `GLOBAL_POSITION_INT` (`alt` + `relative_alt`), then sends SET_POSITION_TARGET_GLOBAL_INT (GLOBAL_RELATIVE_ALT_INT) |
 
 ### Testing with SITL
 

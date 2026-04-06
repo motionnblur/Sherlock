@@ -240,7 +240,7 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 
 **Props:** `{ telemetry, fleetTelemetry, lastKnownTelemetry, performanceStage, selectedDrone, freeMode, showAllAssets, selectedNavigationDirection, isDriverModeEnabled, driverWaypoints, onAddDriverWaypoint, onSelectDrone }`
 
-**Driver Mode:** when enabled from `SystemPanel`, left-click on the map appends waypoints to a visible route polyline. Waypoints are sent sequentially as backend `GOTO` commands; the next point is dispatched only after the active point is reached within configured horizontal/vertical thresholds.
+**Driver Mode:** when enabled from `SystemPanel`, left-click on the map appends waypoints to a visible route polyline. Each new waypoint altitude is aligned to the selected drone's current altitude (live telemetry first, then fleet/last-known fallback). Click picking first intersects a camera ray with a plane at the drone altitude to avoid cursor/waypoint parallax drift. While driver mode is enabled, the map camera is locked (no rotate/pan/zoom/tilt) and forced into a top-down follow view centered on the selected drone. Waypoints are sent sequentially as backend `GOTO` commands; the frontend sends waypoint altitude in AMSL (same frame as telemetry), and backend converts it to relative-home before MAVLink dispatch. The next point is dispatched only after the active point is reached within configured horizontal/vertical thresholds.
 
 **Imagery:** `UrlTemplateImageryProvider` (OpenStreetMap) is used by default — no Cesium Ion token required. If `VITE_CESIUM_TOKEN` is set in `.env`, Ion features (World Terrain, premium imagery) unlock automatically.
 

@@ -133,18 +133,28 @@ public class DroneCommandService {
             return false;
         }
 
+        Double targetRelativeAltitudeMeters = resolveRelativeAltitudeMetersForGoto(sysId, commandDTO.getAltitude());
+        if (targetRelativeAltitudeMeters == null) {
+            log.info("GOTO deferred for sysId={} because altitude reference is not available yet", sysId);
+            return false;
+        }
+
         byte[] packet = MavlinkFrameParser.buildSetPositionTargetGlobalInt(
                 sysId,
                 commandDTO.getLatitude(),
                 commandDTO.getLongitude(),
-                commandDTO.getAltitude(),
+                targetRelativeAltitudeMeters,
                 mavlinkAdapterService.nextSeqNum()
         );
         boolean sent = sendPacket(sysId, packet);
         if (sent) {
             log.info(
-                    "Sent GOTO to sysId={} lat={}, lon={}, alt={}m",
-                    sysId, commandDTO.getLatitude(), commandDTO.getLongitude(), commandDTO.getAltitude()
+                    "Sent GOTO to sysId={} lat={}, lon={}, targetAltMsl={}m, targetAltRel={}m",
+                    sysId,
+                    commandDTO.getLatitude(),
+                    commandDTO.getLongitude(),
+                    commandDTO.getAltitude(),
+                    targetRelativeAltitudeMeters
             );
         }
         return sent;
@@ -163,6 +173,22 @@ public class DroneCommandService {
                 && latitude >= -90d && latitude <= 90d
                 && longitude >= -180d && longitude <= 180d
                 && altitude >= -500d && altitude <= 20000d;
+    }
+
+    private Double resolveRelativeAltitudeMetersForGoto(int sysId, double targetAltitudeMsl) {
+        return mavlinkAdapterService.getAltitudeReference(sysId)
+                .map(altitudeReference -> {
+                    // Home AMSL = current AMSL - current relative altitude.
+                    double homeAltitudeMsl = altitudeReference.altitudeMsl() - altitudeReference.relativeAltitudeMeters();
+                    double targetRelativeAltitude = targetAltitudeMsl - homeAltitudeMsl;
+                    if (!Double.isFinite(targetRelativeAltitude)
+                            || targetRelativeAltitude < -500d
+                            || targetRelativeAltitude > 20000d) {
+                        return null;
+                    }
+                    return targetRelativeAltitude;
+                })
+                .orElse(null);
     }
 
     private boolean ensureGuidedMode(int sysId) {

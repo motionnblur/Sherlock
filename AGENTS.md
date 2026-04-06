@@ -103,7 +103,7 @@ Extended fields (`roll`–`flightMode`) are null in the lite fleet stream and wh
 | REST history             | `GET /api/telemetry/history`                   |
 | REST bulk last-known     | `POST /api/telemetry/last-known`               |
 | REST stream URL          | `GET /api/drones/{droneId}/stream`             |
-| **C2 command**           | `POST /api/drones/{droneId}/command` — body: `{ commandType: "RTH" \| "ARM" \| "DISARM" \| "TAKEOFF" \| "GOTO", latitude?: number, longitude?: number, altitude?: number }` (`GOTO` altitude is relative-home meters; `409` when vehicle navigation readiness is not met) |
+| **C2 command**           | `POST /api/drones/{droneId}/command` — body: `{ commandType: "RTH" \| "ARM" \| "DISARM" \| "TAKEOFF" \| "GOTO", latitude?: number, longitude?: number, altitude?: number }` (`GOTO` altitude is accepted as AMSL from UI and converted to relative-home meters using live MAVLink snapshot; `409` when vehicle navigation readiness is not met) |
 | MAVLink ingest (UDP)     | `udp://localhost:14550` — drone or SITL targets this |
 | RTSP ingest (MediaMTX)   | `rtsp://localhost:8554/{droneId}` (push)       |
 | HLS output (MediaMTX)    | `http://localhost:8888/{droneId}/index.m3u8`   |

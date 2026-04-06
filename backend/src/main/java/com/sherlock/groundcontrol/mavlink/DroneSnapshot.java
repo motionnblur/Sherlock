@@ -28,6 +28,7 @@ public class DroneSnapshot {
     private volatile Double latitude;
     private volatile Double longitude;
     private volatile Double altitudeMsl;
+    private volatile Double relativeAltitudeMeters;
     private volatile Double speed;
     private volatile Double heading;
 

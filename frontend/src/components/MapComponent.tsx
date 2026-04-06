@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
+import {
+  DRIVER_CAMERA_HEIGHT_OFFSET_METERS,
+  DRIVER_CAMERA_TOPDOWN_PITCH_DEGREES,
+} from '../constants/driver';
 import { FLIGHT_PATH_POINT_LIMIT } from '../constants/telemetry';
 import { NAVIGATION_DIRECTION_ALL } from '../constants/navigation';
 import { PERFORMANCE_STAGE_NORMAL } from '../constants/performance';
@@ -27,6 +31,14 @@ import {
   toCartesian,
   upsertFleetAsset,
 } from './map/cesiumScene';
+
+interface CameraControllerState {
+  enableRotate: boolean;
+  enableTranslate: boolean;
+  enableZoom: boolean;
+  enableTilt: boolean;
+  enableLook: boolean;
+}
 
 function MapFrameOverlay({ isMapDimmed }: { isMapDimmed: boolean }) {
   return (
@@ -97,6 +109,7 @@ export default function MapComponent({
   const fleetAssetMapRef = useRef<Map<DroneId, FleetAssetPrimitives>>(new Map());
   const driverRouteRef = useRef<Cesium.Entity | null>(null);
   const driverWaypointEntitiesRef = useRef<Cesium.Entity[]>([]);
+  const cameraControllerStateRef = useRef<CameraControllerState | null>(null);
 
   const [viewer, setViewer] = useState<Cesium.Viewer | null>(null);
   const [isMapDimmed, setIsMapDimmed] = useState(false);
@@ -261,16 +274,80 @@ export default function MapComponent({
           }
           initialCenteringRef.current = false;
           initialFlyDoneRef.current = true;
-          viewer.trackedEntity = freeMode ? undefined : entity;
+          viewer.trackedEntity = freeMode || isDriverModeEnabled ? undefined : entity;
           viewer.scene.requestRender();
         });
       }
       return;
     }
 
-    viewer.trackedEntity = freeMode ? undefined : entity;
+    viewer.trackedEntity = freeMode || isDriverModeEnabled ? undefined : entity;
     viewer.scene.requestRender();
-  }, [freeMode, showAllAssets, selectedDisplayTelemetry, selectedDrone, selectedLiveTelemetry, viewer]);
+  }, [freeMode, isDriverModeEnabled, showAllAssets, selectedDisplayTelemetry, selectedDrone, selectedLiveTelemetry, viewer]);
+
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed()) {
+      return;
+    }
+    const cameraController = viewer.scene.screenSpaceCameraController;
+    const shouldLockCamera = isDriverModeEnabled && !freeMode && Boolean(selectedDrone);
+
+    if (shouldLockCamera) {
+      if (!cameraControllerStateRef.current) {
+        cameraControllerStateRef.current = {
+          enableRotate: cameraController.enableRotate,
+          enableTranslate: cameraController.enableTranslate,
+          enableZoom: cameraController.enableZoom,
+          enableTilt: cameraController.enableTilt,
+          enableLook: cameraController.enableLook,
+        };
+      }
+      cameraController.enableRotate = false;
+      cameraController.enableTranslate = false;
+      cameraController.enableZoom = false;
+      cameraController.enableTilt = false;
+      cameraController.enableLook = false;
+      viewer.trackedEntity = undefined;
+      viewer.scene.requestRender();
+      return;
+    }
+
+    if (!cameraControllerStateRef.current) {
+      return;
+    }
+
+    cameraController.enableRotate = cameraControllerStateRef.current.enableRotate;
+    cameraController.enableTranslate = cameraControllerStateRef.current.enableTranslate;
+    cameraController.enableZoom = cameraControllerStateRef.current.enableZoom;
+    cameraController.enableTilt = cameraControllerStateRef.current.enableTilt;
+    cameraController.enableLook = cameraControllerStateRef.current.enableLook;
+    cameraControllerStateRef.current = null;
+    viewer.scene.requestRender();
+  }, [freeMode, isDriverModeEnabled, selectedDrone, viewer]);
+
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed() || !selectedDisplayTelemetry) {
+      return;
+    }
+    if (!isDriverModeEnabled || freeMode || !selectedDrone) {
+      return;
+    }
+
+    const lockedCameraAltitude = selectedDisplayTelemetry.altitude + DRIVER_CAMERA_HEIGHT_OFFSET_METERS;
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(
+        selectedDisplayTelemetry.longitude,
+        selectedDisplayTelemetry.latitude,
+        lockedCameraAltitude,
+      ),
+      orientation: {
+        heading: 0,
+        pitch: Cesium.Math.toRadians(DRIVER_CAMERA_TOPDOWN_PITCH_DEGREES),
+        roll: 0,
+      },
+    });
+    viewer.scene.requestRender();
+  }, [freeMode, isDriverModeEnabled, selectedDisplayTelemetry, selectedDrone, viewer]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
@@ -337,7 +414,13 @@ export default function MapComponent({
       if (!isDriverModeEnabled || freeMode || !selectedDrone) {
         return;
       }
-      const pickedPosition = viewer.camera.pickEllipsoid(movement.position, viewer.scene.globe.ellipsoid);
+      const pickedPosition = pickDriverWaypointPosition(
+        viewer,
+        movement.position,
+        selectedDisplayTelemetry?.latitude ?? null,
+        selectedDisplayTelemetry?.longitude ?? null,
+        selectedDisplayTelemetry?.altitude ?? null,
+      );
       if (!pickedPosition) {
         return;
       }
@@ -353,7 +436,7 @@ export default function MapComponent({
     return () => {
       viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
     };
-  }, [freeMode, isDriverModeEnabled, onAddDriverWaypoint, selectedDrone, viewer]);
+  }, [freeMode, isDriverModeEnabled, onAddDriverWaypoint, selectedDisplayTelemetry, selectedDrone, viewer]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
@@ -459,4 +542,56 @@ function waypointColor(status: DriverWaypoint['status']): Cesium.Color {
     default:
       return Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.7);
   }
+}
+
+function pickWorldPosition(
+  viewer: Cesium.Viewer,
+  screenPosition: Cesium.Cartesian2,
+): Cesium.Cartesian3 | undefined {
+  const pickRay = viewer.camera.getPickRay(screenPosition);
+  if (pickRay) {
+    const terrainHit = viewer.scene.globe.pick(pickRay, viewer.scene);
+    if (terrainHit) {
+      return terrainHit;
+    }
+  }
+
+  if (viewer.scene.pickPositionSupported) {
+    const depthHit = viewer.scene.pickPosition(screenPosition);
+    if (depthHit) {
+      return depthHit;
+    }
+  }
+
+  return viewer.camera.pickEllipsoid(screenPosition, viewer.scene.globe.ellipsoid) ?? undefined;
+}
+
+function pickDriverWaypointPosition(
+  viewer: Cesium.Viewer,
+  screenPosition: Cesium.Cartesian2,
+  referenceLatitude: number | null,
+  referenceLongitude: number | null,
+  referenceAltitude: number | null,
+): Cesium.Cartesian3 | undefined {
+  if (referenceLatitude !== null && referenceLongitude !== null && referenceAltitude !== null) {
+    const pickRay = viewer.camera.getPickRay(screenPosition);
+    if (pickRay) {
+      const planeReferencePoint = Cesium.Cartesian3.fromDegrees(
+        referenceLongitude,
+        referenceLatitude,
+        referenceAltitude,
+      );
+      const planeNormal = Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(
+        planeReferencePoint,
+        new Cesium.Cartesian3(),
+      );
+      const altitudePlane = Cesium.Plane.fromPointNormal(planeReferencePoint, planeNormal);
+      const planeHit = Cesium.IntersectionTests.rayPlane(pickRay, altitudePlane);
+      if (planeHit) {
+        return planeHit;
+      }
+    }
+  }
+
+  return pickWorldPosition(viewer, screenPosition);
 }
