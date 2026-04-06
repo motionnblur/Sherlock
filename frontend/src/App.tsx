@@ -15,6 +15,7 @@ import SystemPanel from './components/SystemPanel';
 import StatusBar from './components/StatusBar';
 import LiveVideoWindow from './components/LiveVideoWindow';
 import LoginPage from './components/LoginPage';
+import AssetSelectionOverlay from './components/AssetSelectionOverlay';
 import type { DroneId } from './interfaces/telemetry';
 
 const AUTH_LOGOUT_PATH = '/api/auth/logout';
@@ -29,7 +30,7 @@ export default function App() {
   const [showAllAssets, setShowAllAssets] = useState(false);
 
   const { telemetry, fleetTelemetry, connected, history } = useTelemetry(selectedDrone, freeMode, showAllAssets);
-  const lastKnownTelemetry = useLastKnownTelemetry(DRONE_IDS);
+  const lastKnownTelemetry = useLastKnownTelemetry(DRONE_IDS, selectedDrone !== null);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
 
   const handleToggleLiveVideo = useCallback(() => {
@@ -113,24 +114,30 @@ export default function App() {
         {selectedDrone && !freeMode && <TelemetryPanel telemetry={telemetry} />}
 
         <main className="flex-1 relative min-w-0">
-          <MapComponent
-            telemetry={telemetry}
-            fleetTelemetry={fleetTelemetry}
-            lastKnownTelemetry={lastKnownTelemetry}
-            performanceStage={performanceStage}
-            selectedDrone={selectedDrone}
-            freeMode={freeMode}
-            showAllAssets={showAllAssets}
-            onSelectDrone={handleActivateDrone}
-          />
+          {selectedDrone ? (
+            <>
+              <MapComponent
+                telemetry={telemetry}
+                fleetTelemetry={fleetTelemetry}
+                lastKnownTelemetry={lastKnownTelemetry}
+                performanceStage={performanceStage}
+                selectedDrone={selectedDrone}
+                freeMode={freeMode}
+                showAllAssets={showAllAssets}
+                onSelectDrone={handleActivateDrone}
+              />
 
-          {selectedDrone && !freeMode && isLiveVideoOpen && (
-            <LiveVideoWindow
-              streamUrl={streamUrl}
-              isFetching={isFetching}
-              fetchError={fetchError}
-              onClose={handleCloseLiveVideo}
-            />
+              {!freeMode && isLiveVideoOpen && (
+                <LiveVideoWindow
+                  streamUrl={streamUrl}
+                  isFetching={isFetching}
+                  fetchError={fetchError}
+                  onClose={handleCloseLiveVideo}
+                />
+              )}
+            </>
+          ) : (
+            <AssetSelectionOverlay onSelectDrone={handleActivateDrone} />
           )}
         </main>
 

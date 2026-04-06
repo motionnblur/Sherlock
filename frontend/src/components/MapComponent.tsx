@@ -6,7 +6,6 @@ import { PERFORMANCE_STAGE_NORMAL } from '../constants/performance';
 import type { MapComponentProps } from '../interfaces/components';
 import type { DroneId, TelemetryPoint } from '../interfaces/telemetry';
 import { formatFixed } from '../utils/formatters';
-import AssetSelectionOverlay from './AssetSelectionOverlay';
 import FreeModeAssetWindow from './FreeModeAssetWindow';
 import {
   applyImageryBrightness,
@@ -304,9 +303,7 @@ export default function MapComponent({
         <SelectedTelemetryBanner telemetry={selectedLiveTelemetry} />
       )}
 
-      {!selectedDrone && !freeMode && (
-        <AssetSelectionOverlay lastKnownTelemetry={lastKnownTelemetry} onSelectDrone={onSelectDrone} />
-      )}
+
     </div>
   );
 }

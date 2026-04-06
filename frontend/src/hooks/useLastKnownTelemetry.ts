@@ -5,12 +5,12 @@ import { useAuth } from './useAuth';
 
 const BULK_LAST_KNOWN_PATH = '/api/telemetry/last-known';
 
-export function useLastKnownTelemetry(droneIds: DroneId[]): TelemetryByDrone {
+export function useLastKnownTelemetry(droneIds: DroneId[], enabled: boolean): TelemetryByDrone {
   const { authToken, logout } = useAuth();
   const [lastKnownTelemetry, setLastKnownTelemetry] = useState<TelemetryByDrone>({});
 
   useEffect(() => {
-    if (!authToken || droneIds.length === 0) {
+    if (!authToken || !enabled || droneIds.length === 0) {
       setLastKnownTelemetry({});
       return;
     }
@@ -52,7 +52,7 @@ export function useLastKnownTelemetry(droneIds: DroneId[]): TelemetryByDrone {
     void fetchLastKnownTelemetry();
 
     return () => abortController.abort();
-  }, [authToken, droneIds, logout]);
+  }, [authToken, droneIds, enabled, logout]);
 
   return lastKnownTelemetry;
 }

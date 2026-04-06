@@ -231,7 +231,7 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 - **Stage 2 (minimal map):** stronger map-only degradation (higher terrain error, reduced tile cache/preload behavior, nearest-neighbor imagery sampling) while keeping drone entities/path rendering unchanged.
 `MapComponent` is solely responsible for attaching/removing the optional OSM buildings tileset. Do not remove generic `Cesium3DTileset` primitives by scanning the entire scene.
 
-**Drone selection overlay:** when `selectedDrone` is null, a centred overlay panel is rendered over the map listing available assets. Clicking an entry calls `onSelectDrone(id)`. Last-known values come from `useLastKnownTelemetry` (`POST /api/telemetry/last-known`) so startup avoids per-drone history requests.
+**Drone selection overlay:** when `selectedDrone` is null, `AssetSelectionOverlay` is rendered as a standalone centred panel inside `<main>` in `App.tsx` — the Cesium map is **not mounted** and no backend connections are made. The overlay lists drone IDs only; last-known telemetry is not fetched until an asset is selected. `useLastKnownTelemetry` accepts an `enabled: boolean` parameter and skips all fetches when false.
 
 **Fleet rendering model:**
 - **Selected drone:** one full-detail Cesium `Entity` + optional live path polyline (expensive path features only here).
