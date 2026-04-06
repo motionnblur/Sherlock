@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { PerformanceStage } from '../constants/performance';
-import type { DroneId, TelemetryByDrone, TelemetryPoint } from './telemetry';
+import type { DroneId, LowBatteryAlert, TelemetryByDrone, TelemetryPoint } from './telemetry';
 
 export interface HeaderProps {
   connected: boolean;
@@ -92,4 +92,8 @@ export interface TelemetryDataRowProps {
   unit?: string;
   accent?: boolean;
   critical?: boolean;
+}
+
+export interface LowBatteryWindowProps {
+  alerts: LowBatteryAlert[];
 }
