@@ -42,8 +42,8 @@ export default function App() {
     useState<NavigationDirection>(NAVIGATION_DIRECTION_ALL);
   const [isDriverModeEnabled, setIsDriverModeEnabled] = useState(false);
   const [driverWaypoints, setDriverWaypoints] = useState<DriverWaypoint[]>([]);
-  const [isDriverDispatching, setIsDriverDispatching] = useState(false);
   const driverWaypointIdRef = useRef(1);
+  const driverDispatchInFlightRef = useRef(false);
 
   const { droneIds } = useDroneRegistry(authToken);
   const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTelemetry(selectedDrone, freeMode, showAllAssets);
@@ -58,7 +58,7 @@ export default function App() {
 
   const clearDriverRoute = useCallback(() => {
     setDriverWaypoints([]);
-    setIsDriverDispatching(false);
+    driverDispatchInFlightRef.current = false;
   }, []);
 
   const handleToggleLiveVideo = useCallback(() => {
@@ -202,7 +202,7 @@ export default function App() {
   }, [authToken, logout]);
 
   useEffect(() => {
-    if (!isDriverModeEnabled || !isDriverModeAvailable || isDriverDispatching || isCommandSending) {
+    if (!isDriverModeEnabled || !isDriverModeAvailable || driverDispatchInFlightRef.current) {
       return;
     }
     if (telemetry?.isArmed !== true) {
@@ -216,40 +216,34 @@ export default function App() {
       return;
     }
 
-    let isCancelled = false;
     const dispatchGoto = async () => {
-      setIsDriverDispatching(true);
-      const wasSent = await sendCommand('GOTO', {
-        latitude: queuedWaypoint.latitude,
-        longitude: queuedWaypoint.longitude,
-        altitude: queuedWaypoint.altitude,
-      });
-      if (isCancelled) {
-        return;
+      driverDispatchInFlightRef.current = true;
+      try {
+        const wasSent = await sendCommand('GOTO', {
+          latitude: queuedWaypoint.latitude,
+          longitude: queuedWaypoint.longitude,
+          altitude: queuedWaypoint.altitude,
+        });
+        setDriverWaypoints((currentRoute) =>
+          currentRoute.map((waypoint) => {
+            if (waypoint.id !== queuedWaypoint.id) {
+              return waypoint;
+            }
+            return { ...waypoint, status: wasSent ? 'active' : 'failed' };
+          }),
+        );
+      } finally {
+        driverDispatchInFlightRef.current = false;
       }
-      setDriverWaypoints((currentRoute) =>
-        currentRoute.map((waypoint) => {
-          if (waypoint.id !== queuedWaypoint.id) {
-            return waypoint;
-          }
-          return { ...waypoint, status: wasSent ? 'active' : 'failed' };
-        }),
-      );
-      setIsDriverDispatching(false);
     };
 
     void dispatchGoto();
-    return () => {
-      isCancelled = true;
-    };
   }, [
     driverWaypoints,
-    isCommandSending,
-    isDriverDispatching,
     isDriverModeAvailable,
     isDriverModeEnabled,
     sendCommand,
-    telemetry,
+    telemetry?.isArmed,
   ]);
 
   useEffect(() => {
