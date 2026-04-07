@@ -57,6 +57,26 @@ interface CameraControllerState {
   enableLook: boolean;
 }
 
+interface MapInteractionState {
+  freeMode: boolean;
+  isCoarsePointer: boolean;
+  isDriverModeEnabled: boolean;
+  isMissionModeEnabled: boolean;
+  isMissionWaypointEditingEnabled: boolean;
+  missionWaypoints: MissionWaypoint[];
+  selectedDrone: DroneId | null;
+  selectedMissionWaypointLocalId: number | null;
+  selectedDisplayTelemetry: TelemetryPoint | null;
+  onAddDriverWaypoint: (latitude: number, longitude: number) => void;
+  onAddMissionWaypoint: (latitude: number, longitude: number) => void;
+  onMoveMissionWaypoint: (localId: number, position: {
+    latitude: number;
+    longitude: number;
+    altitude: number;
+  }) => void;
+  onSelectMissionWaypoint: (localId: number | null) => void;
+}
+
 function MapFrameOverlay({ isMapDimmed }: { isMapDimmed: boolean }) {
   return (
     <>
@@ -152,6 +172,36 @@ export default function MapComponent({
   const selectedDisplayTelemetry = selectedDrone
     ? (selectedLiveTelemetry ?? fleetTelemetry[selectedDrone] ?? lastKnownTelemetry[selectedDrone] ?? null)
     : null;
+  const interactionStateRef = useRef<MapInteractionState>({
+    freeMode,
+    isCoarsePointer,
+    isDriverModeEnabled,
+    isMissionModeEnabled,
+    isMissionWaypointEditingEnabled,
+    missionWaypoints,
+    selectedDrone,
+    selectedMissionWaypointLocalId,
+    selectedDisplayTelemetry,
+    onAddDriverWaypoint,
+    onAddMissionWaypoint,
+    onMoveMissionWaypoint,
+    onSelectMissionWaypoint,
+  });
+  interactionStateRef.current = {
+    freeMode,
+    isCoarsePointer,
+    isDriverModeEnabled,
+    isMissionModeEnabled,
+    isMissionWaypointEditingEnabled,
+    missionWaypoints,
+    selectedDrone,
+    selectedMissionWaypointLocalId,
+    selectedDisplayTelemetry,
+    onAddDriverWaypoint,
+    onAddMissionWaypoint,
+    onMoveMissionWaypoint,
+    onSelectMissionWaypoint,
+  };
 
   useEffect(() => {
     performanceStageRef.current = performanceStage;
@@ -592,13 +642,14 @@ export default function MapComponent({
     }
 
     const onLeftDown = (movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      const interactionState = interactionStateRef.current;
       if (
-        !isMissionWaypointEditingEnabled
-        || isCoarsePointer
-        || freeMode
-        || !isMissionModeEnabled
-        || !selectedDrone
-        || selectedMissionWaypointLocalId === null
+        !interactionState.isMissionWaypointEditingEnabled
+        || interactionState.isCoarsePointer
+        || interactionState.freeMode
+        || !interactionState.isMissionModeEnabled
+        || !interactionState.selectedDrone
+        || interactionState.selectedMissionWaypointLocalId === null
       ) {
         return;
       }
@@ -608,7 +659,9 @@ export default function MapComponent({
         return;
       }
 
-      const selectedWaypoint = missionWaypoints.find((waypoint) => waypoint.localId === selectedMissionWaypointLocalId);
+      const selectedWaypoint = interactionState.missionWaypoints.find(
+        (waypoint) => waypoint.localId === interactionState.selectedMissionWaypointLocalId,
+      );
       if (!selectedWaypoint) {
         return;
       }
@@ -616,7 +669,7 @@ export default function MapComponent({
       const dragState = buildDragState(
         viewer,
         pickedAxis,
-        selectedMissionWaypointLocalId,
+        interactionState.selectedMissionWaypointLocalId,
         selectedWaypoint,
         movement.position,
       );
@@ -646,11 +699,12 @@ export default function MapComponent({
       if (!dragState) {
         return;
       }
+      const interactionState = interactionStateRef.current;
       const nextWaypointPosition = computeDraggedWaypointPosition(viewer, dragState, movement.endPosition);
       if (!nextWaypointPosition) {
         return;
       }
-      onMoveMissionWaypoint(dragState.waypointLocalId, {
+      interactionState.onMoveMissionWaypoint(dragState.waypointLocalId, {
         ...nextWaypointPosition,
         altitude: Math.max(nextWaypointPosition.altitude, MISSION_MIN_ALTITUDE_METERS),
       });
@@ -676,13 +730,14 @@ export default function MapComponent({
     };
 
     const onLeftClick = (movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      const interactionState = interactionStateRef.current;
       if (suppressNextMissionClickRef.current) {
         suppressNextMissionClickRef.current = false;
         return;
       }
 
-      if (isMissionModeEnabled && !freeMode && selectedDrone) {
-        if (!isMissionWaypointEditingEnabled) {
+      if (interactionState.isMissionModeEnabled && !interactionState.freeMode && interactionState.selectedDrone) {
+        if (!interactionState.isMissionWaypointEditingEnabled) {
           return;
         }
 
@@ -694,19 +749,19 @@ export default function MapComponent({
 
         const pickedWaypointLocalId = tryParsePickedWaypointLocalId(pickedObject);
         if (pickedWaypointLocalId !== null) {
-          onSelectMissionWaypoint(pickedWaypointLocalId);
+          interactionState.onSelectMissionWaypoint(pickedWaypointLocalId);
           viewer.scene.requestRender();
           return;
         }
 
-        onSelectMissionWaypoint(null);
+        interactionState.onSelectMissionWaypoint(null);
 
         const worldPosition = pickWorldPosition(viewer, movement.position);
         if (!worldPosition) {
           return;
         }
         const cartographic = Cesium.Cartographic.fromCartesian(worldPosition);
-        onAddMissionWaypoint(
+        interactionState.onAddMissionWaypoint(
           Cesium.Math.toDegrees(cartographic.latitude),
           Cesium.Math.toDegrees(cartographic.longitude),
         );
@@ -714,21 +769,21 @@ export default function MapComponent({
         return;
       }
 
-      if (!isDriverModeEnabled || freeMode || !selectedDrone) {
+      if (!interactionState.isDriverModeEnabled || interactionState.freeMode || !interactionState.selectedDrone) {
         return;
       }
       const pickedPosition = pickDriverWaypointPosition(
         viewer,
         movement.position,
-        selectedDisplayTelemetry?.latitude ?? null,
-        selectedDisplayTelemetry?.longitude ?? null,
-        selectedDisplayTelemetry?.altitude ?? null,
+        interactionState.selectedDisplayTelemetry?.latitude ?? null,
+        interactionState.selectedDisplayTelemetry?.longitude ?? null,
+        interactionState.selectedDisplayTelemetry?.altitude ?? null,
       );
       if (!pickedPosition) {
         return;
       }
       const cartographic = Cesium.Cartographic.fromCartesian(pickedPosition);
-      onAddDriverWaypoint(
+      interactionState.onAddDriverWaypoint(
         Cesium.Math.toDegrees(cartographic.latitude),
         Cesium.Math.toDegrees(cartographic.longitude),
       );
@@ -755,22 +810,7 @@ export default function MapComponent({
         missionGizmoDragCameraStateRef.current = null;
       }
     };
-  }, [
-    freeMode,
-    isCoarsePointer,
-    isDriverModeEnabled,
-    isMissionModeEnabled,
-    isMissionWaypointEditingEnabled,
-    missionWaypoints,
-    onAddDriverWaypoint,
-    onAddMissionWaypoint,
-    onMoveMissionWaypoint,
-    onSelectMissionWaypoint,
-    selectedDisplayTelemetry,
-    selectedDrone,
-    selectedMissionWaypointLocalId,
-    viewer,
-  ]);
+  }, [viewer]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
