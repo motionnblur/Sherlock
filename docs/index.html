@@ -398,6 +398,7 @@
     <li><a href="#live-video">Live Video</a></li>
     <li><a href="#simulate">Simulating</a></li>
     <li><a href="#ui-tour">UI Tour</a></li>
+    <li><a href="#mission-planning">Missions</a></li>
     <li><span class="badge">◈ TRAINING MODE ◈</span></li>
   </ul>
 </nav>
@@ -418,6 +419,7 @@
     <span class="chip green">PostgreSQL</span>
     <span class="chip green">MediaMTX</span>
     <span class="chip yellow">STOMP / WebSocket</span>
+    <span class="chip yellow">MAVLink UDP</span>
     <span class="chip yellow">HLS Video</span>
     <span class="chip yellow">JWT Auth</span>
     <span class="chip">Docker</span>
@@ -819,6 +821,13 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
         <tr><td>POST /api/telemetry/last-known</td><td>Bearer token</td><td>Bulk last-known telemetry for a supplied list of drone IDs</td></tr>
         <tr><td>GET /api/telemetry/history</td><td>Bearer token</td><td>Last 150 telemetry points from the database</td></tr>
         <tr><td>GET /api/drones/{droneId}/stream</td><td>Bearer token</td><td>JSON with <span class="inline-code">{ "streamUrl": "http://…/index.m3u8" }</span> — the HLS URL for the live camera</td></tr>
+        <tr><td>POST /api/drones/{droneId}/command</td><td>Bearer token</td><td>Send C2 command (RTH / ARM / DISARM / TAKEOFF / GOTO). 202 dispatched, 409 not ready, 503 MAVLink disabled</td></tr>
+        <tr><td>POST /api/missions</td><td>Bearer token</td><td>Create a new PLANNED mission with a named waypoint list</td></tr>
+        <tr><td>GET /api/missions</td><td>Bearer token</td><td>List all missions ordered by creation date</td></tr>
+        <tr><td>GET /api/missions/{id}</td><td>Bearer token</td><td>Full mission detail including per-waypoint status — used for progress polling</td></tr>
+        <tr><td>POST /api/missions/{id}/execute</td><td>Bearer token</td><td>Start server-side execution on a drone (<span class="inline-code">?droneId=MAVLINK-01</span>). 503 if MAVLink disabled</td></tr>
+        <tr><td>POST /api/missions/{id}/abort</td><td>Bearer token</td><td>Abort an active mission; marks remaining waypoints SKIPPED</td></tr>
+        <tr><td>DELETE /api/missions/{id}</td><td>Bearer token</td><td>Delete a PLANNED / COMPLETED / ABORTED mission. 409 if ACTIVE</td></tr>
       </tbody>
     </table>
   </section>
@@ -1053,7 +1062,7 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
         <tr><td>LOG OUT button</td><td>Blacklists the current token server-side and returns to the login screen</td></tr>
         <tr><td>LINK ACTIVE / CONNECTING…</td><td>Green = WebSocket connected; yellow blinking = reconnecting</td></tr>
         <tr><td>SHERLOCK-01</td><td>Selected drone name</td></tr>
-        <tr><td>SETTINGS button</td><td>Opens dropdown with FREE MODE and LIVE VIDEO toggles</td></tr>
+        <tr><td>SETTINGS button</td><td>Opens dropdown with FREE MODE, LIVE VIDEO, and MISSION PLAN toggles (last two only when a drone is selected and Free Mode is off)</td></tr>
         <tr><td>✕ button</td><td>Deselects the drone, closes live video, resets all state</td></tr>
         <tr><td>◈ TRAINING MODE ◈</td><td>Reminder that all data is simulated</td></tr>
       </tbody>
@@ -1079,10 +1088,16 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
       shows their last known position from the database.
     </p>
 
-    <h3>Right panel — System</h3>
+    <h3>Right panel — System / Mission Planning</h3>
     <p>
-      Compass rose (tracks heading), mission elapsed clock, altitude trend
-      mini-chart, and a scrollable telemetry event log.
+      In normal mode: compass rose (tracks heading), mission elapsed clock, altitude
+      trend mini-chart, C2 command buttons (RTH / ARM / DISARM / TAKEOFF), and a
+      Driver Mode toggle for live click-to-navigate.
+    </p>
+    <p>
+      When <strong>MISSION PLAN</strong> is active, this panel switches to
+      <strong>Mission Planning mode</strong> — see
+      <a href="#mission-planning">Section 08</a> for full details.
     </p>
 
     <h3>Bottom bar — Status</h3>
@@ -1127,9 +1142,184 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
 
   <hr />
 
+  <!-- ═══════════════════════════════ MISSION PLANNING ═══════════════════════════════ -->
+  <section id="mission-planning">
+    <div class="section-label">Section 08</div>
+    <h2>Mission Planning</h2>
+    <p>
+      Mission Planning lets you define a named waypoint route <em>before</em> the
+      flight, save it to the database, and execute it server-side against a real MAVLink
+      drone. The backend drives the entire execution loop — the drone keeps flying even
+      if you close the browser tab.
+    </p>
+
+    <div class="callout warn">
+      <div class="callout-title">Requires a real MAVLink drone or ArduPilot SITL</div>
+      <p>
+        Mission execution requires <span class="inline-code">MAVLINK_ENABLED=true</span>
+        in your <span class="inline-code">.env</span> and a MAVLink drone (or SITL) sending
+        telemetry to <span class="inline-code">udp://localhost:14550</span>.
+        You can still <strong>create and save missions</strong> at any time — execution will
+        return <em>503 MAVLINK DISABLED</em> if the adapter is off.
+      </p>
+    </div>
+
+    <h3>How to create a mission</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Select a drone and open SETTINGS → MISSION PLAN: OFF</div>
+          <p class="step-desc">
+            The SETTINGS dropdown is next to the drone name in the header.
+            Clicking <strong>MISSION PLAN: OFF</strong> toggles it to ON.
+            The right panel switches from System Panel to Mission Planning Panel.
+            Driver Mode is automatically disabled — the two modes are mutually exclusive.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Click the map to place waypoints</div>
+          <p class="step-desc">
+            Each left-click adds an <span style="color:var(--caution)">amber</span>
+            numbered waypoint marker at that position. The waypoint's altitude defaults
+            to the drone's current live altitude. A connecting line joins the waypoints
+            in order. At least <strong>2 waypoints</strong> are required before saving.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Name and save the mission</div>
+          <p class="step-desc">
+            In the <strong>NEW</strong> tab, enter a mission name (e.g.
+            <span class="inline-code">PATROL-ALPHA</span>) and click <strong>SAVE</strong>.
+            The mission is persisted to the database via
+            <span class="inline-code">POST /api/missions</span> and appears in the
+            <strong>SAVED</strong> tab with status <em>PLANNED</em>.
+            Click <strong>CLEAR</strong> to discard the planning waypoints without saving.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Execute the mission</div>
+          <p class="step-desc">
+            In the <strong>SAVED</strong> tab, click <strong>EXECUTE</strong> next to a
+            PLANNED mission. The backend starts a server-side execution loop and the panel
+            switches to the <strong>Active Mission</strong> view.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Server-side execution — how it works</h3>
+    <p>
+      Once execution starts, the backend's <strong>MissionExecutorService</strong> takes over.
+      Every 500 ms it:
+    </p>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Reads the drone's last-known position</div>
+          <p class="step-desc">
+            Uses the in-memory telemetry cache — no extra database hit per tick.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Dispatches GOTO to the active waypoint</div>
+          <p class="step-desc">
+            Sends a MAVLink <span class="inline-code">SET_POSITION_TARGET_GLOBAL_INT</span>
+            packet (GUIDED mode) via the same path as the manual GOTO command. The altitude
+            in the mission is stored in AMSL and is automatically converted to
+            relative-home before the MAVLink packet is sent.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Checks for waypoint arrival</div>
+          <p class="step-desc">
+            Uses the haversine formula to compute horizontal distance.
+            Arrival threshold: <strong>≤ 30 m horizontal</strong> and
+            <strong>≤ 15 m vertical</strong>.
+            When both are met the waypoint is marked <em>REACHED</em>.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Advances to the next waypoint (or completes)</div>
+          <p class="step-desc">
+            The next waypoint in sequence becomes <em>ACTIVE</em> and a new GOTO is sent.
+            When the last waypoint is reached the mission transitions to
+            <em>COMPLETED</em> and the executor removes it from the active queue.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Publishes progress via STOMP</div>
+          <p class="step-desc">
+            On every waypoint status change a full <span class="inline-code">MissionDTO</span>
+            is broadcast to <span class="inline-code">/topic/missions/{id}/progress</span>.
+            The frontend polls <span class="inline-code">GET /api/missions/{id}</span>
+            every second as a fallback — no second STOMP client is needed.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Mission waypoint status colours</h3>
+    <table>
+      <thead><tr><th>Status</th><th>Colour on map</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>PENDING</td><td><span style="color:var(--caution);opacity:.5">amber (dim)</span></td><td>Waypoint not yet reached; waiting in queue</td></tr>
+        <tr><td>ACTIVE</td><td><span style="color:var(--caution)">amber (bright)</span></td><td>Current target — drone is navigating toward this point</td></tr>
+        <tr><td>REACHED</td><td><span style="color:var(--neon)">neon green</span></td><td>Drone arrived within 30 m / 15 m threshold</td></tr>
+        <tr><td>SKIPPED</td><td><span style="color:var(--muted-text)">muted grey</span></td><td>Mission was aborted while this waypoint was pending</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Mission lifecycle</h3>
+    <table>
+      <thead><tr><th>Status</th><th>Meaning</th><th>Can transition to</th></tr></thead>
+      <tbody>
+        <tr><td>PLANNED</td><td>Saved, not yet started</td><td>ACTIVE (via execute), deleted</td></tr>
+        <tr><td>ACTIVE</td><td>Currently executing on a drone</td><td>COMPLETED, ABORTED</td></tr>
+        <tr><td>COMPLETED</td><td>All waypoints reached</td><td>deleted</td></tr>
+        <tr><td>ABORTED</td><td>Operator stopped the mission</td><td>deleted</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-title">Aborting a mission</div>
+      <p>
+        Click <strong>ABORT MISSION</strong> in the Active Mission view (red border button).
+        The backend immediately stops sending GOTO commands, marks all remaining
+        ACTIVE and PENDING waypoints as <em>SKIPPED</em>, and transitions the mission
+        to <em>ABORTED</em>. The drone will hold its current position in GUIDED mode
+        unless you manually send RTH or LOITER.
+      </p>
+    </div>
+  </section>
+
+  <hr />
+
   <!-- ═══════════════════════════════ TROUBLESHOOTING ═══════════════════════════════ -->
   <section id="troubleshooting">
-    <div class="section-label">Section 08</div>
+    <div class="section-label">Section 09</div>
     <h2>Common Problems</h2>
 
     <h3>Login button stays disabled / nothing happens</h3>
@@ -1206,6 +1396,26 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
       <span class="inline-code">sherlock-01</span> (lowercase, hyphen).
     </p>
 
+    <h3>EXECUTE button is greyed out on a saved mission</h3>
+    <p>
+      The button is disabled when any of these conditions is true:
+      (1) no drone is currently selected,
+      (2) the selected drone is a simulated <span class="inline-code">SHERLOCK-</span> drone
+      rather than a real <span class="inline-code">MAVLINK-</span> drone,
+      or (3) another mission is already ACTIVE.
+      Select a <span class="inline-code">MAVLINK-</span> drone and make sure no other
+      mission is running before executing.
+    </p>
+
+    <h3>Mission execute returns MAVLINK DISABLED</h3>
+    <p>
+      The backend's MAVLink adapter is not enabled.
+      Set <span class="inline-code">MAVLINK_ENABLED=true</span> in your
+      <span class="inline-code">.env</span> file and restart the backend.
+      You also need an ArduPilot SITL or real drone sending MAVLink UDP to
+      <span class="inline-code">localhost:14550</span> before commands can be dispatched.
+    </p>
+
     <h3>No flight path on the globe</h3>
     <p>
       The drone history query returned nothing — Postgres might be empty on a
@@ -1227,7 +1437,7 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
 </div>
 
 <footer>
-  <span>SHERLOCK GCS</span> — SKYTRACK v1.0 — WALKTHROUGH REFERENCE — ◈ TRAINING MODE ◈
+  <span>SHERLOCK GCS</span> — SKYTRACK v1.1 — WALKTHROUGH REFERENCE — ◈ TRAINING MODE ◈
 </footer>
 
 <script>
