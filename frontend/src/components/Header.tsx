@@ -37,11 +37,13 @@ export default function Header({
   isLiveVideoOpen,
   showAllAssets,
   selectedNavigationDirection,
+  isMissionModeEnabled,
   onToggleFreeMode,
   onDeselect,
   onToggleLiveVideo,
   onToggleShowAllAssets,
   onSelectNavigationDirection,
+  onToggleMissionMode,
   onLogout,
 }: HeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -161,18 +163,32 @@ export default function Header({
                       FREE MODE: {freeMode ? 'ON' : 'OFF'}
                     </button>
                     {!freeMode && (
-                      <button
-                        id="live-video-toggle-btn"
-                        type="button"
-                        onClick={onToggleLiveVideo}
-                        className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
-                          isLiveVideoOpen
-                            ? 'text-neon border-neon bg-elevated'
-                            : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
-                        }`}
-                      >
-                        LIVE VIDEO: {isLiveVideoOpen ? 'ON' : 'OFF'}
-                      </button>
+                      <>
+                        <button
+                          id="live-video-toggle-btn"
+                          type="button"
+                          onClick={onToggleLiveVideo}
+                          className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
+                            isLiveVideoOpen
+                              ? 'text-neon border-neon bg-elevated'
+                              : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
+                          }`}
+                        >
+                          LIVE VIDEO: {isLiveVideoOpen ? 'ON' : 'OFF'}
+                        </button>
+                        <button
+                          id="mission-mode-toggle-btn"
+                          type="button"
+                          onClick={onToggleMissionMode}
+                          className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
+                            isMissionModeEnabled
+                              ? 'text-caution border-caution bg-elevated'
+                              : 'text-muted border-line hover:text-caution hover:border-caution hover:bg-elevated'
+                          }`}
+                        >
+                          MISSION PLAN: {isMissionModeEnabled ? 'ON' : 'OFF'}
+                        </button>
+                      </>
                     )}
                     {freeMode && (
                       <>

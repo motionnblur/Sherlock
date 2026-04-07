@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { PerformanceStage } from '../constants/performance';
 import type { CommandType } from '../hooks/useCommand';
 import type { DriverWaypoint, DroneId, LowBatteryAlert, NavigationDirection, TelemetryByDrone, TelemetryPoint } from './telemetry';
+import type { Mission, MissionWaypoint, PlanningWaypoint, UseMissionResult } from './mission';
 
 export interface HeaderProps {
   connected: boolean;
@@ -10,11 +11,13 @@ export interface HeaderProps {
   isLiveVideoOpen: boolean;
   showAllAssets: boolean;
   selectedNavigationDirection: NavigationDirection;
+  isMissionModeEnabled: boolean;
   onToggleFreeMode: () => void;
   onDeselect: () => void;
   onToggleLiveVideo: () => void;
   onToggleShowAllAssets: () => void;
   onSelectNavigationDirection: (direction: NavigationDirection) => void;
+  onToggleMissionMode: () => void;
   onLogout: () => void;
 }
 
@@ -43,6 +46,25 @@ export interface MapComponentProps {
   driverWaypoints: DriverWaypoint[];
   onAddDriverWaypoint: (latitude: number, longitude: number) => void;
   onSelectDrone: (id: DroneId) => void;
+  isMissionModeEnabled: boolean;
+  /** Planning waypoints (in-memory, not yet saved) OR active mission waypoints */
+  missionWaypoints: MissionWaypoint[];
+  onAddMissionWaypoint: (latitude: number, longitude: number) => void;
+}
+
+export interface MissionPlanningPanelProps {
+  selectedDrone: DroneId | null;
+  planningWaypoints: PlanningWaypoint[];
+  activeMission: Mission | null;
+  missions: UseMissionResult['missions'];
+  isLoading: boolean;
+  missionError: string | null;
+  onRemovePlanningWaypoint: (localId: number) => void;
+  onClearPlanningWaypoints: () => void;
+  onSaveMission: (name: string) => Promise<void>;
+  onExecuteMission: (missionId: number) => Promise<void>;
+  onAbortMission: (missionId: number) => Promise<void>;
+  onDeleteMission: (missionId: number) => Promise<void>;
 }
 
 export interface AssetWindowProps {

@@ -33,15 +33,17 @@ src/
 │   └── AuthContext.tsx          # AuthProvider: JWT state in sessionStorage, login(), logout()
 ├── interfaces/
 │   ├── auth.ts                  # LoginCredentials, AuthToken interfaces
-│   ├── telemetry.ts             # Shared domain models (TelemetryPoint, DroneId) — includes extended fields
-│   ├── components.ts            # Component prop interfaces (SystemPanelProps includes command props; AttitudeIndicatorProps added)
+│   ├── components.ts            # Component prop interfaces (HeaderProps includes mission toggle; MapComponentProps includes mission waypoints)
 │   ├── hooks.ts                 # Hook return interfaces
+│   ├── mission.ts               # Mission, MissionWaypoint, PlanningWaypoint, MissionStatus, WaypointStatus, UseMissionResult
+│   ├── telemetry.ts             # Shared domain models (TelemetryPoint, DroneId) — includes extended fields
 │   └── index.ts                 # Barrel exports
 ├── hooks/
 │   ├── useAuth.ts               # Consumes AuthContext; throws if used outside <AuthProvider>
 │   ├── useCommand.ts            # POST /api/drones/{id}/command — RTH/ARM/DISARM/TAKEOFF/GOTO; returns sendCommand(..., options), isSending, commandError; 401 → logout
 │   ├── useLastKnownTelemetry.ts # One-shot bulk bootstrap from POST /api/telemetry/last-known
 │   ├── useLogin.ts              # Login form submission logic; calls POST /api/auth/login
+│   ├── useMission.ts            # Mission CRUD + execute/abort; polls GET /api/missions/{id} every 1s while ACTIVE; 401 → logout
 │   ├── useTelemetry.ts          # STOMP client; selected stream + bounded fleet summary; auto-logout on auth error
 │   ├── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
 │   └── useDroneRegistry.ts      # Polls GET /api/drones every 30s; 401 → logout
@@ -58,7 +60,8 @@ src/
     ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings
     ├── LiveVideoWindow.tsx      # Floating 240×240 HLS video window; uses hls.js; mounted inside <main> over the map
     ├── LoginPage.tsx            # Full-screen operator authentication form (shown when unauthenticated)
-    ├── MapComponent.tsx         # CesiumJS viewer shell + driver-mode route drawing + left-click waypoint capture
+    ├── MapComponent.tsx         # CesiumJS viewer shell + driver-mode route drawing + mission waypoint rendering + left-click waypoint capture
+    ├── MissionPlanningPanel.tsx # Right sidebar in mission mode: NEW tab (planning waypoints) + SAVED tab (mission list + execute/delete); ACTIVE mission progress view
     ├── SectionHeader.tsx        # Shared panel section divider/header component
     ├── LowBatteryWindow.tsx     # Floating bottom-right panel; battery alerts in FREE MODE + SHOW ALL only
     ├── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
@@ -239,6 +242,8 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 `src/components/MapComponent.tsx` owns the Cesium `Viewer` instance, selected-drone entity/path, fleet point layer, and map UI overlays.
 
 **Props:** `{ telemetry, fleetTelemetry, lastKnownTelemetry, performanceStage, selectedDrone, freeMode, showAllAssets, selectedNavigationDirection, isDriverModeEnabled, driverWaypoints, onAddDriverWaypoint, onSelectDrone }`
+
+**Mission Planning Mode:** enabled via SETTINGS → MISSION PLAN. When active, `MissionPlanningPanel` replaces `SystemPanel` in the right sidebar. Left-click on the map adds amber waypoints to the planning route. Missions are saved to the backend (POST /api/missions) and can be executed against a MAVLINK drone. During execution, `MissionExecutorService` on the backend sends sequential GOTO commands and publishes progress to STOMP `/topic/missions/{id}/progress`. The frontend polls GET /api/missions/{id} every 1s while ACTIVE and renders the amber waypoint route on the map with per-waypoint status colours. Mission mode and Driver Mode are mutually exclusive.
 
 **Driver Mode:** when enabled from `SystemPanel`, left-click on the map appends waypoints to a visible route polyline. Each new waypoint altitude is aligned to the selected drone's current altitude (live telemetry first, then fleet/last-known fallback). Click picking first intersects a camera ray with a plane at the drone altitude to avoid cursor/waypoint parallax drift. While driver mode is enabled, the map camera is locked (no rotate/pan/zoom/tilt) and forced into a top-down follow view centered on the selected drone. Waypoints are sent sequentially as backend `GOTO` commands; the frontend sends waypoint altitude in AMSL (same frame as telemetry), and backend converts it to relative-home before MAVLink dispatch. The next point is dispatched only after the active point is reached within configured horizontal/vertical thresholds.
 

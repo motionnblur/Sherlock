@@ -5,6 +5,7 @@ import { useStreamUrl } from './hooks/useStreamUrl';
 import { useLastKnownTelemetry } from './hooks/useLastKnownTelemetry';
 import { useCommand } from './hooks/useCommand';
 import { useDroneRegistry } from './hooks/useDroneRegistry';
+import { useMission } from './hooks/useMission';
 import {
   DRIVER_DEFAULT_ALTITUDE_METERS,
   DRIVER_REACHED_HORIZONTAL_METERS,
@@ -19,12 +20,14 @@ import Header from './components/Header';
 import TelemetryPanel from './components/TelemetryPanel';
 import MapComponent from './components/MapComponent';
 import SystemPanel from './components/SystemPanel';
+import MissionPlanningPanel from './components/MissionPlanningPanel';
 import StatusBar from './components/StatusBar';
 import LiveVideoWindow from './components/LiveVideoWindow';
 import LoginPage from './components/LoginPage';
 import AssetSelectionOverlay from './components/AssetSelectionOverlay';
 import LowBatteryWindow from './components/LowBatteryWindow';
 import type { DriverWaypoint, DroneId, NavigationDirection } from './interfaces/telemetry';
+import type { MissionWaypoint, PlanningWaypoint } from './interfaces/mission';
 import { horizontalDistanceMeters } from './utils/geo';
 import { matchesNavigationDirection } from './utils/navigation';
 
@@ -45,12 +48,27 @@ export default function App() {
   const driverWaypointIdRef = useRef(1);
   const driverDispatchInFlightRef = useRef(false);
 
+  const [isMissionModeEnabled, setIsMissionModeEnabled] = useState(false);
+  const [planningWaypoints, setPlanningWaypoints] = useState<PlanningWaypoint[]>([]);
+  const planningWaypointIdRef = useRef(1);
+
   const { droneIds } = useDroneRegistry(authToken);
+  const {
+    missions,
+    activeMission,
+    isLoading: isMissionLoading,
+    missionError,
+    createMission,
+    executeMission,
+    abortMission,
+    deleteMission,
+  } = useMission(authToken);
   const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTelemetry(selectedDrone, freeMode, showAllAssets);
   const lastKnownTelemetry = useLastKnownTelemetry(droneIds, selectedDrone !== null);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
   const { sendCommand, isSending: isCommandSending, commandError } = useCommand(selectedDrone, authToken);
   const isDriverModeAvailable = Boolean(selectedDrone?.startsWith('MAVLINK-')) && !freeMode;
+  const isMissionModeAvailable = Boolean(selectedDrone) && !freeMode;
 
   const resetNavigationDirection = useCallback(() => {
     setSelectedNavigationDirection(NAVIGATION_DIRECTION_ALL);
@@ -60,6 +78,59 @@ export default function App() {
     setDriverWaypoints([]);
     driverDispatchInFlightRef.current = false;
   }, []);
+
+  const clearMissionPlanning = useCallback(() => {
+    setPlanningWaypoints([]);
+    planningWaypointIdRef.current = 1;
+  }, []);
+
+  const handleToggleMissionMode = useCallback(() => {
+    if (!isMissionModeAvailable) return;
+    setIsMissionModeEnabled((current) => {
+      const next = !current;
+      if (!next) clearMissionPlanning();
+      // mission mode and driver mode are mutually exclusive
+      if (next) setIsDriverModeEnabled(false);
+      return next;
+    });
+  }, [isMissionModeAvailable, clearMissionPlanning]);
+
+  const handleAddMissionWaypoint = useCallback((latitude: number, longitude: number) => {
+    if (!isMissionModeEnabled || !selectedDrone || freeMode) return;
+    const altitude = telemetry?.altitude ?? 100;
+    setPlanningWaypoints((current) => [
+      ...current,
+      {
+        localId: planningWaypointIdRef.current++,
+        latitude,
+        longitude,
+        altitude,
+      },
+    ]);
+  }, [isMissionModeEnabled, selectedDrone, freeMode, telemetry?.altitude]);
+
+  const handleRemovePlanningWaypoint = useCallback((localId: number) => {
+    setPlanningWaypoints((current) => current.filter((wp) => wp.localId !== localId));
+  }, []);
+
+  const handleSaveMission = useCallback(async (name: string) => {
+    if (planningWaypoints.length < 2) return;
+    await createMission(name, planningWaypoints);
+    clearMissionPlanning();
+  }, [planningWaypoints, createMission, clearMissionPlanning]);
+
+  const handleExecuteMission = useCallback(async (missionId: number) => {
+    if (!selectedDrone) return;
+    await executeMission(missionId, selectedDrone);
+  }, [selectedDrone, executeMission]);
+
+  const handleAbortMission = useCallback(async (missionId: number) => {
+    await abortMission(missionId);
+  }, [abortMission]);
+
+  const handleDeleteMission = useCallback(async (missionId: number) => {
+    await deleteMission(missionId);
+  }, [deleteMission]);
 
   const handleToggleLiveVideo = useCallback(() => {
     if (!selectedDrone || freeMode) return;
@@ -87,13 +158,15 @@ export default function App() {
         clearStreamUrl();
         setIsDriverModeEnabled(false);
         clearDriverRoute();
+        setIsMissionModeEnabled(false);
+        clearMissionPlanning();
       } else {
         setShowAllAssets(false);
         resetNavigationDirection();
       }
       return nextFreeMode;
     });
-  }, [clearDriverRoute, clearStreamUrl, resetNavigationDirection]);
+  }, [clearDriverRoute, clearMissionPlanning, clearStreamUrl, resetNavigationDirection]);
 
   const handleToggleShowAllAssets = useCallback(() => {
     setShowAllAssets((current) => {
@@ -110,19 +183,23 @@ export default function App() {
     setFreeMode(false);
     setIsDriverModeEnabled(false);
     clearDriverRoute();
+    setIsMissionModeEnabled(false);
+    clearMissionPlanning();
     resetNavigationDirection();
-  }, [clearDriverRoute, resetNavigationDirection]);
+  }, [clearDriverRoute, clearMissionPlanning, resetNavigationDirection]);
 
   const handleDeselect = useCallback(() => {
     setSelectedDrone(null);
     setFreeMode(false);
     setIsDriverModeEnabled(false);
+    setIsMissionModeEnabled(false);
     setIsLiveVideoOpen(false);
     clearStreamUrl();
     setShowAllAssets(false);
     clearDriverRoute();
+    clearMissionPlanning();
     resetNavigationDirection();
-  }, [clearDriverRoute, clearStreamUrl, resetNavigationDirection]);
+  }, [clearDriverRoute, clearMissionPlanning, clearStreamUrl, resetNavigationDirection]);
 
   const handleToggleDriverMode = useCallback(() => {
     if (!isDriverModeAvailable) {
@@ -189,6 +266,21 @@ export default function App() {
     selectedNavigationDirection,
     showAllAssets,
   ]);
+
+  // Compose the waypoints shown on the map: active mission progress takes priority over planning state
+  const mapMissionWaypoints = useMemo((): MissionWaypoint[] => {
+    if (activeMission?.status === 'ACTIVE') {
+      return activeMission.waypoints;
+    }
+    return planningWaypoints.map((wp, index) => ({
+      id: null,
+      sequence: index,
+      latitude: wp.latitude,
+      longitude: wp.longitude,
+      altitude: wp.altitude,
+      status: 'PENDING' as const,
+    }));
+  }, [activeMission, planningWaypoints]);
 
   const handleLogout = useCallback(async () => {
     if (authToken) {
@@ -285,11 +377,13 @@ export default function App() {
         isLiveVideoOpen={isLiveVideoOpen}
         showAllAssets={showAllAssets}
         selectedNavigationDirection={selectedNavigationDirection}
+        isMissionModeEnabled={isMissionModeEnabled}
         onToggleFreeMode={handleToggleFreeMode}
         onDeselect={handleDeselect}
         onToggleLiveVideo={handleToggleLiveVideo}
         onToggleShowAllAssets={handleToggleShowAllAssets}
         onSelectNavigationDirection={setSelectedNavigationDirection}
+        onToggleMissionMode={handleToggleMissionMode}
         onLogout={handleLogout}
       />
 
@@ -313,6 +407,9 @@ export default function App() {
                 driverWaypoints={driverWaypoints}
                 onAddDriverWaypoint={handleAddDriverWaypoint}
                 onSelectDrone={handleActivateDrone}
+                isMissionModeEnabled={isMissionModeEnabled}
+                missionWaypoints={mapMissionWaypoints}
+                onAddMissionWaypoint={handleAddMissionWaypoint}
               />
 
               {!freeMode && isLiveVideoOpen && (
@@ -333,7 +430,7 @@ export default function App() {
           )}
         </main>
 
-        {selectedDrone && !freeMode && (
+        {selectedDrone && !freeMode && !isMissionModeEnabled && (
           <SystemPanel
             telemetry={telemetry}
             history={history}
@@ -345,6 +442,23 @@ export default function App() {
             isDriverModeAvailable={isDriverModeAvailable}
             onToggleDriverMode={handleToggleDriverMode}
             driverWaypointCount={driverWaypoints.length}
+          />
+        )}
+
+        {selectedDrone && !freeMode && isMissionModeEnabled && (
+          <MissionPlanningPanel
+            selectedDrone={selectedDrone}
+            planningWaypoints={planningWaypoints}
+            activeMission={activeMission}
+            missions={missions}
+            isLoading={isMissionLoading}
+            missionError={missionError}
+            onRemovePlanningWaypoint={handleRemovePlanningWaypoint}
+            onClearPlanningWaypoints={clearMissionPlanning}
+            onSaveMission={handleSaveMission}
+            onExecuteMission={handleExecuteMission}
+            onAbortMission={handleAbortMission}
+            onDeleteMission={handleDeleteMission}
           />
         )}
       </div>

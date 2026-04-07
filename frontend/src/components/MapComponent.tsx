@@ -9,6 +9,7 @@ import { FLIGHT_PATH_POINT_LIMIT } from '../constants/telemetry';
 import { NAVIGATION_DIRECTION_ALL } from '../constants/navigation';
 import { PERFORMANCE_STAGE_NORMAL } from '../constants/performance';
 import type { MapComponentProps } from '../interfaces/components';
+import type { MissionWaypoint } from '../interfaces/mission';
 import type { DriverWaypoint, DroneId, TelemetryPoint } from '../interfaces/telemetry';
 import { formatFixed } from '../utils/formatters';
 import { matchesNavigationDirection } from '../utils/navigation';
@@ -91,6 +92,9 @@ export default function MapComponent({
   driverWaypoints,
   onAddDriverWaypoint,
   onSelectDrone,
+  isMissionModeEnabled,
+  missionWaypoints,
+  onAddMissionWaypoint,
 }: MapComponentProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
@@ -109,6 +113,8 @@ export default function MapComponent({
   const fleetAssetMapRef = useRef<Map<DroneId, FleetAssetPrimitives>>(new Map());
   const driverRouteRef = useRef<Cesium.Entity | null>(null);
   const driverWaypointEntitiesRef = useRef<Cesium.Entity[]>([]);
+  const missionRouteRef = useRef<Cesium.Entity | null>(null);
+  const missionWaypointEntitiesRef = useRef<Cesium.Entity[]>([]);
   const cameraControllerStateRef = useRef<CameraControllerState | null>(null);
 
   const [viewer, setViewer] = useState<Cesium.Viewer | null>(null);
@@ -156,6 +162,12 @@ export default function MapComponent({
         viewerRef.current.entities.remove(driverRouteRef.current);
       }
       for (const entity of driverWaypointEntitiesRef.current) {
+        viewerRef.current.entities.remove(entity);
+      }
+      if (missionRouteRef.current) {
+        viewerRef.current.entities.remove(missionRouteRef.current);
+      }
+      for (const entity of missionWaypointEntitiesRef.current) {
         viewerRef.current.entities.remove(entity);
       }
       fleetPointCollectionRef.current = null;
@@ -409,8 +421,75 @@ export default function MapComponent({
     if (!viewer || viewer.isDestroyed()) {
       return;
     }
+    clearMissionRouteEntities(viewer, missionRouteRef, missionWaypointEntitiesRef);
+    if (!selectedDrone || freeMode || missionWaypoints.length === 0) {
+      viewer.scene.requestRender();
+      return;
+    }
+
+    const routePositions = missionWaypoints.map((wp) =>
+      Cesium.Cartesian3.fromDegrees(wp.longitude, wp.latitude, wp.altitude),
+    );
+
+    missionRouteRef.current = viewer.entities.add({
+      name: `mission-route-${selectedDrone}`,
+      polyline: {
+        positions: routePositions,
+        width: 2,
+        material: new Cesium.PolylineGlowMaterialProperty({
+          glowPower: 0.2,
+          color: Cesium.Color.fromCssColorString('#FFB400').withAlpha(0.9),
+        }),
+        clampToGround: false,
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+
+    missionWaypointEntitiesRef.current = missionWaypoints.map((wp, index) =>
+      viewer.entities.add({
+        name: `mission-waypoint-${wp.id ?? index}`,
+        position: Cesium.Cartesian3.fromDegrees(wp.longitude, wp.latitude, wp.altitude),
+        point: {
+          pixelSize: wp.status === 'ACTIVE' ? 9 : 6,
+          color: missionWaypointColor(wp.status),
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 1,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+        label: {
+          text: `${index + 1}`,
+          font: '11px "JetBrains Mono", monospace',
+          fillColor: Cesium.Color.fromCssColorString('#FFB400'),
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          pixelOffset: new Cesium.Cartesian2(0, -16),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      }),
+    );
+
+    viewer.scene.requestRender();
+  }, [missionWaypoints, freeMode, selectedDrone, viewer]);
+
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed()) {
+      return;
+    }
 
     const onLeftClick = (movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      if (isMissionModeEnabled && !freeMode && selectedDrone) {
+        const worldPosition = pickWorldPosition(viewer, movement.position);
+        if (!worldPosition) return;
+        const cartographic = Cesium.Cartographic.fromCartesian(worldPosition);
+        onAddMissionWaypoint(
+          Cesium.Math.toDegrees(cartographic.latitude),
+          Cesium.Math.toDegrees(cartographic.longitude),
+        );
+        viewer.scene.requestRender();
+        return;
+      }
       if (!isDriverModeEnabled || freeMode || !selectedDrone) {
         return;
       }
@@ -436,7 +515,7 @@ export default function MapComponent({
     return () => {
       viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
     };
-  }, [freeMode, isDriverModeEnabled, onAddDriverWaypoint, selectedDisplayTelemetry, selectedDrone, viewer]);
+  }, [freeMode, isDriverModeEnabled, isMissionModeEnabled, onAddDriverWaypoint, onAddMissionWaypoint, selectedDisplayTelemetry, selectedDrone, viewer]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
@@ -494,6 +573,7 @@ export default function MapComponent({
       }
       resetSelectedEntities(viewer, selectedDroneRef, selectedPathRef, pathPositionsRef);
       clearDriverRouteEntities(viewer, driverRouteRef, driverWaypointEntitiesRef);
+      clearMissionRouteEntities(viewer, missionRouteRef, missionWaypointEntitiesRef);
     };
   }, [viewer]);
 
@@ -529,6 +609,30 @@ function clearDriverRouteEntities(
     viewer.entities.remove(waypointEntity);
   }
   driverWaypointEntitiesRef.current = [];
+}
+
+function clearMissionRouteEntities(
+  viewer: Cesium.Viewer,
+  missionRouteRef: MutableRefObject<Cesium.Entity | null>,
+  missionWaypointEntitiesRef: MutableRefObject<Cesium.Entity[]>,
+) {
+  if (missionRouteRef.current) {
+    viewer.entities.remove(missionRouteRef.current);
+    missionRouteRef.current = null;
+  }
+  for (const entity of missionWaypointEntitiesRef.current) {
+    viewer.entities.remove(entity);
+  }
+  missionWaypointEntitiesRef.current = [];
+}
+
+function missionWaypointColor(status: MissionWaypoint['status']): Cesium.Color {
+  switch (status) {
+    case 'ACTIVE':  return Cesium.Color.fromCssColorString('#FFB400');
+    case 'REACHED': return Cesium.Color.fromCssColorString('#00FF41');
+    case 'SKIPPED': return Cesium.Color.fromCssColorString('#3d4f63');
+    default:        return Cesium.Color.fromCssColorString('#FFB400').withAlpha(0.5);
+  }
 }
 
 function waypointColor(status: DriverWaypoint['status']): Cesium.Color {

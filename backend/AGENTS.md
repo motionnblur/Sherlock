@@ -31,24 +31,30 @@ com.sherlock.groundcontrol
 │   ├── AuthController.java         # POST /api/auth/login, POST /api/auth/logout
 │   ├── DroneCommandController.java # POST /api/drones/{droneId}/command — RTH/ARM/DISARM/TAKEOFF/GOTO
 │   ├── GlobalExceptionHandler.java # @RestControllerAdvice — auth + generic errors
+│   ├── MissionController.java      # CRUD + execute/abort — POST/GET/DELETE /api/missions, /execute, /abort
 │   ├── TelemetryController.java    # REST: GET /api/telemetry/history + POST /api/telemetry/last-known
 │   └── DroneStreamController.java  # REST: GET /api/drones/{droneId}/stream
 ├── dto/
 │   ├── BulkLastKnownRequestDTO.java   # Wire object: { droneIds: string[] }
 │   ├── BulkLastKnownResponseDTO.java  # Wire object: { telemetry: LastKnownTelemetryDTO[] }
+│   ├── CreateMissionDTO.java          # Wire: { name, waypoints[] }
 │   ├── DroneCommandDTO.java           # Wire: { commandType: RTH|ARM|DISARM|TAKEOFF|GOTO, latitude?, longitude?, altitude? }
 │   ├── LastKnownTelemetryDTO.java     # Compact last-known payload used by bulk bootstrap
 │   ├── LoginRequestDTO.java        # Wire: { username, password }
 │   ├── LoginResponseDTO.java       # Wire: { token, username, expiresAt }
 │   ├── BatteryAlertDTO.java        # Wire object: { droneId, battery } — emitted on threshold crossing
+│   ├── MissionDTO.java             # Wire: full mission + waypoints; used for REST responses and STOMP progress
 │   ├── TelemetryDTO.java           # Wire object (no JPA annotations); includes extended fields
 │   ├── TelemetryLiteDTO.java       # Minimal wire object for Free Mode (no extended fields)
+│   ├── WaypointDTO.java            # Wire: { id?, sequence, latitude, longitude, altitude, label?, status? }
 │   └── StreamUrlDTO.java           # Wire object: { streamUrl } for live video
 ├── entity/
 │   ├── AuthAuditLogEntity.java     # @Entity — append-only auth attempt log
+│   ├── MissionEntity.java          # @Entity — missions table; status: PLANNED|ACTIVE|COMPLETED|ABORTED
 │   ├── OperatorEntity.java         # @Entity — operator accounts (no sign-up; DB-managed)
 │   ├── TelemetryEntity.java        # @Entity mapped to `telemetry` table (includes extended fields)
-│   └── TokenBlacklistEntity.java   # @Entity — revoked JWT IDs (JTI)
+│   ├── TokenBlacklistEntity.java   # @Entity — revoked JWT IDs (JTI)
+│   └── WaypointEntity.java         # @Entity — mission_waypoints table; FK → missions; status: PENDING|ACTIVE|REACHED|SKIPPED
 ├── exception/
 │   ├── AccountLockedException.java
 │   └── AuthenticationFailedException.java
@@ -59,6 +65,7 @@ com.sherlock.groundcontrol
 │   └── MavlinkMessageDecoder.java  # Decode 6 message types + typed result records
 ├── repository/
 │   ├── AuthAuditLogRepository.java
+│   ├── MissionRepository.java      # findAllByOrderByCreatedAtDesc(), findByStatus()
 │   ├── OperatorRepository.java
 │   ├── TelemetryRepository.java    # JpaRepository, custom finder
 │   └── TokenBlacklistRepository.java
@@ -75,7 +82,9 @@ com.sherlock.groundcontrol
     ├── DroneCommandService.java     # Translates RTH/ARM/DISARM/TAKEOFF/GOTO → MAVLink command packets via MavlinkAdapterService (@ConditionalOnProperty)
     ├── DroneStreamService.java      # Resolves HLS stream URL from MEDIAMTX_HLS_BASE_URL
     ├── MavlinkAdapterService.java   # UDP :14550 listener + snapshot merge + @Scheduled STOMP publish (@ConditionalOnProperty)
-    ├── TelemetryService.java        # persistBatch() + history lookup + bounded last-known cache
+    ├── MissionExecutorService.java  # Server-side mission execution: @Scheduled tick, GOTO dispatch, waypoint arrival detection, STOMP progress publish
+    ├── MissionService.java          # Mission CRUD + lifecycle transitions (PLANNED→ACTIVE→COMPLETED|ABORTED); no execution logic
+    ├── TelemetryService.java        # persistBatch() + getLastKnown(droneId) + history lookup + bounded last-known cache
     └── TelemetrySimulator.java      # @Scheduled 500ms fleet tick, per-drone full stream + fleet-lite summary + battery alerts
 ```
 

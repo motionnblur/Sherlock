@@ -62,6 +62,22 @@ public class TelemetryService {
                 .toList();
     }
 
+    public Optional<TelemetryDTO> getLastKnown(String droneId) {
+        if (droneId == null || droneId.isBlank()) {
+            return Optional.empty();
+        }
+        TelemetryDTO cached = lastKnownCache.get(droneId);
+        if (cached != null) {
+            return Optional.of(cached);
+        }
+        return telemetryRepository.findFirstByDroneIdOrderByTimestampDesc(droneId)
+                .map(this::toDTO)
+                .map(dto -> {
+                    lastKnownCache.put(droneId, dto);
+                    return dto;
+                });
+    }
+
     public List<LastKnownTelemetryDTO> getLastKnownByDroneIds(List<String> requestedDroneIds) {
         List<String> droneIds = normalizeDroneIds(requestedDroneIds);
         return droneIds.stream()
