@@ -44,7 +44,6 @@ interface SavedMissionDraft {
   missionId: number;
   missionName: string;
   waypoints: PlanningWaypoint[];
-  isDirty: boolean;
 }
 
 export default function App() {
@@ -139,7 +138,6 @@ export default function App() {
         if (!current) return current;
         return {
           ...current,
-          isDirty: true,
           waypoints: [...current.waypoints, nextWaypoint],
         };
       });
@@ -166,7 +164,6 @@ export default function App() {
       if (!current) return current;
       return {
         ...current,
-        isDirty: true,
         waypoints: current.waypoints.filter((waypoint) => waypoint.localId !== localId),
       };
     });
@@ -197,7 +194,6 @@ export default function App() {
       missionId: missionToEdit.id,
       missionName: missionToEdit.name,
       waypoints: editableWaypoints,
-      isDirty: false,
     });
     setSelectedMissionWaypointLocalId(editableWaypoints[0]?.localId ?? null);
   }, [missions]);
@@ -209,11 +205,9 @@ export default function App() {
   const handleUpdateEditingMissionName = useCallback((name: string) => {
     setEditingMissionDraft((current) => {
       if (!current) return current;
-      const isNameChanged = current.missionName !== name;
       return {
         ...current,
         missionName: name,
-        isDirty: current.isDirty || isNameChanged,
       };
     });
   }, []);
@@ -264,7 +258,6 @@ export default function App() {
         if (!current) return current;
         return {
           ...current,
-          isDirty: true,
           waypoints: current.waypoints.map((waypoint) =>
             waypoint.localId === localId ? { ...waypoint, ...position } : waypoint,
           ),
@@ -316,7 +309,6 @@ export default function App() {
         if (!current) return current;
         return {
           ...current,
-          isDirty: true,
           waypoints: current.waypoints.map(nudgeWaypoint),
         };
       });
@@ -660,7 +652,6 @@ export default function App() {
             planningWaypoints={planningWaypoints}
             editingMissionId={editingMissionDraft?.missionId ?? null}
             editingMissionName={editingMissionDraft?.missionName ?? ''}
-            editingMissionIsDirty={editingMissionDraft?.isDirty ?? false}
             editingWaypoints={editingMissionDraft?.waypoints ?? []}
             activeMission={activeMission}
             missions={missions}

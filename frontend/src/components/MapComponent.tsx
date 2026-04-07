@@ -5,7 +5,12 @@ import {
   DRIVER_CAMERA_HEIGHT_OFFSET_METERS,
   DRIVER_CAMERA_TOPDOWN_PITCH_DEGREES,
 } from '../constants/driver';
-import { MISSION_MIN_ALTITUDE_METERS } from '../constants/mission';
+import {
+  MISSION_GIZMO_AXIS_LENGTH_BY_CAMERA_RATIO,
+  MISSION_GIZMO_AXIS_MAX_LENGTH_METERS,
+  MISSION_GIZMO_AXIS_MIN_LENGTH_METERS,
+  MISSION_MIN_ALTITUDE_METERS,
+} from '../constants/mission';
 import { FLIGHT_PATH_POINT_LIMIT } from '../constants/telemetry';
 import { NAVIGATION_DIRECTION_ALL } from '../constants/navigation';
 import { PERFORMANCE_STAGE_NORMAL } from '../constants/performance';
@@ -317,23 +322,32 @@ export default function MapComponent({
           }
           initialCenteringRef.current = false;
           initialFlyDoneRef.current = true;
-          viewer.trackedEntity = freeMode || isDriverModeEnabled ? undefined : entity;
+          viewer.trackedEntity = freeMode || isDriverModeEnabled || isMissionModeEnabled ? undefined : entity;
           viewer.scene.requestRender();
         });
       }
       return;
     }
 
-    viewer.trackedEntity = freeMode || isDriverModeEnabled ? undefined : entity;
+    viewer.trackedEntity = freeMode || isDriverModeEnabled || isMissionModeEnabled ? undefined : entity;
     viewer.scene.requestRender();
-  }, [freeMode, isDriverModeEnabled, showAllAssets, selectedDisplayTelemetry, selectedDrone, selectedLiveTelemetry, viewer]);
+  }, [
+    freeMode,
+    isDriverModeEnabled,
+    isMissionModeEnabled,
+    showAllAssets,
+    selectedDisplayTelemetry,
+    selectedDrone,
+    selectedLiveTelemetry,
+    viewer,
+  ]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
       return;
     }
     const cameraController = viewer.scene.screenSpaceCameraController;
-    const shouldLockCamera = isDriverModeEnabled && !freeMode && Boolean(selectedDrone);
+    const shouldLockCamera = (isDriverModeEnabled || isMissionModeEnabled) && !freeMode && Boolean(selectedDrone);
 
     if (shouldLockCamera) {
       if (!cameraControllerStateRef.current) {
@@ -366,7 +380,7 @@ export default function MapComponent({
     cameraController.enableLook = cameraControllerStateRef.current.enableLook;
     cameraControllerStateRef.current = null;
     viewer.scene.requestRender();
-  }, [freeMode, isDriverModeEnabled, selectedDrone, viewer]);
+  }, [freeMode, isDriverModeEnabled, isMissionModeEnabled, selectedDrone, viewer]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed() || !selectedDisplayTelemetry) {
@@ -550,7 +564,18 @@ export default function MapComponent({
       selectedWaypoint.latitude,
       selectedWaypoint.altitude,
     );
-    missionGizmoEntitiesRef.current = buildMissionGizmo(viewer, origin, buildAxisFrame(origin));
+    const cameraDistanceMeters = Cesium.Cartesian3.distance(viewer.camera.positionWC, origin);
+    const axisLengthMeters = Cesium.Math.clamp(
+      cameraDistanceMeters * MISSION_GIZMO_AXIS_LENGTH_BY_CAMERA_RATIO,
+      MISSION_GIZMO_AXIS_MIN_LENGTH_METERS,
+      MISSION_GIZMO_AXIS_MAX_LENGTH_METERS,
+    );
+    missionGizmoEntitiesRef.current = buildMissionGizmo(
+      viewer,
+      origin,
+      buildAxisFrame(origin),
+      axisLengthMeters,
+    );
     viewer.scene.requestRender();
   }, [
     freeMode,

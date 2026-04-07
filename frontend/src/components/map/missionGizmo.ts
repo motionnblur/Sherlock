@@ -61,6 +61,7 @@ export function buildMissionGizmo(
   viewer: Cesium.Viewer,
   origin: Cesium.Cartesian3,
   frame: AxisFrame,
+  axisLengthMeters: number = MISSION_GIZMO_AXIS_LENGTH_METERS,
 ): Cesium.Entity[] {
   const axes: MissionGizmoAxis[] = ['X', 'Y', 'Z'];
   return axes.flatMap((axis) => {
@@ -70,7 +71,7 @@ export function buildMissionGizmo(
       origin,
       Cesium.Cartesian3.multiplyByScalar(
         axisDirection,
-        MISSION_GIZMO_AXIS_LENGTH_METERS,
+        axisLengthMeters,
         new Cesium.Cartesian3(),
       ),
       new Cesium.Cartesian3(),

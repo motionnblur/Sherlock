@@ -69,7 +69,6 @@ export interface MissionPlanningPanelProps {
   planningWaypoints: PlanningWaypoint[];
   editingMissionId: number | null;
   editingMissionName: string;
-  editingMissionIsDirty: boolean;
   editingWaypoints: PlanningWaypoint[];
   activeMission: Mission | null;
   missions: UseMissionResult['missions'];

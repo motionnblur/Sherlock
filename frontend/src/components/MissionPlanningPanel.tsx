@@ -380,7 +380,6 @@ function SavedEditView({
   missionName,
   waypoints,
   selectedMissionWaypointLocalId,
-  isDirty,
   isLoading,
   missionError,
   onUpdateName,
@@ -393,7 +392,6 @@ function SavedEditView({
   missionName: string;
   waypoints: PlanningWaypoint[];
   selectedMissionWaypointLocalId: number | null;
-  isDirty: boolean;
   isLoading: boolean;
   missionError: string | null;
   onUpdateName: (name: string) => void;
@@ -404,7 +402,7 @@ function SavedEditView({
   onSave: () => Promise<void>;
 }) {
   const selectedWaypoint = waypoints.find((waypoint) => waypoint.localId === selectedMissionWaypointLocalId) ?? null;
-  const canSave = missionName.trim().length > 0 && waypoints.length >= MISSION_MIN_WAYPOINT_COUNT && isDirty;
+  const canSave = missionName.trim().length > 0 && waypoints.length >= MISSION_MIN_WAYPOINT_COUNT;
 
   return (
     <div className="flex flex-col h-full">
@@ -476,7 +474,6 @@ export default function MissionPlanningPanel({
   planningWaypoints,
   editingMissionId,
   editingMissionName,
-  editingMissionIsDirty,
   editingWaypoints,
   activeMission,
   missions,
@@ -543,7 +540,6 @@ export default function MissionPlanningPanel({
             missionName={editingMissionName}
             waypoints={editingWaypoints}
             selectedMissionWaypointLocalId={selectedMissionWaypointLocalId}
-            isDirty={editingMissionIsDirty}
             isLoading={isLoading}
             missionError={missionError}
             onUpdateName={onUpdateEditingMissionName}
