@@ -93,6 +93,7 @@ export function useMission(authToken: AuthToken | null): UseMissionResult {
           latitude: wp.latitude,
           longitude: wp.longitude,
           altitude: wp.altitude,
+          label: wp.label,
         })),
       };
       const response = await fetch(MISSIONS_PATH, {
@@ -105,6 +106,46 @@ export function useMission(authToken: AuthToken | null): UseMissionResult {
       const created: Mission = await response.json();
       setMissions((current) => [created, ...current]);
       return created;
+    } catch {
+      setMissionError('NETWORK ERROR');
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [authToken, authHeaders, handleUnauthorized]);
+
+  const updateMission = useCallback(async (
+    missionId: number,
+    name: string,
+    waypoints: PlanningWaypoint[],
+  ): Promise<Mission | null> => {
+    if (!authToken) return null;
+    setIsLoading(true);
+    setMissionError(null);
+    try {
+      const body = {
+        name,
+        waypoints: waypoints.map((wp, index) => ({
+          sequence: index,
+          latitude: wp.latitude,
+          longitude: wp.longitude,
+          altitude: wp.altitude,
+          label: wp.label,
+        })),
+      };
+      const response = await fetch(MISSION_PATH(missionId), {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(body),
+      });
+      if (response.status === 401) { handleUnauthorized(); return null; }
+      if (response.status === 404) { setMissionError('MISSION NOT FOUND'); return null; }
+      if (response.status === 409) { setMissionError('MISSION NOT PLANNED'); return null; }
+      if (!response.ok) { setMissionError(`UPDATE FAILED (${response.status})`); return null; }
+
+      const updated: Mission = await response.json();
+      setMissions((current) => current.map((mission) => (mission.id === updated.id ? updated : mission)));
+      return updated;
     } catch {
       setMissionError('NETWORK ERROR');
       return null;
@@ -194,6 +235,7 @@ export function useMission(authToken: AuthToken | null): UseMissionResult {
     isLoading,
     missionError,
     createMission,
+    updateMission,
     executeMission,
     abortMission,
     deleteMission,

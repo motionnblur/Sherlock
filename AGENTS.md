@@ -104,7 +104,7 @@ Extended fields (`roll`–`flightMode`) are null in the lite fleet stream and wh
 | REST bulk last-known     | `POST /api/telemetry/last-known`               |
 | REST stream URL          | `GET /api/drones/{droneId}/stream`             |
 | **C2 command**           | `POST /api/drones/{droneId}/command` — body: `{ commandType: "RTH" \| "ARM" \| "DISARM" \| "TAKEOFF" \| "GOTO", latitude?: number, longitude?: number, altitude?: number }` (`GOTO` altitude is accepted as AMSL from UI and converted to relative-home meters using live MAVLink snapshot; `409` when vehicle navigation readiness is not met) |
-| **Mission CRUD**         | `POST /api/missions` · `GET /api/missions` · `GET /api/missions/{id}` · `DELETE /api/missions/{id}` |
+| **Mission CRUD**         | `POST /api/missions` · `GET /api/missions` · `GET /api/missions/{id}` · `PUT /api/missions/{id}` · `DELETE /api/missions/{id}` |
 | **Mission execute**      | `POST /api/missions/{id}/execute?droneId=X` — starts server-side execution loop; `503` if MAVLink disabled; `409` if not PLANNED |
 | **Mission abort**        | `POST /api/missions/{id}/abort` |
 | **Mission progress**     | `STOMP /topic/missions/{id}/progress` — `MissionDTO` published on each waypoint status change |

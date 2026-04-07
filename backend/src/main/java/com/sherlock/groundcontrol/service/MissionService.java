@@ -32,6 +32,14 @@ public class MissionService {
 
     private final MissionRepository missionRepository;
 
+    public enum UpdateMissionStatus {
+        UPDATED,
+        MISSION_NOT_FOUND,
+        MISSION_NOT_PLANNED
+    }
+
+    public record UpdateMissionResult(UpdateMissionStatus status, MissionDTO mission) {}
+
     @Transactional
     public MissionDTO createMission(CreateMissionDTO request) {
         validateCreateRequest(request);
@@ -76,6 +84,34 @@ public class MissionService {
         missionRepository.deleteById(missionId);
         log.info("Mission id={} deleted", missionId);
         return true;
+    }
+
+    @Transactional
+    public UpdateMissionResult updateMission(Long missionId, CreateMissionDTO request) {
+        validateCreateRequest(request);
+
+        Optional<MissionEntity> foundMission = missionRepository.findById(missionId);
+        if (foundMission.isEmpty()) {
+            return new UpdateMissionResult(UpdateMissionStatus.MISSION_NOT_FOUND, null);
+        }
+
+        MissionEntity mission = foundMission.get();
+        if (mission.getStatus() != MissionStatus.PLANNED) {
+            return new UpdateMissionResult(UpdateMissionStatus.MISSION_NOT_PLANNED, null);
+        }
+
+        mission.setName(request.getName().strip());
+        mission.getWaypoints().clear();
+        mission.getWaypoints().addAll(buildWaypoints(request.getWaypoints(), mission));
+
+        MissionEntity updatedMission = missionRepository.save(mission);
+        log.info(
+                "Mission id={} updated (name='{}', waypoints={})",
+                updatedMission.getId(),
+                updatedMission.getName(),
+                updatedMission.getWaypoints().size()
+        );
+        return new UpdateMissionResult(UpdateMissionStatus.UPDATED, toDTO(updatedMission));
     }
 
     /**
@@ -170,17 +206,24 @@ public class MissionService {
         if (waypointDTOs == null || waypointDTOs.isEmpty()) {
             return List.of();
         }
-        return waypointDTOs.stream()
+
+        List<WaypointDTO> boundedWaypoints = waypointDTOs.stream()
                 .limit(MAX_WAYPOINTS_PER_MISSION)
-                .map(dto -> WaypointEntity.builder()
-                        .mission(mission)
-                        .sequence(waypointDTOs.indexOf(dto))
-                        .latitude(dto.getLatitude())
-                        .longitude(dto.getLongitude())
-                        .altitude(dto.getAltitude())
-                        .label(dto.getLabel())
-                        .status(WaypointStatus.PENDING)
-                        .build())
+                .toList();
+
+        return java.util.stream.IntStream.range(0, boundedWaypoints.size())
+                .mapToObj(index -> {
+                    WaypointDTO dto = boundedWaypoints.get(index);
+                    return WaypointEntity.builder()
+                            .mission(mission)
+                            .sequence(index)
+                            .latitude(dto.getLatitude())
+                            .longitude(dto.getLongitude())
+                            .altitude(dto.getAltitude())
+                            .label(dto.getLabel())
+                            .status(WaypointStatus.PENDING)
+                            .build();
+                })
                 .toList();
     }
 

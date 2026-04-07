@@ -2,7 +2,14 @@ import type { ReactNode } from 'react';
 import type { PerformanceStage } from '../constants/performance';
 import type { CommandType } from '../hooks/useCommand';
 import type { DriverWaypoint, DroneId, LowBatteryAlert, NavigationDirection, TelemetryByDrone, TelemetryPoint } from './telemetry';
-import type { Mission, MissionWaypoint, PlanningWaypoint, UseMissionResult } from './mission';
+import type {
+  Mission,
+  MissionGizmoAxis,
+  MissionWaypoint,
+  MissionWaypointPosition,
+  PlanningWaypoint,
+  UseMissionResult,
+} from './mission';
 
 export interface HeaderProps {
   connected: boolean;
@@ -49,19 +56,35 @@ export interface MapComponentProps {
   isMissionModeEnabled: boolean;
   /** Planning waypoints (in-memory, not yet saved) OR active mission waypoints */
   missionWaypoints: MissionWaypoint[];
+  isMissionWaypointEditingEnabled: boolean;
+  selectedMissionWaypointLocalId: number | null;
   onAddMissionWaypoint: (latitude: number, longitude: number) => void;
+  onSelectMissionWaypoint: (localId: number | null) => void;
+  onMoveMissionWaypoint: (localId: number, position: MissionWaypointPosition) => void;
 }
 
 export interface MissionPlanningPanelProps {
   selectedDrone: DroneId | null;
+  selectedMissionWaypointLocalId: number | null;
   planningWaypoints: PlanningWaypoint[];
+  editingMissionId: number | null;
+  editingMissionName: string;
+  editingMissionIsDirty: boolean;
+  editingWaypoints: PlanningWaypoint[];
   activeMission: Mission | null;
   missions: UseMissionResult['missions'];
   isLoading: boolean;
   missionError: string | null;
+  onSelectMissionWaypoint: (localId: number | null) => void;
   onRemovePlanningWaypoint: (localId: number) => void;
   onClearPlanningWaypoints: () => void;
   onSaveMission: (name: string) => Promise<void>;
+  onStartEditMission: (missionId: number) => void;
+  onCancelEditMission: () => void;
+  onUpdateEditingMissionName: (name: string) => void;
+  onSaveEditedMission: () => Promise<void>;
+  onRemoveEditingWaypoint: (localId: number) => void;
+  onNudgeMissionWaypoint: (axis: MissionGizmoAxis, distanceMeters: number) => void;
   onExecuteMission: (missionId: number) => Promise<void>;
   onAbortMission: (missionId: number) => Promise<void>;
   onDeleteMission: (missionId: number) => Promise<void>;

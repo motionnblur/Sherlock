@@ -31,7 +31,7 @@ com.sherlock.groundcontrol
 │   ├── AuthController.java         # POST /api/auth/login, POST /api/auth/logout
 │   ├── DroneCommandController.java # POST /api/drones/{droneId}/command — RTH/ARM/DISARM/TAKEOFF/GOTO
 │   ├── GlobalExceptionHandler.java # @RestControllerAdvice — auth + generic errors
-│   ├── MissionController.java      # CRUD + execute/abort — POST/GET/DELETE /api/missions, /execute, /abort
+│   ├── MissionController.java      # CRUD + execute/abort — POST/GET/PUT/DELETE /api/missions, /execute, /abort
 │   ├── TelemetryController.java    # REST: GET /api/telemetry/history + POST /api/telemetry/last-known
 │   └── DroneStreamController.java  # REST: GET /api/drones/{droneId}/stream
 ├── dto/
@@ -261,6 +261,15 @@ docker compose --profile dev --profile sitl up --build
 3. Add a `@GetMapping` / `@PostMapping` method to `TelemetryController`
 
 Spring Security already protects all endpoints except documented public routes. Keep new telemetry endpoints authenticated unless there is a documented exception.
+
+### Mission update endpoint
+
+`PUT /api/missions/{id}` updates an existing mission in-place and is restricted to missions in `PLANNED` state.
+
+- `200 OK` — mission name/waypoints overwritten successfully
+- `400 Bad Request` — invalid payload (blank name, <2 waypoints, missing coordinates/altitude)
+- `404 Not Found` — mission does not exist
+- `409 Conflict` — mission is not `PLANNED`
 
 ---
 

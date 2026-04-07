@@ -11,6 +11,11 @@ import {
   DRIVER_REACHED_HORIZONTAL_METERS,
   DRIVER_REACHED_VERTICAL_METERS,
 } from './constants/driver';
+import {
+  MISSION_DEFAULT_ALTITUDE_METERS,
+  MISSION_MIN_ALTITUDE_METERS,
+  MISSION_MIN_WAYPOINT_COUNT,
+} from './constants/mission';
 import { NAVIGATION_DIRECTION_ALL } from './constants/navigation';
 import {
   getNextPerformanceStage,
@@ -27,11 +32,20 @@ import LoginPage from './components/LoginPage';
 import AssetSelectionOverlay from './components/AssetSelectionOverlay';
 import LowBatteryWindow from './components/LowBatteryWindow';
 import type { DriverWaypoint, DroneId, NavigationDirection } from './interfaces/telemetry';
-import type { MissionWaypoint, PlanningWaypoint } from './interfaces/mission';
+import type { MissionGizmoAxis, MissionWaypoint, PlanningWaypoint } from './interfaces/mission';
 import { horizontalDistanceMeters } from './utils/geo';
 import { matchesNavigationDirection } from './utils/navigation';
 
 const AUTH_LOGOUT_PATH = '/api/auth/logout';
+const EARTH_RADIUS_METERS = 6378137;
+const METERS_TO_DEGREES = 180 / Math.PI;
+
+interface SavedMissionDraft {
+  missionId: number;
+  missionName: string;
+  waypoints: PlanningWaypoint[];
+  isDirty: boolean;
+}
 
 export default function App() {
   const { authToken, logout } = useAuth();
@@ -50,6 +64,8 @@ export default function App() {
 
   const [isMissionModeEnabled, setIsMissionModeEnabled] = useState(false);
   const [planningWaypoints, setPlanningWaypoints] = useState<PlanningWaypoint[]>([]);
+  const [editingMissionDraft, setEditingMissionDraft] = useState<SavedMissionDraft | null>(null);
+  const [selectedMissionWaypointLocalId, setSelectedMissionWaypointLocalId] = useState<number | null>(null);
   const planningWaypointIdRef = useRef(1);
 
   const { droneIds } = useDroneRegistry(authToken);
@@ -59,6 +75,7 @@ export default function App() {
     isLoading: isMissionLoading,
     missionError,
     createMission,
+    updateMission,
     executeMission,
     abortMission,
     deleteMission,
@@ -82,42 +99,143 @@ export default function App() {
   const clearMissionPlanning = useCallback(() => {
     setPlanningWaypoints([]);
     planningWaypointIdRef.current = 1;
+    setSelectedMissionWaypointLocalId(null);
+  }, []);
+
+  const clearSavedMissionEdit = useCallback(() => {
+    setEditingMissionDraft(null);
+    setSelectedMissionWaypointLocalId(null);
   }, []);
 
   const handleToggleMissionMode = useCallback(() => {
     if (!isMissionModeAvailable) return;
     setIsMissionModeEnabled((current) => {
       const next = !current;
-      if (!next) clearMissionPlanning();
+      if (!next) {
+        clearMissionPlanning();
+        clearSavedMissionEdit();
+      }
       // mission mode and driver mode are mutually exclusive
       if (next) setIsDriverModeEnabled(false);
       return next;
     });
-  }, [isMissionModeAvailable, clearMissionPlanning]);
+  }, [isMissionModeAvailable, clearMissionPlanning, clearSavedMissionEdit]);
 
   const handleAddMissionWaypoint = useCallback((latitude: number, longitude: number) => {
     if (!isMissionModeEnabled || !selectedDrone || freeMode) return;
-    const altitude = telemetry?.altitude ?? 100;
-    setPlanningWaypoints((current) => [
-      ...current,
-      {
-        localId: planningWaypointIdRef.current++,
-        latitude,
-        longitude,
-        altitude,
-      },
-    ]);
-  }, [isMissionModeEnabled, selectedDrone, freeMode, telemetry?.altitude]);
+    if (activeMission?.status === 'ACTIVE') return;
+
+    const altitude = telemetry?.altitude ?? MISSION_DEFAULT_ALTITUDE_METERS;
+    const localId = planningWaypointIdRef.current++;
+    const nextWaypoint: PlanningWaypoint = {
+      localId,
+      latitude,
+      longitude,
+      altitude,
+    };
+
+    if (editingMissionDraft) {
+      setEditingMissionDraft((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          isDirty: true,
+          waypoints: [...current.waypoints, nextWaypoint],
+        };
+      });
+    } else {
+      setPlanningWaypoints((current) => [...current, nextWaypoint]);
+    }
+    setSelectedMissionWaypointLocalId(localId);
+  }, [
+    isMissionModeEnabled,
+    selectedDrone,
+    freeMode,
+    telemetry?.altitude,
+    activeMission?.status,
+    editingMissionDraft,
+  ]);
 
   const handleRemovePlanningWaypoint = useCallback((localId: number) => {
-    setPlanningWaypoints((current) => current.filter((wp) => wp.localId !== localId));
+    setPlanningWaypoints((current) => current.filter((waypoint) => waypoint.localId !== localId));
+    setSelectedMissionWaypointLocalId((current) => (current === localId ? null : current));
+  }, []);
+
+  const handleRemoveEditingWaypoint = useCallback((localId: number) => {
+    setEditingMissionDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        isDirty: true,
+        waypoints: current.waypoints.filter((waypoint) => waypoint.localId !== localId),
+      };
+    });
+    setSelectedMissionWaypointLocalId((current) => (current === localId ? null : current));
   }, []);
 
   const handleSaveMission = useCallback(async (name: string) => {
-    if (planningWaypoints.length < 2) return;
+    if (planningWaypoints.length < MISSION_MIN_WAYPOINT_COUNT) return;
     await createMission(name, planningWaypoints);
     clearMissionPlanning();
   }, [planningWaypoints, createMission, clearMissionPlanning]);
+
+  const handleStartEditMission = useCallback((missionId: number) => {
+    const missionToEdit = missions.find((mission) => mission.id === missionId);
+    if (!missionToEdit || missionToEdit.status !== 'PLANNED') {
+      return;
+    }
+
+    const editableWaypoints = missionToEdit.waypoints.map((waypoint) => ({
+      localId: planningWaypointIdRef.current++,
+      latitude: waypoint.latitude,
+      longitude: waypoint.longitude,
+      altitude: waypoint.altitude,
+      label: waypoint.label,
+    }));
+
+    setEditingMissionDraft({
+      missionId: missionToEdit.id,
+      missionName: missionToEdit.name,
+      waypoints: editableWaypoints,
+      isDirty: false,
+    });
+    setSelectedMissionWaypointLocalId(editableWaypoints[0]?.localId ?? null);
+  }, [missions]);
+
+  const handleCancelMissionEdit = useCallback(() => {
+    clearSavedMissionEdit();
+  }, [clearSavedMissionEdit]);
+
+  const handleUpdateEditingMissionName = useCallback((name: string) => {
+    setEditingMissionDraft((current) => {
+      if (!current) return current;
+      const isNameChanged = current.missionName !== name;
+      return {
+        ...current,
+        missionName: name,
+        isDirty: current.isDirty || isNameChanged,
+      };
+    });
+  }, []);
+
+  const handleSaveEditedMission = useCallback(async () => {
+    if (!editingMissionDraft) {
+      return;
+    }
+    const trimmedName = editingMissionDraft.missionName.trim();
+    if (!trimmedName || editingMissionDraft.waypoints.length < MISSION_MIN_WAYPOINT_COUNT) {
+      return;
+    }
+
+    const updated = await updateMission(
+      editingMissionDraft.missionId,
+      trimmedName,
+      editingMissionDraft.waypoints,
+    );
+    if (updated) {
+      clearSavedMissionEdit();
+    }
+  }, [clearSavedMissionEdit, editingMissionDraft, updateMission]);
 
   const handleExecuteMission = useCallback(async (missionId: number) => {
     if (!selectedDrone) return;
@@ -131,6 +249,82 @@ export default function App() {
   const handleDeleteMission = useCallback(async (missionId: number) => {
     await deleteMission(missionId);
   }, [deleteMission]);
+
+  const handleSelectMissionWaypoint = useCallback((localId: number | null) => {
+    setSelectedMissionWaypointLocalId(localId);
+  }, []);
+
+  const handleMoveMissionWaypoint = useCallback((localId: number, position: {
+    latitude: number;
+    longitude: number;
+    altitude: number;
+  }) => {
+    if (editingMissionDraft) {
+      setEditingMissionDraft((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          isDirty: true,
+          waypoints: current.waypoints.map((waypoint) =>
+            waypoint.localId === localId ? { ...waypoint, ...position } : waypoint,
+          ),
+        };
+      });
+      return;
+    }
+
+    setPlanningWaypoints((current) =>
+      current.map((waypoint) =>
+        waypoint.localId === localId ? { ...waypoint, ...position } : waypoint,
+      ),
+    );
+  }, [editingMissionDraft]);
+
+  const handleNudgeMissionWaypoint = useCallback((axis: MissionGizmoAxis, distanceMeters: number) => {
+    if (selectedMissionWaypointLocalId === null) {
+      return;
+    }
+
+    const nudgeWaypoint = (waypoint: PlanningWaypoint): PlanningWaypoint => {
+      if (waypoint.localId !== selectedMissionWaypointLocalId) {
+        return waypoint;
+      }
+
+      if (axis === 'Z') {
+        return {
+          ...waypoint,
+          altitude: Math.max(MISSION_MIN_ALTITUDE_METERS, waypoint.altitude + distanceMeters),
+        };
+      }
+
+      if (axis === 'Y') {
+        const deltaLatitude = (distanceMeters / EARTH_RADIUS_METERS) * METERS_TO_DEGREES;
+        return { ...waypoint, latitude: waypoint.latitude + deltaLatitude };
+      }
+
+      const latitudeRadians = (waypoint.latitude * Math.PI) / 180;
+      const horizontalRadius = EARTH_RADIUS_METERS * Math.cos(latitudeRadians);
+      if (Math.abs(horizontalRadius) < 1e-6) {
+        return waypoint;
+      }
+      const deltaLongitude = (distanceMeters / horizontalRadius) * METERS_TO_DEGREES;
+      return { ...waypoint, longitude: waypoint.longitude + deltaLongitude };
+    };
+
+    if (editingMissionDraft) {
+      setEditingMissionDraft((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          isDirty: true,
+          waypoints: current.waypoints.map(nudgeWaypoint),
+        };
+      });
+      return;
+    }
+
+    setPlanningWaypoints((current) => current.map(nudgeWaypoint));
+  }, [editingMissionDraft, selectedMissionWaypointLocalId]);
 
   const handleToggleLiveVideo = useCallback(() => {
     if (!selectedDrone || freeMode) return;
@@ -160,13 +354,14 @@ export default function App() {
         clearDriverRoute();
         setIsMissionModeEnabled(false);
         clearMissionPlanning();
+        clearSavedMissionEdit();
       } else {
         setShowAllAssets(false);
         resetNavigationDirection();
       }
       return nextFreeMode;
     });
-  }, [clearDriverRoute, clearMissionPlanning, clearStreamUrl, resetNavigationDirection]);
+  }, [clearDriverRoute, clearMissionPlanning, clearSavedMissionEdit, clearStreamUrl, resetNavigationDirection]);
 
   const handleToggleShowAllAssets = useCallback(() => {
     setShowAllAssets((current) => {
@@ -185,8 +380,9 @@ export default function App() {
     clearDriverRoute();
     setIsMissionModeEnabled(false);
     clearMissionPlanning();
+    clearSavedMissionEdit();
     resetNavigationDirection();
-  }, [clearDriverRoute, clearMissionPlanning, resetNavigationDirection]);
+  }, [clearDriverRoute, clearMissionPlanning, clearSavedMissionEdit, resetNavigationDirection]);
 
   const handleDeselect = useCallback(() => {
     setSelectedDrone(null);
@@ -198,8 +394,9 @@ export default function App() {
     setShowAllAssets(false);
     clearDriverRoute();
     clearMissionPlanning();
+    clearSavedMissionEdit();
     resetNavigationDirection();
-  }, [clearDriverRoute, clearMissionPlanning, clearStreamUrl, resetNavigationDirection]);
+  }, [clearDriverRoute, clearMissionPlanning, clearSavedMissionEdit, clearStreamUrl, resetNavigationDirection]);
 
   const handleToggleDriverMode = useCallback(() => {
     if (!isDriverModeAvailable) {
@@ -267,12 +464,19 @@ export default function App() {
     showAllAssets,
   ]);
 
-  // Compose the waypoints shown on the map: active mission progress takes priority over planning state
+  const editableMissionWaypoints = editingMissionDraft?.waypoints ?? planningWaypoints;
+  const isMissionWaypointEditingEnabled = isMissionModeEnabled
+    && !freeMode
+    && selectedDrone !== null
+    && activeMission?.status !== 'ACTIVE';
+
+  // Compose the waypoints shown on the map: active mission progress takes priority over editable draft state.
   const mapMissionWaypoints = useMemo((): MissionWaypoint[] => {
     if (activeMission?.status === 'ACTIVE') {
       return activeMission.waypoints;
     }
-    return planningWaypoints.map((wp, index) => ({
+    return editableMissionWaypoints.map((wp, index) => ({
+      localId: wp.localId,
       id: null,
       sequence: index,
       latitude: wp.latitude,
@@ -280,7 +484,7 @@ export default function App() {
       altitude: wp.altitude,
       status: 'PENDING' as const,
     }));
-  }, [activeMission, planningWaypoints]);
+  }, [activeMission, editableMissionWaypoints]);
 
   const handleLogout = useCallback(async () => {
     if (authToken) {
@@ -409,7 +613,11 @@ export default function App() {
                 onSelectDrone={handleActivateDrone}
                 isMissionModeEnabled={isMissionModeEnabled}
                 missionWaypoints={mapMissionWaypoints}
+                isMissionWaypointEditingEnabled={isMissionWaypointEditingEnabled}
+                selectedMissionWaypointLocalId={selectedMissionWaypointLocalId}
                 onAddMissionWaypoint={handleAddMissionWaypoint}
+                onSelectMissionWaypoint={handleSelectMissionWaypoint}
+                onMoveMissionWaypoint={handleMoveMissionWaypoint}
               />
 
               {!freeMode && isLiveVideoOpen && (
@@ -448,14 +656,26 @@ export default function App() {
         {selectedDrone && !freeMode && isMissionModeEnabled && (
           <MissionPlanningPanel
             selectedDrone={selectedDrone}
+            selectedMissionWaypointLocalId={selectedMissionWaypointLocalId}
             planningWaypoints={planningWaypoints}
+            editingMissionId={editingMissionDraft?.missionId ?? null}
+            editingMissionName={editingMissionDraft?.missionName ?? ''}
+            editingMissionIsDirty={editingMissionDraft?.isDirty ?? false}
+            editingWaypoints={editingMissionDraft?.waypoints ?? []}
             activeMission={activeMission}
             missions={missions}
             isLoading={isMissionLoading}
             missionError={missionError}
+            onSelectMissionWaypoint={handleSelectMissionWaypoint}
             onRemovePlanningWaypoint={handleRemovePlanningWaypoint}
             onClearPlanningWaypoints={clearMissionPlanning}
             onSaveMission={handleSaveMission}
+            onStartEditMission={handleStartEditMission}
+            onCancelEditMission={handleCancelMissionEdit}
+            onUpdateEditingMissionName={handleUpdateEditingMissionName}
+            onSaveEditedMission={handleSaveEditedMission}
+            onRemoveEditingWaypoint={handleRemoveEditingWaypoint}
+            onNudgeMissionWaypoint={handleNudgeMissionWaypoint}
             onExecuteMission={handleExecuteMission}
             onAbortMission={handleAbortMission}
             onDeleteMission={handleDeleteMission}

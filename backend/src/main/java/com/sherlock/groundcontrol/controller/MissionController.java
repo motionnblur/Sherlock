@@ -5,6 +5,7 @@ import com.sherlock.groundcontrol.dto.MissionDTO;
 import com.sherlock.groundcontrol.service.MissionExecutorService;
 import com.sherlock.groundcontrol.service.MissionExecutorService.ExecuteResult;
 import com.sherlock.groundcontrol.service.MissionService;
+import com.sherlock.groundcontrol.service.MissionService.UpdateMissionResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -19,6 +20,7 @@ import java.util.List;
  * POST   /api/missions                            — create a new PLANNED mission
  * GET    /api/missions                            — list all missions
  * GET    /api/missions/{id}                       — get mission detail (used for progress polling)
+ * PUT    /api/missions/{id}                       — overwrite a PLANNED mission's name/waypoints
  * DELETE /api/missions/{id}                       — delete (only PLANNED/COMPLETED/ABORTED)
  * POST   /api/missions/{id}/execute?droneId=X     — start server-side execution
  * POST   /api/missions/{id}/abort                 — abort active mission
@@ -53,6 +55,24 @@ public class MissionController {
         return missionService.getMission(id)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<MissionDTO> updateMission(
+            @PathVariable Long id,
+            @RequestBody CreateMissionDTO request
+    ) {
+        try {
+            UpdateMissionResult result = missionService.updateMission(id, request);
+            return switch (result.status()) {
+                case UPDATED -> ResponseEntity.ok(result.mission());
+                case MISSION_NOT_FOUND -> ResponseEntity.notFound().build();
+                case MISSION_NOT_PLANNED -> ResponseEntity.status(HttpStatus.CONFLICT).build();
+            };
+        } catch (IllegalArgumentException exception) {
+            log.warn("Mission update rejected for id={}: {}", id, exception.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @DeleteMapping("/{id}")

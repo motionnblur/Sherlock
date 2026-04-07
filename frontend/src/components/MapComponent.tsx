@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import {
   DRIVER_CAMERA_HEIGHT_OFFSET_METERS,
   DRIVER_CAMERA_TOPDOWN_PITCH_DEGREES,
 } from '../constants/driver';
+import { MISSION_MIN_ALTITUDE_METERS } from '../constants/mission';
 import { FLIGHT_PATH_POINT_LIMIT } from '../constants/telemetry';
 import { NAVIGATION_DIRECTION_ALL } from '../constants/navigation';
 import { PERFORMANCE_STAGE_NORMAL } from '../constants/performance';
@@ -14,6 +15,16 @@ import type { DriverWaypoint, DroneId, TelemetryPoint } from '../interfaces/tele
 import { formatFixed } from '../utils/formatters';
 import { matchesNavigationDirection } from '../utils/navigation';
 import FreeModeAssetWindow from './FreeModeAssetWindow';
+import {
+  buildAxisFrame,
+  buildDragState,
+  buildMissionGizmo,
+  computeDraggedWaypointPosition,
+  toMissionWaypointEntityName,
+  tryParsePickedGizmoAxis,
+  tryParsePickedWaypointLocalId,
+  type MissionGizmoDragState,
+} from './map/missionGizmo';
 import {
   applyImageryBrightness,
   applyPerformanceProfile,
@@ -94,7 +105,11 @@ export default function MapComponent({
   onSelectDrone,
   isMissionModeEnabled,
   missionWaypoints,
+  isMissionWaypointEditingEnabled,
+  selectedMissionWaypointLocalId,
   onAddMissionWaypoint,
+  onSelectMissionWaypoint,
+  onMoveMissionWaypoint,
 }: MapComponentProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
@@ -115,10 +130,18 @@ export default function MapComponent({
   const driverWaypointEntitiesRef = useRef<Cesium.Entity[]>([]);
   const missionRouteRef = useRef<Cesium.Entity | null>(null);
   const missionWaypointEntitiesRef = useRef<Cesium.Entity[]>([]);
+  const missionGizmoEntitiesRef = useRef<Cesium.Entity[]>([]);
+  const missionGizmoDragStateRef = useRef<MissionGizmoDragState | null>(null);
+  const missionGizmoDragCameraStateRef = useRef<CameraControllerState | null>(null);
+  const suppressNextMissionClickRef = useRef(false);
   const cameraControllerStateRef = useRef<CameraControllerState | null>(null);
 
   const [viewer, setViewer] = useState<Cesium.Viewer | null>(null);
   const [isMapDimmed, setIsMapDimmed] = useState(false);
+  const isCoarsePointer = useMemo(
+    () => (typeof window !== 'undefined' ? window.matchMedia('(pointer: coarse)').matches : false),
+    [],
+  );
 
   const selectedLiveTelemetry = selectedDrone && telemetry?.droneId === selectedDrone ? telemetry : null;
   const selectedDisplayTelemetry = selectedDrone
@@ -170,6 +193,9 @@ export default function MapComponent({
       for (const entity of missionWaypointEntitiesRef.current) {
         viewerRef.current.entities.remove(entity);
       }
+      for (const entity of missionGizmoEntitiesRef.current) {
+        viewerRef.current.entities.remove(entity);
+      }
       fleetPointCollectionRef.current = null;
       fleetBillboardCollectionRef.current = null;
       fleetPolylineCollectionRef.current = null;
@@ -177,6 +203,9 @@ export default function MapComponent({
       fleetAssetMapRef.current.clear();
       driverRouteRef.current = null;
       driverWaypointEntitiesRef.current = [];
+      missionGizmoEntitiesRef.current = [];
+      missionGizmoDragStateRef.current = null;
+      missionGizmoDragCameraStateRef.current = null;
       viewerRef.current.destroy();
       viewerRef.current = null;
       setViewer(null);
@@ -237,7 +266,9 @@ export default function MapComponent({
     initialFlyDoneRef.current = false;
     initialCenteringRef.current = false;
     lastPathTimestampRef.current = null;
-  }, [viewer, selectedDrone]);
+    clearMissionGizmoEntities(viewer, missionGizmoEntitiesRef);
+    onSelectMissionWaypoint(null);
+  }, [viewer, selectedDrone, onSelectMissionWaypoint]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed() || !selectedDrone || !selectedDisplayTelemetry) {
@@ -445,43 +476,210 @@ export default function MapComponent({
       },
     });
 
-    missionWaypointEntitiesRef.current = missionWaypoints.map((wp, index) =>
-      viewer.entities.add({
-        name: `mission-waypoint-${wp.id ?? index}`,
+    missionWaypointEntitiesRef.current = missionWaypoints.map((wp, index) => {
+      const isSelectedWaypoint = wp.localId === selectedMissionWaypointLocalId;
+      const isEditableWaypoint = isMissionWaypointEditingEnabled && wp.localId !== undefined;
+      const pointSize = isSelectedWaypoint ? 10 : wp.status === 'ACTIVE' ? 9 : 6;
+      const waypointColor = isSelectedWaypoint
+        ? Cesium.Color.fromCssColorString('#00FF41')
+        : missionWaypointColor(wp.status);
+      const entityName = wp.localId !== undefined
+        ? toMissionWaypointEntityName(wp.localId)
+        : `mission-waypoint-${wp.id ?? index}`;
+
+      return viewer.entities.add({
+        name: entityName,
         position: Cesium.Cartesian3.fromDegrees(wp.longitude, wp.latitude, wp.altitude),
         point: {
-          pixelSize: wp.status === 'ACTIVE' ? 9 : 6,
-          color: missionWaypointColor(wp.status),
+          pixelSize: pointSize,
+          color: waypointColor,
           outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 1,
+          outlineWidth: isSelectedWaypoint ? 2 : 1,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         label: {
           text: `${index + 1}`,
           font: '11px "JetBrains Mono", monospace',
-          fillColor: Cesium.Color.fromCssColorString('#FFB400'),
+          fillColor: isSelectedWaypoint
+            ? Cesium.Color.fromCssColorString('#00FF41')
+            : Cesium.Color.fromCssColorString('#FFB400'),
           outlineColor: Cesium.Color.BLACK,
           outlineWidth: 2,
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -16),
+          pixelOffset: new Cesium.Cartesian2(0, isEditableWaypoint ? -20 : -16),
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
-      }),
-    );
+      });
+    });
 
     viewer.scene.requestRender();
-  }, [missionWaypoints, freeMode, selectedDrone, viewer]);
+  }, [
+    missionWaypoints,
+    freeMode,
+    selectedDrone,
+    selectedMissionWaypointLocalId,
+    isMissionWaypointEditingEnabled,
+    viewer,
+  ]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
       return;
     }
 
+    clearMissionGizmoEntities(viewer, missionGizmoEntitiesRef);
+    if (
+      !isMissionWaypointEditingEnabled
+      || freeMode
+      || !selectedDrone
+      || selectedMissionWaypointLocalId === null
+    ) {
+      viewer.scene.requestRender();
+      return;
+    }
+
+    const selectedWaypoint = missionWaypoints.find((waypoint) => waypoint.localId === selectedMissionWaypointLocalId);
+    if (!selectedWaypoint) {
+      viewer.scene.requestRender();
+      return;
+    }
+
+    const origin = Cesium.Cartesian3.fromDegrees(
+      selectedWaypoint.longitude,
+      selectedWaypoint.latitude,
+      selectedWaypoint.altitude,
+    );
+    missionGizmoEntitiesRef.current = buildMissionGizmo(viewer, origin, buildAxisFrame(origin));
+    viewer.scene.requestRender();
+  }, [
+    freeMode,
+    isMissionWaypointEditingEnabled,
+    missionWaypoints,
+    selectedDrone,
+    selectedMissionWaypointLocalId,
+    viewer,
+  ]);
+
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed()) {
+      return;
+    }
+
+    const onLeftDown = (movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      if (
+        !isMissionWaypointEditingEnabled
+        || isCoarsePointer
+        || freeMode
+        || !isMissionModeEnabled
+        || !selectedDrone
+        || selectedMissionWaypointLocalId === null
+      ) {
+        return;
+      }
+
+      const pickedAxis = tryParsePickedGizmoAxis(viewer.scene.pick(movement.position));
+      if (!pickedAxis) {
+        return;
+      }
+
+      const selectedWaypoint = missionWaypoints.find((waypoint) => waypoint.localId === selectedMissionWaypointLocalId);
+      if (!selectedWaypoint) {
+        return;
+      }
+
+      const dragState = buildDragState(
+        viewer,
+        pickedAxis,
+        selectedMissionWaypointLocalId,
+        selectedWaypoint,
+        movement.position,
+      );
+      if (!dragState) {
+        return;
+      }
+
+      const cameraController = viewer.scene.screenSpaceCameraController;
+      missionGizmoDragCameraStateRef.current = {
+        enableRotate: cameraController.enableRotate,
+        enableTranslate: cameraController.enableTranslate,
+        enableZoom: cameraController.enableZoom,
+        enableTilt: cameraController.enableTilt,
+        enableLook: cameraController.enableLook,
+      };
+      cameraController.enableRotate = false;
+      cameraController.enableTranslate = false;
+      cameraController.enableZoom = false;
+      cameraController.enableTilt = false;
+      cameraController.enableLook = false;
+      missionGizmoDragStateRef.current = dragState;
+      viewer.scene.requestRender();
+    };
+
+    const onMouseMove = (movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+      const dragState = missionGizmoDragStateRef.current;
+      if (!dragState) {
+        return;
+      }
+      const nextWaypointPosition = computeDraggedWaypointPosition(viewer, dragState, movement.endPosition);
+      if (!nextWaypointPosition) {
+        return;
+      }
+      onMoveMissionWaypoint(dragState.waypointLocalId, {
+        ...nextWaypointPosition,
+        altitude: Math.max(nextWaypointPosition.altitude, MISSION_MIN_ALTITUDE_METERS),
+      });
+      suppressNextMissionClickRef.current = true;
+      viewer.scene.requestRender();
+    };
+
+    const onLeftUp = () => {
+      if (!missionGizmoDragStateRef.current) {
+        return;
+      }
+      missionGizmoDragStateRef.current = null;
+      const cameraController = viewer.scene.screenSpaceCameraController;
+      if (missionGizmoDragCameraStateRef.current) {
+        cameraController.enableRotate = missionGizmoDragCameraStateRef.current.enableRotate;
+        cameraController.enableTranslate = missionGizmoDragCameraStateRef.current.enableTranslate;
+        cameraController.enableZoom = missionGizmoDragCameraStateRef.current.enableZoom;
+        cameraController.enableTilt = missionGizmoDragCameraStateRef.current.enableTilt;
+        cameraController.enableLook = missionGizmoDragCameraStateRef.current.enableLook;
+      }
+      missionGizmoDragCameraStateRef.current = null;
+      viewer.scene.requestRender();
+    };
+
     const onLeftClick = (movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      if (suppressNextMissionClickRef.current) {
+        suppressNextMissionClickRef.current = false;
+        return;
+      }
+
       if (isMissionModeEnabled && !freeMode && selectedDrone) {
+        if (!isMissionWaypointEditingEnabled) {
+          return;
+        }
+
+        const pickedObject = viewer.scene.pick(movement.position);
+        const pickedAxis = tryParsePickedGizmoAxis(pickedObject);
+        if (pickedAxis) {
+          return;
+        }
+
+        const pickedWaypointLocalId = tryParsePickedWaypointLocalId(pickedObject);
+        if (pickedWaypointLocalId !== null) {
+          onSelectMissionWaypoint(pickedWaypointLocalId);
+          viewer.scene.requestRender();
+          return;
+        }
+
+        onSelectMissionWaypoint(null);
+
         const worldPosition = pickWorldPosition(viewer, movement.position);
-        if (!worldPosition) return;
+        if (!worldPosition) {
+          return;
+        }
         const cartographic = Cesium.Cartographic.fromCartesian(worldPosition);
         onAddMissionWaypoint(
           Cesium.Math.toDegrees(cartographic.latitude),
@@ -490,6 +688,7 @@ export default function MapComponent({
         viewer.scene.requestRender();
         return;
       }
+
       if (!isDriverModeEnabled || freeMode || !selectedDrone) {
         return;
       }
@@ -511,11 +710,42 @@ export default function MapComponent({
       viewer.scene.requestRender();
     };
 
+    viewer.screenSpaceEventHandler.setInputAction(onLeftDown, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+    viewer.screenSpaceEventHandler.setInputAction(onMouseMove, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+    viewer.screenSpaceEventHandler.setInputAction(onLeftUp, Cesium.ScreenSpaceEventType.LEFT_UP);
     viewer.screenSpaceEventHandler.setInputAction(onLeftClick, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     return () => {
+      viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_DOWN);
+      viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+      viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_UP);
       viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
+      missionGizmoDragStateRef.current = null;
+      if (missionGizmoDragCameraStateRef.current) {
+        const cameraController = viewer.scene.screenSpaceCameraController;
+        cameraController.enableRotate = missionGizmoDragCameraStateRef.current.enableRotate;
+        cameraController.enableTranslate = missionGizmoDragCameraStateRef.current.enableTranslate;
+        cameraController.enableZoom = missionGizmoDragCameraStateRef.current.enableZoom;
+        cameraController.enableTilt = missionGizmoDragCameraStateRef.current.enableTilt;
+        cameraController.enableLook = missionGizmoDragCameraStateRef.current.enableLook;
+        missionGizmoDragCameraStateRef.current = null;
+      }
     };
-  }, [freeMode, isDriverModeEnabled, isMissionModeEnabled, onAddDriverWaypoint, onAddMissionWaypoint, selectedDisplayTelemetry, selectedDrone, viewer]);
+  }, [
+    freeMode,
+    isCoarsePointer,
+    isDriverModeEnabled,
+    isMissionModeEnabled,
+    isMissionWaypointEditingEnabled,
+    missionWaypoints,
+    onAddDriverWaypoint,
+    onAddMissionWaypoint,
+    onMoveMissionWaypoint,
+    onSelectMissionWaypoint,
+    selectedDisplayTelemetry,
+    selectedDrone,
+    selectedMissionWaypointLocalId,
+    viewer,
+  ]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
@@ -574,6 +804,8 @@ export default function MapComponent({
       resetSelectedEntities(viewer, selectedDroneRef, selectedPathRef, pathPositionsRef);
       clearDriverRouteEntities(viewer, driverRouteRef, driverWaypointEntitiesRef);
       clearMissionRouteEntities(viewer, missionRouteRef, missionWaypointEntitiesRef);
+      clearMissionGizmoEntities(viewer, missionGizmoEntitiesRef);
+      missionGizmoDragStateRef.current = null;
     };
   }, [viewer]);
 
@@ -624,6 +856,16 @@ function clearMissionRouteEntities(
     viewer.entities.remove(entity);
   }
   missionWaypointEntitiesRef.current = [];
+}
+
+function clearMissionGizmoEntities(
+  viewer: Cesium.Viewer,
+  missionGizmoEntitiesRef: MutableRefObject<Cesium.Entity[]>,
+) {
+  for (const entity of missionGizmoEntitiesRef.current) {
+    viewer.entities.remove(entity);
+  }
+  missionGizmoEntitiesRef.current = [];
 }
 
 function missionWaypointColor(status: MissionWaypoint['status']): Cesium.Color {

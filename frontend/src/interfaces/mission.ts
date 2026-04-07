@@ -1,7 +1,15 @@
 export type MissionStatus = 'PLANNED' | 'ACTIVE' | 'COMPLETED' | 'ABORTED';
 export type WaypointStatus = 'PENDING' | 'ACTIVE' | 'REACHED' | 'SKIPPED';
+export type MissionGizmoAxis = 'X' | 'Y' | 'Z';
+
+export interface MissionWaypointPosition {
+  latitude: number;
+  longitude: number;
+  altitude: number;
+}
 
 export interface MissionWaypoint {
+  localId?: number;      // present only for editable in-memory waypoints
   id: number | null;     // null for in-memory planning waypoints not yet saved
   sequence: number;
   latitude: number;
@@ -28,6 +36,7 @@ export interface PlanningWaypoint {
   latitude: number;
   longitude: number;
   altitude: number;
+  label?: string;
 }
 
 export interface UseMissionResult {
@@ -36,6 +45,7 @@ export interface UseMissionResult {
   isLoading: boolean;
   missionError: string | null;
   createMission: (name: string, waypoints: PlanningWaypoint[]) => Promise<Mission | null>;
+  updateMission: (missionId: number, name: string, waypoints: PlanningWaypoint[]) => Promise<Mission | null>;
   executeMission: (missionId: number, droneId: string) => Promise<boolean>;
   abortMission: (missionId: number) => Promise<boolean>;
   deleteMission: (missionId: number) => Promise<boolean>;
