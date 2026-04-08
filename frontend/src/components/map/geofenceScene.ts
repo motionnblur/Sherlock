@@ -5,6 +5,9 @@ import type { Geofence, GeofencePointInput } from '../../interfaces/geofence';
 const ACTIVE_FILL = Cesium.Color.fromCssColorString('#FFB400').withAlpha(0.12);
 const ACTIVE_OUTLINE = Cesium.Color.fromCssColorString('#FFB400').withAlpha(0.9);
 const ACTIVE_VERTEX = Cesium.Color.fromCssColorString('#FFB400');
+const INACTIVE_FILL = Cesium.Color.fromCssColorString('#3d4f63').withAlpha(0.1);
+const INACTIVE_OUTLINE = Cesium.Color.fromCssColorString('#3d4f63').withAlpha(0.85);
+const INACTIVE_VERTEX = Cesium.Color.fromCssColorString('#3d4f63');
 const DRAFT_FILL = Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.12);
 const DRAFT_OUTLINE = Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.9);
 const DRAFT_VERTEX = Cesium.Color.fromCssColorString('#00FF41');
@@ -25,19 +28,22 @@ export function renderActiveGeofences(
   clearGeofenceVisuals(viewer, geofenceVisualsRef);
 
   for (const geofence of geofences) {
-    if (!geofence.isActive || geofence.points.length === 0) {
+    if (geofence.points.length === 0) {
       continue;
     }
 
     const positions = toPositions(geofence.points);
     const closedPositions = [...positions, positions[0]];
     const centroid = toCentroid(geofence.points);
+    const outlineColor = geofence.isActive ? ACTIVE_OUTLINE : INACTIVE_OUTLINE;
+    const fillColor = geofence.isActive ? ACTIVE_FILL : INACTIVE_FILL;
+    const vertexColor = geofence.isActive ? ACTIVE_VERTEX : INACTIVE_VERTEX;
 
     const fill = viewer.entities.add({
       name: `geofence-fill-${geofence.id}`,
       polygon: {
         hierarchy: new Cesium.PolygonHierarchy(positions),
-        material: ACTIVE_FILL,
+        material: fillColor,
         outline: false,
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
       },
@@ -47,7 +53,7 @@ export function renderActiveGeofences(
       polyline: {
         positions: closedPositions,
         width: 2,
-        material: ACTIVE_OUTLINE,
+        material: outlineColor,
         clampToGround: true,
         arcType: Cesium.ArcType.GEODESIC,
       },
@@ -58,7 +64,7 @@ export function renderActiveGeofences(
       label: {
         text: geofence.name,
         font: LABEL_FONT,
-        fillColor: ACTIVE_OUTLINE,
+        fillColor: outlineColor,
         outlineColor: Cesium.Color.BLACK,
         outlineWidth: 2,
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
@@ -73,7 +79,7 @@ export function renderActiveGeofences(
         position: Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, 0),
         point: {
           pixelSize: 4,
-          color: ACTIVE_VERTEX,
+          color: vertexColor,
           outlineColor: Cesium.Color.BLACK,
           outlineWidth: 1,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,

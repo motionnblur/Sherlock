@@ -152,9 +152,6 @@ export default function App() {
     }
     setIsGeofenceModeEnabled((current) => {
       const next = !current;
-      if (!next) {
-        clearGeofenceDraft();
-      }
       if (next) {
         setIsDriverModeEnabled(false);
         clearDriverRoute();

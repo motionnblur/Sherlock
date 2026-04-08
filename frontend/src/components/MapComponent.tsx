@@ -638,14 +638,14 @@ export default function MapComponent({
       return;
     }
 
-    if (!isGeofenceModeEnabled || freeMode || !selectedDrone) {
+    if (!selectedDrone || geofenceDraftPoints.length === 0) {
       clearDraftGeofence(viewer, draftGeofenceVisualRef);
       viewer.scene.requestRender();
       return;
     }
 
     renderDraftGeofence(viewer, geofenceDraftPoints, draftGeofenceVisualRef);
-  }, [freeMode, geofenceDraftPoints, isGeofenceModeEnabled, selectedDrone, viewer]);
+  }, [geofenceDraftPoints, selectedDrone, viewer]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
