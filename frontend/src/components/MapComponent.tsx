@@ -20,6 +20,7 @@ import type { DriverWaypoint, DroneId, TelemetryPoint } from '../interfaces/tele
 import { formatFixed } from '../utils/formatters';
 import { matchesNavigationDirection } from '../utils/navigation';
 import FreeModeAssetWindow from './FreeModeAssetWindow';
+import GeofenceDrawToolbar from './GeofenceDrawToolbar';
 import {
   buildAxisFrame,
   buildDragState,
@@ -48,6 +49,13 @@ import {
   toCartesian,
   upsertFleetAsset,
 } from './map/cesiumScene';
+import {
+  clearDraftGeofence,
+  clearGeofenceVisuals,
+  renderActiveGeofences,
+  renderDraftGeofence,
+  type GeofenceVisuals,
+} from './map/geofenceScene';
 
 interface CameraControllerState {
   enableRotate: boolean;
@@ -61,6 +69,8 @@ interface MapInteractionState {
   freeMode: boolean;
   isCoarsePointer: boolean;
   isDriverModeEnabled: boolean;
+  isGeofenceModeEnabled: boolean;
+  isGeofenceSaving: boolean;
   isMissionModeEnabled: boolean;
   isMissionWaypointEditingEnabled: boolean;
   missionWaypoints: MissionWaypoint[];
@@ -69,6 +79,7 @@ interface MapInteractionState {
   selectedDisplayTelemetry: TelemetryPoint | null;
   onAddDriverWaypoint: (latitude: number, longitude: number) => void;
   onAddMissionWaypoint: (latitude: number, longitude: number) => void;
+  onAddGeofenceVertex: (latitude: number, longitude: number) => void;
   onMoveMissionWaypoint: (localId: number, position: {
     latitude: number;
     longitude: number;
@@ -119,16 +130,26 @@ export default function MapComponent({
   telemetry,
   fleetTelemetry,
   lastKnownTelemetry,
+  geofences,
   performanceStage,
   selectedDrone,
   freeMode,
   showAllAssets,
   selectedNavigationDirection,
   isDriverModeEnabled,
+  isGeofenceModeEnabled,
+  isGeofenceSaving,
   driverWaypoints,
   onAddDriverWaypoint,
   onSelectDrone,
   isMissionModeEnabled,
+  geofenceDraftName,
+  geofenceDraftPoints,
+  geofenceError,
+  onAddGeofenceVertex,
+  onUpdateGeofenceDraftName,
+  onCompleteGeofenceDrawing,
+  onCancelGeofenceDrawing,
   missionWaypoints,
   isMissionWaypointEditingEnabled,
   selectedMissionWaypointLocalId,
@@ -151,6 +172,8 @@ export default function MapComponent({
   const fleetPolylineCollectionRef = useRef<Cesium.PolylineCollection | null>(null);
   const fleetLabelCollectionRef = useRef<Cesium.LabelCollection | null>(null);
   const fleetAssetMapRef = useRef<Map<DroneId, FleetAssetPrimitives>>(new Map());
+  const geofenceVisualsRef = useRef<Map<number, GeofenceVisuals>>(new Map());
+  const draftGeofenceVisualRef = useRef<GeofenceVisuals | null>(null);
   const driverRouteRef = useRef<Cesium.Entity | null>(null);
   const driverWaypointEntitiesRef = useRef<Cesium.Entity[]>([]);
   const missionRouteRef = useRef<Cesium.Entity | null>(null);
@@ -176,6 +199,8 @@ export default function MapComponent({
     freeMode,
     isCoarsePointer,
     isDriverModeEnabled,
+    isGeofenceModeEnabled,
+    isGeofenceSaving,
     isMissionModeEnabled,
     isMissionWaypointEditingEnabled,
     missionWaypoints,
@@ -184,6 +209,7 @@ export default function MapComponent({
     selectedDisplayTelemetry,
     onAddDriverWaypoint,
     onAddMissionWaypoint,
+    onAddGeofenceVertex,
     onMoveMissionWaypoint,
     onSelectMissionWaypoint,
   });
@@ -191,6 +217,8 @@ export default function MapComponent({
     freeMode,
     isCoarsePointer,
     isDriverModeEnabled,
+    isGeofenceModeEnabled,
+    isGeofenceSaving,
     isMissionModeEnabled,
     isMissionWaypointEditingEnabled,
     missionWaypoints,
@@ -199,6 +227,7 @@ export default function MapComponent({
     selectedDisplayTelemetry,
     onAddDriverWaypoint,
     onAddMissionWaypoint,
+    onAddGeofenceVertex,
     onMoveMissionWaypoint,
     onSelectMissionWaypoint,
   };
@@ -236,6 +265,8 @@ export default function MapComponent({
       if (fleetLabelCollectionRef.current) {
         viewerRef.current.scene.primitives.remove(fleetLabelCollectionRef.current);
       }
+      clearGeofenceVisuals(viewerRef.current, geofenceVisualsRef);
+      clearDraftGeofence(viewerRef.current, draftGeofenceVisualRef);
       if (driverRouteRef.current) {
         viewerRef.current.entities.remove(driverRouteRef.current);
       }
@@ -256,6 +287,8 @@ export default function MapComponent({
       fleetPolylineCollectionRef.current = null;
       fleetLabelCollectionRef.current = null;
       fleetAssetMapRef.current.clear();
+      geofenceVisualsRef.current.clear();
+      draftGeofenceVisualRef.current = null;
       driverRouteRef.current = null;
       driverWaypointEntitiesRef.current = [];
       missionGizmoEntitiesRef.current = [];
@@ -372,18 +405,23 @@ export default function MapComponent({
           }
           initialCenteringRef.current = false;
           initialFlyDoneRef.current = true;
-          viewer.trackedEntity = freeMode || isDriverModeEnabled || isMissionModeEnabled ? undefined : entity;
+          viewer.trackedEntity = freeMode || isDriverModeEnabled || isMissionModeEnabled || isGeofenceModeEnabled
+            ? undefined
+            : entity;
           viewer.scene.requestRender();
         });
       }
       return;
     }
 
-    viewer.trackedEntity = freeMode || isDriverModeEnabled || isMissionModeEnabled ? undefined : entity;
+    viewer.trackedEntity = freeMode || isDriverModeEnabled || isMissionModeEnabled || isGeofenceModeEnabled
+      ? undefined
+      : entity;
     viewer.scene.requestRender();
   }, [
     freeMode,
     isDriverModeEnabled,
+    isGeofenceModeEnabled,
     isMissionModeEnabled,
     showAllAssets,
     selectedDisplayTelemetry,
@@ -397,7 +435,7 @@ export default function MapComponent({
       return;
     }
     const cameraController = viewer.scene.screenSpaceCameraController;
-    const shouldLockCamera = (isDriverModeEnabled || isMissionModeEnabled) && !freeMode && Boolean(selectedDrone);
+    const shouldLockCamera = (isDriverModeEnabled || isMissionModeEnabled || isGeofenceModeEnabled) && !freeMode && Boolean(selectedDrone);
 
     if (shouldLockCamera) {
       if (!cameraControllerStateRef.current) {
@@ -430,7 +468,7 @@ export default function MapComponent({
     cameraController.enableLook = cameraControllerStateRef.current.enableLook;
     cameraControllerStateRef.current = null;
     viewer.scene.requestRender();
-  }, [freeMode, isDriverModeEnabled, isMissionModeEnabled, selectedDrone, viewer]);
+  }, [freeMode, isDriverModeEnabled, isGeofenceModeEnabled, isMissionModeEnabled, selectedDrone, viewer]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed() || !selectedDisplayTelemetry) {
@@ -592,6 +630,28 @@ export default function MapComponent({
       return;
     }
 
+    renderActiveGeofences(viewer, geofences, geofenceVisualsRef);
+  }, [geofences, viewer]);
+
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed()) {
+      return;
+    }
+
+    if (!isGeofenceModeEnabled || freeMode || !selectedDrone) {
+      clearDraftGeofence(viewer, draftGeofenceVisualRef);
+      viewer.scene.requestRender();
+      return;
+    }
+
+    renderDraftGeofence(viewer, geofenceDraftPoints, draftGeofenceVisualRef);
+  }, [freeMode, geofenceDraftPoints, isGeofenceModeEnabled, selectedDrone, viewer]);
+
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed()) {
+      return;
+    }
+
     clearMissionGizmoEntities(viewer, missionGizmoEntitiesRef);
     if (
       !isMissionWaypointEditingEnabled
@@ -643,6 +703,26 @@ export default function MapComponent({
 
     const onLeftDown = (movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
       const interactionState = interactionStateRef.current;
+
+      if (
+        interactionState.isGeofenceModeEnabled
+        && !interactionState.freeMode
+        && !interactionState.isGeofenceSaving
+        && interactionState.selectedDrone
+      ) {
+        const worldPosition = pickWorldPosition(viewer, movement.position);
+        if (!worldPosition) {
+          return;
+        }
+        const cartographic = Cesium.Cartographic.fromCartesian(worldPosition);
+        interactionState.onAddGeofenceVertex(
+          Cesium.Math.toDegrees(cartographic.latitude),
+          Cesium.Math.toDegrees(cartographic.longitude),
+        );
+        viewer.scene.requestRender();
+        return;
+      }
+
       if (
         !interactionState.isMissionWaypointEditingEnabled
         || interactionState.isCoarsePointer
@@ -870,6 +950,8 @@ export default function MapComponent({
       clearDriverRouteEntities(viewer, driverRouteRef, driverWaypointEntitiesRef);
       clearMissionRouteEntities(viewer, missionRouteRef, missionWaypointEntitiesRef);
       clearMissionGizmoEntities(viewer, missionGizmoEntitiesRef);
+      clearGeofenceVisuals(viewer, geofenceVisualsRef);
+      clearDraftGeofence(viewer, draftGeofenceVisualRef);
       missionGizmoDragStateRef.current = null;
     };
   }, [viewer]);
@@ -887,7 +969,16 @@ export default function MapComponent({
       {selectedLiveTelemetry && selectedDrone && !freeMode && (
         <SelectedTelemetryBanner telemetry={selectedLiveTelemetry} />
       )}
-
+      <GeofenceDrawToolbar
+        isEnabled={isGeofenceModeEnabled && !freeMode && Boolean(selectedDrone)}
+        vertexCount={geofenceDraftPoints.length}
+        draftName={geofenceDraftName}
+        isSaving={isGeofenceSaving}
+        error={geofenceError}
+        onUpdateDraftName={onUpdateGeofenceDraftName}
+        onFinish={onCompleteGeofenceDrawing}
+        onCancel={onCancelGeofenceDrawing}
+      />
 
     </div>
   );

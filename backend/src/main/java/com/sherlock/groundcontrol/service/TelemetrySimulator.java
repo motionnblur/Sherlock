@@ -48,6 +48,7 @@ public class TelemetrySimulator {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final TelemetryService telemetryService;
+    private final GeofenceBreachService geofenceBreachService;
     private final List<DroneState> fleet;
     private final int droneIdWidth;
     private final Map<String, BatteryAlertLevel> batteryAlertStates;
@@ -55,10 +56,12 @@ public class TelemetrySimulator {
     public TelemetrySimulator(
             SimpMessagingTemplate messagingTemplate,
             TelemetryService telemetryService,
+            GeofenceBreachService geofenceBreachService,
             @Value("${app.simulator.fleet-size:5000}") int configuredFleetSize
     ) {
         this.messagingTemplate = messagingTemplate;
         this.telemetryService = telemetryService;
+        this.geofenceBreachService = geofenceBreachService;
         int fleetSize = Math.max(1, configuredFleetSize);
         this.droneIdWidth = Math.max(MIN_DRONE_ID_WIDTH, String.valueOf(fleetSize).length());
         this.fleet = initializeFleet(fleetSize);
@@ -105,6 +108,7 @@ public class TelemetrySimulator {
 
             telemetryBatch.add(dto);
             messagingTemplate.convertAndSend(TELEMETRY_TOPIC_PREFIX + state.droneId, dto);
+            geofenceBreachService.evaluateTelemetry(dto);
             emitBatteryAlertIfStateChanged(dto.getDroneId(), dto.getBattery());
 
             TelemetryLiteDTO liteDto = TelemetryLiteDTO.builder()

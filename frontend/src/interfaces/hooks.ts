@@ -1,3 +1,4 @@
+import type { GeofenceAlert } from './geofence';
 import type { LowBatteryAlert, TelemetryByDrone, TelemetryPoint } from './telemetry';
 
 export interface UseTelemetryResult {
@@ -6,4 +7,5 @@ export interface UseTelemetryResult {
   connected: boolean;
   history: TelemetryPoint[];
   batteryAlerts: LowBatteryAlert[];
+  geofenceAlerts: GeofenceAlert[];
 }

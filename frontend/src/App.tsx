@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth';
 import { useTelemetry } from './hooks/useTelemetry';
 import { useStreamUrl } from './hooks/useStreamUrl';
 import { useLastKnownTelemetry } from './hooks/useLastKnownTelemetry';
+import { useGeofences } from './hooks/useGeofences';
 import { useCommand } from './hooks/useCommand';
 import { useDroneRegistry } from './hooks/useDroneRegistry';
 import { useMission } from './hooks/useMission';
@@ -16,6 +17,10 @@ import {
   MISSION_MIN_ALTITUDE_METERS,
   MISSION_MIN_WAYPOINT_COUNT,
 } from './constants/mission';
+import {
+  GEOFENCE_MAX_POINT_COUNT,
+  GEOFENCE_MIN_POINT_COUNT,
+} from './constants/telemetry';
 import { NAVIGATION_DIRECTION_ALL } from './constants/navigation';
 import {
   getNextPerformanceStage,
@@ -31,7 +36,9 @@ import LiveVideoWindow from './components/LiveVideoWindow';
 import LoginPage from './components/LoginPage';
 import AssetSelectionOverlay from './components/AssetSelectionOverlay';
 import LowBatteryWindow from './components/LowBatteryWindow';
+import GeofenceAlertWindow from './components/GeofenceAlertWindow';
 import type { DriverWaypoint, DroneId, NavigationDirection } from './interfaces/telemetry';
+import type { GeofencePointInput } from './interfaces/geofence';
 import type { MissionGizmoAxis, MissionWaypoint, PlanningWaypoint } from './interfaces/mission';
 import { horizontalDistanceMeters } from './utils/geo';
 import { matchesNavigationDirection } from './utils/navigation';
@@ -66,6 +73,9 @@ export default function App() {
   const [editingMissionDraft, setEditingMissionDraft] = useState<SavedMissionDraft | null>(null);
   const [selectedMissionWaypointLocalId, setSelectedMissionWaypointLocalId] = useState<number | null>(null);
   const planningWaypointIdRef = useRef(1);
+  const [isGeofenceModeEnabled, setIsGeofenceModeEnabled] = useState(false);
+  const [geofenceDraftName, setGeofenceDraftName] = useState('');
+  const [geofenceDraftPoints, setGeofenceDraftPoints] = useState<GeofencePointInput[]>([]);
 
   const { droneIds } = useDroneRegistry(authToken);
   const {
@@ -79,12 +89,19 @@ export default function App() {
     abortMission,
     deleteMission,
   } = useMission(authToken);
-  const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTelemetry(selectedDrone, freeMode, showAllAssets);
+  const {
+    geofences,
+    isLoading: isGeofenceSaving,
+    geofenceError,
+    createGeofence,
+  } = useGeofences(authToken);
+  const { telemetry, fleetTelemetry, connected, history, batteryAlerts, geofenceAlerts } = useTelemetry(selectedDrone, freeMode, showAllAssets);
   const lastKnownTelemetry = useLastKnownTelemetry(droneIds, selectedDrone !== null);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
   const { sendCommand, isSending: isCommandSending, commandError } = useCommand(selectedDrone, authToken);
   const isDriverModeAvailable = Boolean(selectedDrone?.startsWith('MAVLINK-')) && !freeMode;
   const isMissionModeAvailable = Boolean(selectedDrone) && !freeMode;
+  const isGeofenceModeAvailable = Boolean(selectedDrone) && !freeMode;
 
   const resetNavigationDirection = useCallback(() => {
     setSelectedNavigationDirection(NAVIGATION_DIRECTION_ALL);
@@ -106,6 +123,11 @@ export default function App() {
     setSelectedMissionWaypointLocalId(null);
   }, []);
 
+  const clearGeofenceDraft = useCallback(() => {
+    setGeofenceDraftName('');
+    setGeofenceDraftPoints([]);
+  }, []);
+
   const handleToggleMissionMode = useCallback(() => {
     if (!isMissionModeAvailable) return;
     setIsMissionModeEnabled((current) => {
@@ -116,9 +138,33 @@ export default function App() {
       }
       // mission mode and driver mode are mutually exclusive
       if (next) setIsDriverModeEnabled(false);
+      if (next) {
+        setIsGeofenceModeEnabled(false);
+        clearGeofenceDraft();
+      }
       return next;
     });
-  }, [isMissionModeAvailable, clearMissionPlanning, clearSavedMissionEdit]);
+  }, [clearGeofenceDraft, clearMissionPlanning, clearSavedMissionEdit, isMissionModeAvailable]);
+
+  const handleToggleGeofenceMode = useCallback(() => {
+    if (!isGeofenceModeAvailable) {
+      return;
+    }
+    setIsGeofenceModeEnabled((current) => {
+      const next = !current;
+      if (!next) {
+        clearGeofenceDraft();
+      }
+      if (next) {
+        setIsDriverModeEnabled(false);
+        clearDriverRoute();
+        setIsMissionModeEnabled(false);
+        clearMissionPlanning();
+        clearSavedMissionEdit();
+      }
+      return next;
+    });
+  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearSavedMissionEdit, isGeofenceModeAvailable]);
 
   const handleAddMissionWaypoint = useCallback((latitude: number, longitude: number) => {
     if (!isMissionModeEnabled || !selectedDrone || freeMode) return;
@@ -152,6 +198,64 @@ export default function App() {
     telemetry?.altitude,
     activeMission?.status,
     editingMissionDraft,
+  ]);
+
+  const handleAddGeofenceVertex = useCallback((latitude: number, longitude: number) => {
+    if (!isGeofenceModeEnabled || !selectedDrone || freeMode) {
+      return;
+    }
+
+    setGeofenceDraftPoints((currentPoints) => {
+      if (currentPoints.length >= GEOFENCE_MAX_POINT_COUNT) {
+        return currentPoints;
+      }
+
+      return [
+        ...currentPoints,
+        {
+          sequence: currentPoints.length,
+          latitude,
+          longitude,
+        },
+      ];
+    });
+  }, [freeMode, isGeofenceModeEnabled, selectedDrone]);
+
+  const handleUpdateGeofenceDraftName = useCallback((name: string) => {
+    setGeofenceDraftName(name);
+  }, []);
+
+  const handleCancelGeofenceDrawing = useCallback(() => {
+    clearGeofenceDraft();
+  }, [clearGeofenceDraft]);
+
+  const handleCompleteGeofenceDrawing = useCallback(async () => {
+    if (!isGeofenceModeEnabled || !selectedDrone || freeMode) {
+      return;
+    }
+
+    const trimmedName = geofenceDraftName.trim();
+    if (trimmedName.length === 0 || geofenceDraftPoints.length < GEOFENCE_MIN_POINT_COUNT) {
+      return;
+    }
+
+    const created = await createGeofence({
+      name: trimmedName,
+      isActive: true,
+      points: geofenceDraftPoints,
+    });
+
+    if (created) {
+      clearGeofenceDraft();
+    }
+  }, [
+    clearGeofenceDraft,
+    createGeofence,
+    freeMode,
+    geofenceDraftName,
+    geofenceDraftPoints,
+    isGeofenceModeEnabled,
+    selectedDrone,
   ]);
 
   const handleRemovePlanningWaypoint = useCallback((localId: number) => {
@@ -347,13 +451,15 @@ export default function App() {
         setIsMissionModeEnabled(false);
         clearMissionPlanning();
         clearSavedMissionEdit();
+        setIsGeofenceModeEnabled(false);
+        clearGeofenceDraft();
       } else {
         setShowAllAssets(false);
         resetNavigationDirection();
       }
       return nextFreeMode;
     });
-  }, [clearDriverRoute, clearMissionPlanning, clearSavedMissionEdit, clearStreamUrl, resetNavigationDirection]);
+  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearSavedMissionEdit, clearStreamUrl, resetNavigationDirection]);
 
   const handleToggleShowAllAssets = useCallback(() => {
     setShowAllAssets((current) => {
@@ -373,22 +479,26 @@ export default function App() {
     setIsMissionModeEnabled(false);
     clearMissionPlanning();
     clearSavedMissionEdit();
+    setIsGeofenceModeEnabled(false);
+    clearGeofenceDraft();
     resetNavigationDirection();
-  }, [clearDriverRoute, clearMissionPlanning, clearSavedMissionEdit, resetNavigationDirection]);
+  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearSavedMissionEdit, resetNavigationDirection]);
 
   const handleDeselect = useCallback(() => {
     setSelectedDrone(null);
     setFreeMode(false);
     setIsDriverModeEnabled(false);
     setIsMissionModeEnabled(false);
+    setIsGeofenceModeEnabled(false);
     setIsLiveVideoOpen(false);
     clearStreamUrl();
     setShowAllAssets(false);
     clearDriverRoute();
     clearMissionPlanning();
     clearSavedMissionEdit();
+    clearGeofenceDraft();
     resetNavigationDirection();
-  }, [clearDriverRoute, clearMissionPlanning, clearSavedMissionEdit, clearStreamUrl, resetNavigationDirection]);
+  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearSavedMissionEdit, clearStreamUrl, resetNavigationDirection]);
 
   const handleToggleDriverMode = useCallback(() => {
     if (!isDriverModeAvailable) {
@@ -398,10 +508,13 @@ export default function App() {
       const nextMode = !currentMode;
       if (!nextMode) {
         clearDriverRoute();
+      } else {
+        setIsGeofenceModeEnabled(false);
+        clearGeofenceDraft();
       }
       return nextMode;
     });
-  }, [clearDriverRoute, isDriverModeAvailable]);
+  }, [clearDriverRoute, clearGeofenceDraft, isDriverModeAvailable]);
 
   const resolveDriverWaypointAltitude = useCallback(() => {
     if (selectedDrone && telemetry?.droneId === selectedDrone) {
@@ -574,12 +687,14 @@ export default function App() {
         showAllAssets={showAllAssets}
         selectedNavigationDirection={selectedNavigationDirection}
         isMissionModeEnabled={isMissionModeEnabled}
+        isGeofenceModeEnabled={isGeofenceModeEnabled}
         onToggleFreeMode={handleToggleFreeMode}
         onDeselect={handleDeselect}
         onToggleLiveVideo={handleToggleLiveVideo}
         onToggleShowAllAssets={handleToggleShowAllAssets}
         onSelectNavigationDirection={setSelectedNavigationDirection}
         onToggleMissionMode={handleToggleMissionMode}
+        onToggleGeofenceMode={handleToggleGeofenceMode}
         onLogout={handleLogout}
       />
 
@@ -594,16 +709,26 @@ export default function App() {
                 telemetry={telemetry}
                 fleetTelemetry={fleetTelemetry}
                 lastKnownTelemetry={lastKnownTelemetry}
+                geofences={geofences}
                 performanceStage={performanceStage}
                 selectedDrone={selectedDrone}
                 freeMode={freeMode}
                 showAllAssets={showAllAssets}
                 selectedNavigationDirection={selectedNavigationDirection}
                 isDriverModeEnabled={isDriverModeEnabled}
+                isGeofenceModeEnabled={isGeofenceModeEnabled}
                 driverWaypoints={driverWaypoints}
                 onAddDriverWaypoint={handleAddDriverWaypoint}
                 onSelectDrone={handleActivateDrone}
                 isMissionModeEnabled={isMissionModeEnabled}
+                geofenceDraftName={geofenceDraftName}
+                geofenceDraftPoints={geofenceDraftPoints}
+                isGeofenceSaving={isGeofenceSaving}
+                geofenceError={geofenceError}
+                onAddGeofenceVertex={handleAddGeofenceVertex}
+                onUpdateGeofenceDraftName={handleUpdateGeofenceDraftName}
+                onCompleteGeofenceDrawing={handleCompleteGeofenceDrawing}
+                onCancelGeofenceDrawing={handleCancelGeofenceDrawing}
                 missionWaypoints={mapMissionWaypoints}
                 isMissionWaypointEditingEnabled={isMissionWaypointEditingEnabled}
                 selectedMissionWaypointLocalId={selectedMissionWaypointLocalId}
@@ -619,6 +744,10 @@ export default function App() {
                   fetchError={fetchError}
                   onClose={handleCloseLiveVideo}
                 />
+              )}
+
+              {geofenceAlerts.length > 0 && (
+                <GeofenceAlertWindow alerts={geofenceAlerts} />
               )}
 
               {freeMode && showAllAssets && filteredBatteryAlerts.length > 0 && (

@@ -1,10 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { Client, type IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { BATTERY_ALERT_TOPIC, BATTERY_CRITICAL_THRESHOLD, BATTERY_WARN_THRESHOLD, FLEET_LITE_TOPIC, TELEMETRY_HISTORY_LIMIT } from '../constants/telemetry';
+import {
+  BATTERY_ALERT_TOPIC,
+  BATTERY_CRITICAL_THRESHOLD,
+  BATTERY_WARN_THRESHOLD,
+  FLEET_LITE_TOPIC,
+  GEOFENCE_ALERT_HISTORY_LIMIT,
+  GEOFENCE_ALERT_TOPIC,
+  TELEMETRY_HISTORY_LIMIT,
+} from '../constants/telemetry';
 import type { UseTelemetryResult } from '../interfaces/hooks';
+import type { GeofenceAlert } from '../interfaces/geofence';
 import type { LowBatteryAlert, TelemetryByDrone, TelemetryPoint } from '../interfaces/telemetry';
-import { parseBatteryAlertMessage, parseTelemetryListMessage, parseTelemetryMessage } from '../utils/telemetry';
+import {
+  parseBatteryAlertMessage,
+  parseGeofenceAlertMessage,
+  parseTelemetryListMessage,
+  parseTelemetryMessage,
+} from '../utils/telemetry';
 import { useAuth } from './useAuth';
 
 const WS_URL = import.meta.env.VITE_WS_URL || '/ws-skytrack';
@@ -21,6 +35,8 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
   const [connected, setConnected] = useState(false);
   const [history, setHistory] = useState<TelemetryPoint[]>([]);
   const [batteryAlertMap, setBatteryAlertMap] = useState<Record<string, LowBatteryAlert>>({});
+  const [geofenceAlerts, setGeofenceAlerts] = useState<GeofenceAlert[]>([]);
+  const geofenceAlertKeysRef = useRef<string[]>([]);
   const clientRef = useRef<Client | null>(null);
 
   useEffect(() => {
@@ -30,6 +46,8 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
       setFleetTelemetry({});
       setHistory([]);
       setBatteryAlertMap({});
+      setGeofenceAlerts([]);
+      geofenceAlertKeysRef.current = [];
     };
 
     const appendHistory = (point: TelemetryPoint) => {
@@ -75,6 +93,28 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
             isCritical: alert.battery < BATTERY_CRITICAL_THRESHOLD,
           },
         };
+      });
+    };
+
+    const handleGeofenceAlertMessage = (message: IMessage) => {
+      const alert = parseGeofenceAlertMessage(message.body);
+      if (!alert) {
+        return;
+      }
+
+      const alertKey = `${alert.droneId}:${alert.geofenceId}:${alert.eventType}:${alert.timestamp}`;
+      if (geofenceAlertKeysRef.current.includes(alertKey)) {
+        return;
+      }
+
+      geofenceAlertKeysRef.current = [alertKey, ...geofenceAlertKeysRef.current]
+        .slice(0, GEOFENCE_ALERT_HISTORY_LIMIT);
+
+      setGeofenceAlerts((previousAlerts) => {
+        const nextAlerts = [alert, ...previousAlerts];
+        return nextAlerts.length > GEOFENCE_ALERT_HISTORY_LIMIT
+          ? nextAlerts.slice(0, GEOFENCE_ALERT_HISTORY_LIMIT)
+          : nextAlerts;
       });
     };
 
@@ -128,6 +168,7 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
           client.subscribe(FLEET_LITE_TOPIC, handleFleetTelemetryMessage);
           client.subscribe(BATTERY_ALERT_TOPIC, handleBatteryAlertMessage);
         }
+        client.subscribe(GEOFENCE_ALERT_TOPIC, handleGeofenceAlertMessage);
       },
 
       onDisconnect: () => setConnected(false),
@@ -156,5 +197,5 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
 
   const batteryAlerts = Object.values(batteryAlertMap).sort((a, b) => a.battery - b.battery);
 
-  return { telemetry, fleetTelemetry, connected, history, batteryAlerts };
+  return { telemetry, fleetTelemetry, connected, history, batteryAlerts, geofenceAlerts };
 }

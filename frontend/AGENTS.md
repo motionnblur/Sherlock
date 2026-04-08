@@ -34,7 +34,8 @@ src/
 │   └── AuthContext.tsx          # AuthProvider: JWT state in sessionStorage, login(), logout()
 ├── interfaces/
 │   ├── auth.ts                  # LoginCredentials, AuthToken interfaces
-│   ├── components.ts            # Component prop interfaces (HeaderProps includes mission toggle; MapComponentProps includes mission waypoints)
+│   ├── components.ts            # Component prop interfaces (HeaderProps includes mission/geofence toggles; MapComponentProps includes mission and geofence overlays)
+│   ├── geofence.ts              # Geofence domain models, request shapes, alert payloads, hook return type
 │   ├── hooks.ts                 # Hook return interfaces
 │   ├── mission.ts               # Mission, MissionWaypoint, PlanningWaypoint, MissionStatus, WaypointStatus, UseMissionResult
 │   ├── telemetry.ts             # Shared domain models (TelemetryPoint, DroneId) — includes extended fields
@@ -45,6 +46,7 @@ src/
 │   ├── useLastKnownTelemetry.ts # One-shot bulk bootstrap from POST /api/telemetry/last-known
 │   ├── useLogin.ts              # Login form submission logic; calls POST /api/auth/login
 │   ├── useMission.ts            # Mission CRUD (create/update/delete) + execute/abort; polls GET /api/missions/{id} every 1s while ACTIVE; 401 → logout
+│   ├── useGeofences.ts          # CRUD hook for /api/geofences + activate/deactivate + geofence error handling
 │   ├── useTelemetry.ts          # STOMP client; selected stream + bounded fleet summary; auto-logout on auth error
 │   ├── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
 │   └── useDroneRegistry.ts      # Polls GET /api/drones every 30s; 401 → logout
@@ -58,10 +60,12 @@ src/
     ├── AssetSelectionOverlay.tsx# Virtualized startup asset selector with last-known telemetry rows
     ├── AttitudeIndicator.tsx    # SVG artificial horizon; props: roll, pitch (degrees), size (px)
     ├── VirtualizedAssetList.tsx # Shared fixed-row virtualization primitive for large asset lists
-    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings
+    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings incl. geofence draw toggle
     ├── LiveVideoWindow.tsx      # Floating 240×240 HLS video window; uses hls.js; mounted inside <main> over the map
     ├── LoginPage.tsx            # Full-screen operator authentication form (shown when unauthenticated)
     ├── MapComponent.tsx         # CesiumJS viewer shell + driver-mode route drawing + mission waypoint rendering + Unity-style X/Y/Z gizmo drag for editable mission nodes
+    ├── GeofenceAlertWindow.tsx   # Floating alert tray for `/topic/alerts/geofence` enter/exit events
+    ├── GeofenceDrawToolbar.tsx   # Floating geofence drawing controls shown inside the map overlay
     ├── MissionPlanningPanel.tsx # Right sidebar in mission mode: NEW tab + SAVED tab + PLANNED mission edit session (rename, add/remove, nudge, save/cancel); ACTIVE mission progress view
     ├── SectionHeader.tsx        # Shared panel section divider/header component
     ├── LowBatteryWindow.tsx     # Floating bottom-right panel; battery alerts in FREE MODE + SHOW ALL only
@@ -70,6 +74,7 @@ src/
     └── TelemetryPanel.tsx       # Left sidebar: position/kinematics/battery + attitude indicator + GPS quality
     └── map/
         ├── cesiumScene.ts       # Cesium viewer + entity/primitive helper functions/constants
+        ├── geofenceScene.ts     # Cesium helpers for active/draft geofence overlays
         └── missionGizmo.ts      # Mission waypoint gizmo axis math, drag-plane projection, and pick helpers
 ```
 
@@ -152,7 +157,7 @@ Pattern for a section header inside a panel:
 `src/hooks/useTelemetry.ts` — the single source of truth for live data.
 
 ```ts
-const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTelemetry(
+const { telemetry, fleetTelemetry, connected, history, batteryAlerts, geofenceAlerts } = useTelemetry(
   selectedDrone,
   freeMode,
   showAllAssets,
@@ -172,6 +177,7 @@ const { telemetry, fleetTelemetry, connected, history, batteryAlerts } = useTele
 | `connected`     | `boolean`                | STOMP link status                        |
 | `history`       | `TelemetryPoint[]`       | Last 150 selected-drone telemetry packets |
 | `batteryAlerts` | `LowBatteryAlert[]`      | Active low-battery alerts, sorted by battery ascending; sourced from `/topic/alerts/battery` (event-driven, emitted only on threshold crossing) |
+| `geofenceAlerts` | `GeofenceAlert[]`      | Active geofence enter/exit alerts; sourced from `/topic/alerts/geofence` and deduped in arrival order |
 
 ### useCommand
 
@@ -189,12 +195,36 @@ If the command endpoint returns `401`, the hook immediately calls `logout()` to 
 Subscription model:
 - Always subscribes to selected full stream: `/topic/telemetry/{droneId}`
 - In Free Mode + SHOW ASSET ALL, also subscribes to `/topic/telemetry/lite/fleet` and `/topic/alerts/battery`
+- Always subscribes to `/topic/alerts/geofence` for the selected drone so geofence breaches are visible outside Free Mode as well
 - Never opens one STOMP subscription per drone in all-assets mode
 - SHOW ASSETS BY NAW filtering is client-side (heading-based) and does not create extra backend topics or subscriptions
 
 Incoming STOMP payloads are parsed through `src/utils/telemetry.ts`. Malformed payloads are ignored rather than pushed directly into React state.
 
 **Do not create a second STOMP client.** If a new component needs telemetry data, pass `telemetry` / `history` as props from `App.tsx`, or use React Context if the prop chain becomes deep.
+
+### useGeofences
+
+`src/hooks/useGeofences.ts` — REST hook for the geofence CRUD surface.
+
+```ts
+const {
+  geofences,
+  isLoading,
+  geofenceError,
+  refreshGeofences,
+  createGeofence,
+  updateGeofence,
+  deleteGeofence,
+  setGeofenceActive,
+} = useGeofences(authToken);
+```
+
+- `createGeofence()` and `updateGeofence()` send the polygon payload to `/api/geofences`
+- `setGeofenceActive()` maps to `/activate` and `/deactivate`
+- `deleteGeofence()` removes a fence and drops it from local cache
+- `geofenceError` surfaces backend validation, not-found, name-collision, or network failure states
+- 401 responses always trigger `logout()` and return the operator to `LoginPage`
 
 ---
 
@@ -246,6 +276,8 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 **Props:** includes selected/fleet telemetry, driver-mode route controls, and mission-edit controls (`missionWaypoints`, `selectedMissionWaypointLocalId`, `onSelectMissionWaypoint`, `onMoveMissionWaypoint`, `isMissionWaypointEditingEnabled`).
 
 **Mission Planning Mode:** enabled via SETTINGS → MISSION PLAN. When active, `MissionPlanningPanel` replaces `SystemPanel` in the right sidebar. Left-click on the map adds amber waypoints to the active editable route (NEW plan draft or SAVED mission edit session). Missions are saved with `POST /api/missions`; saved PLANNED missions are edited in-place with `PUT /api/missions/{id}`. Selected editable nodes render a Unity-style move gizmo (`X=red`, `Y=green`, `Z=blue`) and can be moved by drag (mouse) or by panel nudge controls (touch + desktop). While mission mode is enabled, camera mouse controls are locked (rotate/pan/zoom/tilt/look) to avoid conflicts with waypoint editing and gizmo interaction. During execution, `MissionExecutorService` sends sequential GOTO commands and publishes progress to STOMP `/topic/missions/{id}/progress`. The frontend polls GET `/api/missions/{id}` every 1s while ACTIVE and renders waypoint status colours. Mission mode and Driver Mode are mutually exclusive.
+
+**Geofence Draw Mode:** enabled via SETTINGS → GEOFENCE DRAW. When active, the map stays in a locked interaction state and the top-centre `GeofenceDrawToolbar` collects the fence name plus vertex count. Left-click adds vertices to the draft polygon. Draft geofences render green; active fences render amber. The toolbar only enables FINISH when the draft has at least 3 vertices and a non-empty name. Finishing sends `POST /api/geofences`; cancel clears the draft without touching saved fences. Geofence mode is mutually exclusive with Mission Planning and Driver Mode.
 
 **Driver Mode:** when enabled from `SystemPanel`, left-click on the map appends waypoints to a visible route polyline. Each new waypoint altitude is aligned to the selected drone's current altitude (live telemetry first, then fleet/last-known fallback). Click picking first intersects a camera ray with a plane at the drone altitude to avoid cursor/waypoint parallax drift. While driver mode is enabled, the map camera is locked (no rotate/pan/zoom/tilt) and forced into a top-down follow view centered on the selected drone. Waypoints are sent sequentially as backend `GOTO` commands; the frontend sends waypoint altitude in AMSL (same frame as telemetry), and backend converts it to relative-home before MAVLink dispatch. The next point is dispatched only after the active point is reached within configured horizontal/vertical thresholds.
 

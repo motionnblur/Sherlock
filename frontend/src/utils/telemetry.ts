@@ -1,3 +1,4 @@
+import type { Geofence, GeofenceAlert, GeofencePoint } from '../interfaces/geofence';
 import type { TelemetryByDrone, TelemetryPoint } from '../interfaces/telemetry';
 
 function isFiniteNumber(value: unknown): value is number {
@@ -65,6 +66,84 @@ export function parseBatteryAlertMessage(body: string): { droneId: string; batte
       return null;
     }
     return { droneId: candidate.droneId, battery: candidate.battery as number };
+  } catch {
+    return null;
+  }
+}
+
+function isGeofencePoint(value: unknown): value is GeofencePoint {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<GeofencePoint>;
+  return (
+    (candidate.id === undefined || candidate.id === null || typeof candidate.id === 'number')
+    && typeof candidate.sequence === 'number'
+    && isFiniteNumber(candidate.latitude)
+    && isFiniteNumber(candidate.longitude)
+  );
+}
+
+function isGeofence(value: unknown): value is Geofence {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<Geofence>;
+  return (
+    typeof candidate.id === 'number'
+    && typeof candidate.name === 'string'
+    && typeof candidate.isActive === 'boolean'
+    && typeof candidate.createdAt === 'string'
+    && Array.isArray(candidate.points)
+    && candidate.points.every(isGeofencePoint)
+  );
+}
+
+export function parseGeofenceListResponse(payload: unknown): Geofence[] {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload.filter(isGeofence);
+}
+
+export function parseGeofenceAlertMessage(body: string): GeofenceAlert | null {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+
+    const candidate = parsed as Record<string, unknown>;
+    if (
+      typeof candidate.droneId !== 'string'
+      || typeof candidate.geofenceName !== 'string'
+      || typeof candidate.eventType !== 'string'
+      || typeof candidate.timestamp !== 'string'
+      || !isFiniteNumber(candidate.geofenceId)
+      || !isFiniteNumber(candidate.latitude)
+      || !isFiniteNumber(candidate.longitude)
+      || !isFiniteNumber(candidate.altitude)
+    ) {
+      return null;
+    }
+
+    if (candidate.eventType !== 'EXIT' && candidate.eventType !== 'ENTER') {
+      return null;
+    }
+
+    return {
+      droneId: candidate.droneId,
+      geofenceId: candidate.geofenceId as number,
+      geofenceName: candidate.geofenceName,
+      eventType: candidate.eventType,
+      latitude: candidate.latitude as number,
+      longitude: candidate.longitude as number,
+      altitude: candidate.altitude as number,
+      timestamp: candidate.timestamp,
+    };
   } catch {
     return null;
   }

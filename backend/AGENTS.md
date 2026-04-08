@@ -29,6 +29,7 @@ com.sherlock.groundcontrol
 │   └── WebSocketConfig.java        # STOMP broker, /ws-skytrack endpoint, channel interceptor
 ├── controller/
 │   ├── AuthController.java         # POST /api/auth/login, POST /api/auth/logout
+│   ├── GeofenceController.java    # CRUD + activate/deactivate /api/geofences
 │   ├── DroneCommandController.java # POST /api/drones/{droneId}/command — RTH/ARM/DISARM/TAKEOFF/GOTO
 │   ├── GlobalExceptionHandler.java # @RestControllerAdvice — auth + generic errors
 │   ├── MissionController.java      # CRUD + execute/abort — POST/GET/PUT/DELETE /api/missions, /execute, /abort
@@ -37,6 +38,10 @@ com.sherlock.groundcontrol
 ├── dto/
 │   ├── BulkLastKnownRequestDTO.java   # Wire object: { droneIds: string[] }
 │   ├── BulkLastKnownResponseDTO.java  # Wire object: { telemetry: LastKnownTelemetryDTO[] }
+│   ├── GeofenceAlertDTO.java         # Wire object: { droneId, geofenceId, geofenceName, eventType, lat/lon/altitude, timestamp }
+│   ├── GeofenceDTO.java              # Wire object: { id, name, isActive, createdAt, points[] }
+│   ├── GeofencePointDTO.java         # Wire object: { sequence, latitude, longitude }
+│   ├── GeofenceRequestDTO.java       # Wire object: { name, isActive?, points[] }
 │   ├── CreateMissionDTO.java          # Wire: { name, waypoints[] }
 │   ├── DroneCommandDTO.java           # Wire: { commandType: RTH|ARM|DISARM|TAKEOFF|GOTO, latitude?, longitude?, altitude? }
 │   ├── LastKnownTelemetryDTO.java     # Compact last-known payload used by bulk bootstrap
@@ -50,6 +55,8 @@ com.sherlock.groundcontrol
 │   └── StreamUrlDTO.java           # Wire object: { streamUrl } for live video
 ├── entity/
 │   ├── AuthAuditLogEntity.java     # @Entity — append-only auth attempt log
+│   ├── GeofenceEntity.java        # @Entity — geofences table; active flag + ordered polygon points
+│   ├── GeofencePointEntity.java   # @Entity — geofence_points table; FK → geofences
 │   ├── MissionEntity.java          # @Entity — missions table; status: PLANNED|ACTIVE|COMPLETED|ABORTED
 │   ├── OperatorEntity.java         # @Entity — operator accounts (no sign-up; DB-managed)
 │   ├── TelemetryEntity.java        # @Entity mapped to `telemetry` table (includes extended fields)
@@ -57,7 +64,10 @@ com.sherlock.groundcontrol
 │   └── WaypointEntity.java         # @Entity — mission_waypoints table; FK → missions; status: PENDING|ACTIVE|REACHED|SKIPPED
 ├── exception/
 │   ├── AccountLockedException.java
-│   └── AuthenticationFailedException.java
+│   ├── AuthenticationFailedException.java
+│   ├── GeofenceConflictException.java
+│   ├── GeofenceNotFoundException.java
+│   └── GeofenceValidationException.java
 ├── mavlink/                        # Raw MAVLink parsing — no external library
 │   ├── DroneSnapshot.java          # Mutable merged state per MAVLink system ID
 │   ├── MavlinkFrame.java           # Parsed frame record (v1 or v2)
@@ -65,6 +75,7 @@ com.sherlock.groundcontrol
 │   └── MavlinkMessageDecoder.java  # Decode 6 message types + typed result records
 ├── repository/
 │   ├── AuthAuditLogRepository.java
+│   ├── GeofenceRepository.java
 │   ├── MissionRepository.java      # findAllByOrderByCreatedAtDesc(), findByStatus()
 │   ├── OperatorRepository.java
 │   ├── TelemetryRepository.java    # JpaRepository, custom finder
@@ -81,11 +92,15 @@ com.sherlock.groundcontrol
     ├── DevDataInitializer.java      # ApplicationRunner — creates seed operator when DEV_SEED_USER/DEV_SEED_PASSWORD are set
     ├── DroneCommandService.java     # Translates RTH/ARM/DISARM/TAKEOFF/GOTO → MAVLink command packets via MavlinkAdapterService (@ConditionalOnProperty)
     ├── DroneStreamService.java      # Resolves HLS stream URL from MEDIAMTX_HLS_BASE_URL
+    ├── GeofenceBreachService.java    # Active polygon evaluation + transition alerts to /topic/alerts/geofence
+    ├── GeofenceGeometry.java        # Polygon validation + point-in-polygon helpers (border counts as inside)
+    ├── GeofenceService.java         # Geofence CRUD, active-cache maintenance, topology change publication
+    ├── GeofenceTopologyChangedEvent.java # Internal event used to clear breach state when fences change
     ├── MavlinkAdapterService.java   # UDP :14550 listener + snapshot merge + @Scheduled STOMP publish (@ConditionalOnProperty)
     ├── MissionExecutorService.java  # Server-side mission execution: finite-state waypoint progression, guarded arrival confirmation, timeout/retry fail-safe, STOMP progress publish
     ├── MissionService.java          # Mission CRUD + lifecycle transitions (PLANNED→ACTIVE→COMPLETED|ABORTED); no execution logic
     ├── TelemetryService.java        # persistBatch() + getLastKnown(droneId) + history lookup + bounded last-known cache
-    └── TelemetrySimulator.java      # @Scheduled 500ms fleet tick, per-drone full stream + fleet-lite summary + battery alerts
+    └── TelemetrySimulator.java      # @Scheduled 500ms fleet tick, per-drone full stream + fleet-lite summary + battery/geofence alerts
 ```
 
 **Rule:** never let a layer reach past its neighbour.  
@@ -136,6 +151,7 @@ To broadcast from any Spring bean:
 ```java
 messagingTemplate.convertAndSend("/topic/telemetry/" + droneId, payloadObject);
 messagingTemplate.convertAndSend("/topic/telemetry/lite/fleet", fleetLiteList);
+messagingTemplate.convertAndSend("/topic/alerts/geofence", geofenceAlertObject);
 ```
 Spring serialises the object to JSON automatically via Jackson.
 
@@ -149,6 +165,7 @@ The simulator maintains an in-memory fleet (default 5,000 drones), updates each 
 1. broadcasts full telemetry per drone to `/topic/telemetry/{droneId}`
 2. broadcasts one fleet-lite list to `/topic/telemetry/lite/fleet`
 3. persists the entire tick with one `TelemetryService.persistBatch(...)` call
+4. evaluates each tick against active geofences and emits `/topic/alerts/geofence` only on inside/outside transitions
 
 **Do not add `@Async` or additional threads** to this simulator without understanding the state mutation model.
 
@@ -270,6 +287,26 @@ Spring Security already protects all endpoints except documented public routes. 
 - `400 Bad Request` — invalid payload (blank name, <2 waypoints, missing coordinates/altitude, or consecutive waypoints closer than 5 meters)
 - `404 Not Found` — mission does not exist
 - `409 Conflict` — mission is not `PLANNED`
+
+### Geofence CRUD endpoints
+
+`GeofenceController` owns the polygon management surface:
+
+- `GET /api/geofences` lists all geofences newest-first
+- `POST /api/geofences` creates a new fence; request payload requires a name and an ordered point list
+- `GET /api/geofences/{id}` returns one fence
+- `PUT /api/geofences/{id}` replaces the name, active flag, and polygon in place
+- `POST /api/geofences/{id}/activate` and `/deactivate` toggle the active cache entry
+- `DELETE /api/geofences/{id}` removes a fence and clears any cached breach state for that id
+
+Validation rules enforced by `GeofenceService`:
+- names are required and capped at 100 characters
+- polygons need at least 3 points and at most 100 points
+- point sequences must start at 0 and remain contiguous after sorting
+- latitude and longitude are range-checked
+- polygons must be non-self-intersecting and non-zero-area
+
+`GeofenceBreachService` consumes the active-cache snapshot on every telemetry tick and on each MAVLink snapshot merge. It emits enter/exit transitions to `/topic/alerts/geofence`; the first sighting of a drone/fence pair is suppressed so the dashboard only receives real state changes.
 
 ### Mission execution safety gates
 

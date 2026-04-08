@@ -1,10 +1,14 @@
 export const FLEET_LITE_TOPIC = '/topic/telemetry/lite/fleet';
 export const BATTERY_ALERT_TOPIC = '/topic/alerts/battery';
+export const GEOFENCE_ALERT_TOPIC = '/topic/alerts/geofence';
 
 export const BATTERY_WARN_THRESHOLD = 20;
 export const BATTERY_CRITICAL_THRESHOLD = 5;
 export const PACKET_RATE_LABEL = '2 Hz';
 export const TELEMETRY_HISTORY_LIMIT = 150;
+export const GEOFENCE_ALERT_HISTORY_LIMIT = 20;
+export const GEOFENCE_MIN_POINT_COUNT = 3;
+export const GEOFENCE_MAX_POINT_COUNT = 100;
 export const FLIGHT_PATH_POINT_LIMIT = 200;
 export const FREE_MODE_ASSET_LIST_HEIGHT_PX = 208;
 export const SELECTION_ASSET_ROW_HEIGHT_PX = 40;

@@ -50,6 +50,7 @@ public class MavlinkAdapterService {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final TelemetryService telemetryService;
+    private final GeofenceBreachService geofenceBreachService;
 
     @Value("${app.mavlink.udp-port:14550}")
     private int udpPort;
@@ -61,9 +62,14 @@ public class MavlinkAdapterService {
     private volatile DatagramSocket socket;
     private volatile Thread listenerThread;
 
-    public MavlinkAdapterService(SimpMessagingTemplate messagingTemplate, TelemetryService telemetryService) {
+    public MavlinkAdapterService(
+            SimpMessagingTemplate messagingTemplate,
+            TelemetryService telemetryService,
+            GeofenceBreachService geofenceBreachService
+    ) {
         this.messagingTemplate = messagingTemplate;
         this.telemetryService  = telemetryService;
+        this.geofenceBreachService = geofenceBreachService;
     }
 
     @PostConstruct
@@ -147,6 +153,7 @@ public class MavlinkAdapterService {
             TelemetryDTO dto = toDTO(snapshot, now);
             batch.add(dto);
             messagingTemplate.convertAndSend(TELEMETRY_TOPIC_PREFIX + dto.getDroneId(), dto);
+            geofenceBreachService.evaluateTelemetry(dto);
 
             liteBatch.add(toLiteDTO(dto));
         }

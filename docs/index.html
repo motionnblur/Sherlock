@@ -422,6 +422,7 @@
     <span class="chip yellow">MAVLink UDP</span>
     <span class="chip yellow">HLS Video</span>
     <span class="chip yellow">JWT Auth</span>
+    <span class="chip yellow">Geofence Alerts</span>
     <span class="chip">Docker</span>
   </div>
 </div>
@@ -441,7 +442,9 @@
     </p>
     <p>
       There is no real drone. The backend <strong>simulates</strong> one in software,
-      broadcasting fake but realistic telemetry data. For the camera feed you use
+      broadcasting fake but realistic telemetry data. Operators can also draw active
+      geofence polygons and receive enter/exit alerts when the simulated drone crosses
+      them. For the camera feed you use
       <strong>FFmpeg</strong> to stream a video file (or a synthetic pattern) into
       a media server called MediaMTX, which the frontend then plays back via HLS.
     </p>
@@ -757,7 +760,9 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
             and sent to <span class="inline-code">/topic/telemetry/{droneId}</span>
             for selected-drone detail. In parallel, a fleet-lite snapshot is sent to
             <span class="inline-code">/topic/telemetry/lite/fleet</span> for
-            all-assets rendering.
+            all-assets rendering. The backend also evaluates active geofences on the
+            same tick and emits enter/exit alerts to
+            <span class="inline-code">/topic/alerts/geofence</span>.
           </p>
         </div>
       </div>
@@ -780,7 +785,8 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
             to the WebSocket with a JWT in the STOMP CONNECT headers.
             The server validates the token before the subscription is granted.
             Each message is then validated and stored in React state —
-            the globe moves, panels update.
+            the globe moves, panels update, and geofence alert trays appear when
+            the backend emits a breach notification.
           </p>
         </div>
       </div>
@@ -822,6 +828,13 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
         <tr><td>GET /api/telemetry/history</td><td>Bearer token</td><td>Last 150 telemetry points from the database</td></tr>
         <tr><td>GET /api/drones/{droneId}/stream</td><td>Bearer token</td><td>JSON with <span class="inline-code">{ "streamUrl": "http://…/index.m3u8" }</span> — the HLS URL for the live camera</td></tr>
         <tr><td>POST /api/drones/{droneId}/command</td><td>Bearer token</td><td>Send C2 command (RTH / ARM / DISARM / TAKEOFF / GOTO). 202 dispatched, 409 not ready, 503 MAVLink disabled</td></tr>
+        <tr><td>GET /api/geofences</td><td>Bearer token</td><td>List active and inactive geofences newest-first</td></tr>
+        <tr><td>POST /api/geofences</td><td>Bearer token</td><td>Create a geofence polygon with ordered vertices; 400 on invalid geometry, 409 on duplicate name</td></tr>
+        <tr><td>GET /api/geofences/{id}</td><td>Bearer token</td><td>Return one geofence with ordered polygon points</td></tr>
+        <tr><td>PUT /api/geofences/{id}</td><td>Bearer token</td><td>Overwrite the fence name, active flag, and polygon in place</td></tr>
+        <tr><td>POST /api/geofences/{id}/activate</td><td>Bearer token</td><td>Mark a geofence active and re-arm breach evaluation</td></tr>
+        <tr><td>POST /api/geofences/{id}/deactivate</td><td>Bearer token</td><td>Mark a geofence inactive and stop breach alerts for it</td></tr>
+        <tr><td>DELETE /api/geofences/{id}</td><td>Bearer token</td><td>Delete a geofence and clear any cached breach state</td></tr>
         <tr><td>POST /api/missions</td><td>Bearer token</td><td>Create a new PLANNED mission with a named waypoint list</td></tr>
         <tr><td>GET /api/missions</td><td>Bearer token</td><td>List all missions ordered by creation date</td></tr>
         <tr><td>GET /api/missions/{id}</td><td>Bearer token</td><td>Full mission detail including per-waypoint status — used for progress polling</td></tr>
@@ -1064,6 +1077,7 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
         <tr><td>LINK ACTIVE / CONNECTING…</td><td>Green = WebSocket connected; yellow blinking = reconnecting</td></tr>
         <tr><td>SHERLOCK-01</td><td>Selected drone name</td></tr>
         <tr><td>SETTINGS button</td><td>Opens dropdown with FREE MODE, LIVE VIDEO, and MISSION PLAN toggles (last two only when a drone is selected and Free Mode is off)</td></tr>
+        <tr><td>GEOFENCE DRAW toggle</td><td>Available when a drone is selected and Free Mode is off; opens the geofence drawing overlay on the globe</td></tr>
         <tr><td>✕ button</td><td>Deselects the drone, closes live video, resets all state</td></tr>
         <tr><td>◈ TRAINING MODE ◈</td><td>Reminder that all data is simulated</td></tr>
       </tbody>
@@ -1081,8 +1095,10 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
     <p>
       Powered by CesiumJS. The drone icon tracks the live position. A glowing
       polyline shows the flight path (last 200 points). Press <strong>D</strong>
-      to dim the imagery for better contrast at night. The camera auto-flies to the
-      drone on first position fix.
+      to dim the imagery for better contrast at night. Active geofences render as
+      amber polygons with labels, while the in-progress draft fence renders green
+      with a top-centre drawing toolbar. The camera auto-flies to the drone on first
+      position fix.
     </p>
     <p>
       When no drone is selected, a selection overlay lists available assets and
@@ -1131,6 +1147,15 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
       Shows <strong>ACQUIRING FEED…</strong> while buffering,
       <strong>⚠ FEED ERROR</strong> if the stream URL fetch fails,
       and the video once the stream is ready.
+    </p>
+
+    <h3>Geofence Draw Mode</h3>
+    <p>
+      When enabled from the header settings menu, a floating toolbar appears at the
+      top centre of the globe. Left-click adds geofence vertices, the draft polygon
+      stays green until saved, and active fences are rendered amber. The finish action
+      requires at least 3 vertices and a non-empty name; cancel discards the draft
+      without touching any saved fence.
     </p>
 
     <div class="callout">

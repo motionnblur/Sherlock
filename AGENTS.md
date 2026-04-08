@@ -7,7 +7,7 @@
 ## What This Project Is
 
 **Sherlock GCS** is a defense-style real-time UAV Ground Control Station.  
-A Spring Boot backend simulates UAV telemetry at 2 Hz, streams it via STOMP/WebSocket, persists every point to PostgreSQL, and exposes a REST history endpoint. A React frontend renders the live data on a CesiumJS 3D globe alongside a military C2 dashboard layout.
+A Spring Boot backend simulates UAV telemetry at 2 Hz, streams it via STOMP/WebSocket, persists every point to PostgreSQL, exposes REST history and geofence CRUD endpoints, and emits geofence breach alerts. A React frontend renders the live data on a CesiumJS 3D globe alongside a military C2 dashboard layout.
 
 ---
 
@@ -62,6 +62,7 @@ Additional runtime service (not a build artifact):
 2. Publishes per-drone `TelemetryDTO` to `/topic/telemetry/{droneId}` and fleet-lite snapshots to `/topic/telemetry/lite/fleet`
 3. Persists each tick as a batch to PostgreSQL via `TelemetryService.persistBatch(...)`
 4. Frontend bootstrap loads bulk last-known positions once via REST, then applies STOMP deltas for selected drone + fleet summary
+5. `GeofenceBreachService` evaluates each telemetry sample against the active polygon cache and emits `/topic/alerts/geofence` on enter/exit transitions
 
 ---
 
@@ -108,6 +109,8 @@ Extended fields (`roll`–`flightMode`) are null in the lite fleet stream and wh
 | **Mission execute**      | `POST /api/missions/{id}/execute?droneId=X` — starts server-side execution loop; `503` if MAVLink disabled; `409` if not PLANNED |
 | **Mission abort**        | `POST /api/missions/{id}/abort` |
 | **Mission progress**     | `STOMP /topic/missions/{id}/progress` — `MissionDTO` published on each waypoint status change |
+| **Geofence CRUD**        | `GET /api/geofences` · `POST /api/geofences` · `GET /api/geofences/{id}` · `PUT /api/geofences/{id}` · `POST /api/geofences/{id}/activate` · `POST /api/geofences/{id}/deactivate` · `DELETE /api/geofences/{id}` |
+| **Geofence alerts**      | `STOMP /topic/alerts/geofence` — emitted on enter/exit transitions against active polygon fences |
 | MAVLink ingest (UDP)     | `udp://localhost:14550` — drone or SITL targets this |
 | RTSP ingest (MediaMTX)   | `rtsp://localhost:8554/{droneId}` (push)       |
 | HLS output (MediaMTX)    | `http://localhost:8888/{droneId}/index.m3u8`   |

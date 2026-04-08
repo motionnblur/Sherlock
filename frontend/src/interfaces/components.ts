@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { PerformanceStage } from '../constants/performance';
 import type { CommandType } from '../hooks/useCommand';
+import type { Geofence, GeofenceAlert, GeofencePointInput } from './geofence';
 import type { DriverWaypoint, DroneId, LowBatteryAlert, NavigationDirection, TelemetryByDrone, TelemetryPoint } from './telemetry';
 import type {
   Mission,
@@ -19,12 +20,14 @@ export interface HeaderProps {
   showAllAssets: boolean;
   selectedNavigationDirection: NavigationDirection;
   isMissionModeEnabled: boolean;
+  isGeofenceModeEnabled: boolean;
   onToggleFreeMode: () => void;
   onDeselect: () => void;
   onToggleLiveVideo: () => void;
   onToggleShowAllAssets: () => void;
   onSelectNavigationDirection: (direction: NavigationDirection) => void;
   onToggleMissionMode: () => void;
+  onToggleGeofenceMode: () => void;
   onLogout: () => void;
 }
 
@@ -44,16 +47,26 @@ export interface MapComponentProps {
   telemetry: TelemetryPoint | null;
   fleetTelemetry: TelemetryByDrone;
   lastKnownTelemetry: TelemetryByDrone;
+  geofences: Geofence[];
   performanceStage: PerformanceStage;
   selectedDrone: DroneId | null;
   freeMode: boolean;
   showAllAssets: boolean;
   selectedNavigationDirection: NavigationDirection;
   isDriverModeEnabled: boolean;
+  isGeofenceModeEnabled: boolean;
   driverWaypoints: DriverWaypoint[];
   onAddDriverWaypoint: (latitude: number, longitude: number) => void;
   onSelectDrone: (id: DroneId) => void;
   isMissionModeEnabled: boolean;
+  geofenceDraftName: string;
+  geofenceDraftPoints: GeofencePointInput[];
+  isGeofenceSaving: boolean;
+  geofenceError: string | null;
+  onAddGeofenceVertex: (latitude: number, longitude: number) => void;
+  onUpdateGeofenceDraftName: (name: string) => void;
+  onCompleteGeofenceDrawing: () => Promise<void>;
+  onCancelGeofenceDrawing: () => void;
   /** Planning waypoints (in-memory, not yet saved) OR active mission waypoints */
   missionWaypoints: MissionWaypoint[];
   isMissionWaypointEditingEnabled: boolean;
@@ -162,4 +175,19 @@ export interface TelemetryDataRowProps {
 
 export interface LowBatteryWindowProps {
   alerts: LowBatteryAlert[];
+}
+
+export interface GeofenceAlertWindowProps {
+  alerts: GeofenceAlert[];
+}
+
+export interface GeofenceDrawToolbarProps {
+  isEnabled: boolean;
+  vertexCount: number;
+  draftName: string;
+  isSaving: boolean;
+  error: string | null;
+  onUpdateDraftName: (name: string) => void;
+  onFinish: () => Promise<void>;
+  onCancel: () => void;
 }

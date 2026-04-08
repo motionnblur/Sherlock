@@ -38,12 +38,14 @@ export default function Header({
   showAllAssets,
   selectedNavigationDirection,
   isMissionModeEnabled,
+  isGeofenceModeEnabled,
   onToggleFreeMode,
   onDeselect,
   onToggleLiveVideo,
   onToggleShowAllAssets,
   onSelectNavigationDirection,
   onToggleMissionMode,
+  onToggleGeofenceMode,
   onLogout,
 }: HeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -185,8 +187,20 @@ export default function Header({
                               ? 'text-caution border-caution bg-elevated'
                               : 'text-muted border-line hover:text-caution hover:border-caution hover:bg-elevated'
                           }`}
-                        >
+                          >
                           MISSION PLAN: {isMissionModeEnabled ? 'ON' : 'OFF'}
+                        </button>
+                        <button
+                          id="geofence-mode-toggle-btn"
+                          type="button"
+                          onClick={onToggleGeofenceMode}
+                          className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
+                            isGeofenceModeEnabled
+                              ? 'text-caution border-caution bg-elevated'
+                              : 'text-muted border-line hover:text-caution hover:border-caution hover:bg-elevated'
+                          }`}
+                        >
+                          GEOFENCE DRAW: {isGeofenceModeEnabled ? 'ON' : 'OFF'}
                         </button>
                       </>
                     )}
