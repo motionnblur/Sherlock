@@ -31,6 +31,7 @@ import TelemetryPanel from './components/TelemetryPanel';
 import MapComponent from './components/MapComponent';
 import SystemPanel from './components/SystemPanel';
 import MissionPlanningPanel from './components/MissionPlanningPanel';
+import GeofenceManagementPanel from './components/GeofenceManagementPanel';
 import StatusBar from './components/StatusBar';
 import LiveVideoWindow from './components/LiveVideoWindow';
 import LoginPage from './components/LoginPage';
@@ -38,7 +39,7 @@ import AssetSelectionOverlay from './components/AssetSelectionOverlay';
 import LowBatteryWindow from './components/LowBatteryWindow';
 import GeofenceAlertWindow from './components/GeofenceAlertWindow';
 import type { DriverWaypoint, DroneId, NavigationDirection } from './interfaces/telemetry';
-import type { GeofencePointInput } from './interfaces/geofence';
+import type { Geofence, GeofencePointInput } from './interfaces/geofence';
 import type { MissionGizmoAxis, MissionWaypoint, PlanningWaypoint } from './interfaces/mission';
 import { horizontalDistanceMeters } from './utils/geo';
 import { matchesNavigationDirection } from './utils/navigation';
@@ -74,8 +75,11 @@ export default function App() {
   const [selectedMissionWaypointLocalId, setSelectedMissionWaypointLocalId] = useState<number | null>(null);
   const planningWaypointIdRef = useRef(1);
   const [isGeofenceModeEnabled, setIsGeofenceModeEnabled] = useState(false);
+  const [geofenceEditorMode, setGeofenceEditorMode] = useState<'create' | 'edit'>('create');
+  const [editingGeofenceId, setEditingGeofenceId] = useState<number | null>(null);
   const [geofenceDraftName, setGeofenceDraftName] = useState('');
   const [geofenceDraftPoints, setGeofenceDraftPoints] = useState<GeofencePointInput[]>([]);
+  const [selectedGeofenceDraftVertexIndex, setSelectedGeofenceDraftVertexIndex] = useState<number | null>(null);
 
   const { droneIds } = useDroneRegistry(authToken);
   const {
@@ -94,6 +98,9 @@ export default function App() {
     isLoading: isGeofenceSaving,
     geofenceError,
     createGeofence,
+    updateGeofence,
+    deleteGeofence,
+    setGeofenceActive,
   } = useGeofences(authToken);
   const { telemetry, fleetTelemetry, connected, history, batteryAlerts, geofenceAlerts } = useTelemetry(selectedDrone, freeMode, showAllAssets);
   const lastKnownTelemetry = useLastKnownTelemetry(droneIds, selectedDrone !== null);
@@ -124,8 +131,11 @@ export default function App() {
   }, []);
 
   const clearGeofenceDraft = useCallback(() => {
+    setGeofenceEditorMode('create');
+    setEditingGeofenceId(null);
     setGeofenceDraftName('');
     setGeofenceDraftPoints([]);
+    setSelectedGeofenceDraftVertexIndex(null);
   }, []);
 
   const handleToggleMissionMode = useCallback(() => {
@@ -216,17 +226,97 @@ export default function App() {
         },
       ];
     });
+    setSelectedGeofenceDraftVertexIndex(null);
   }, [freeMode, isGeofenceModeEnabled, selectedDrone]);
 
   const handleUpdateGeofenceDraftName = useCallback((name: string) => {
     setGeofenceDraftName(name);
   }, []);
 
-  const handleCancelGeofenceDrawing = useCallback(() => {
+  const handleMoveGeofenceVertex = useCallback((index: number, latitude: number, longitude: number) => {
+    setGeofenceDraftPoints((currentPoints) => currentPoints.map((point, pointIndex) => (
+      pointIndex === index ? { ...point, latitude, longitude } : point
+    )));
+    setSelectedGeofenceDraftVertexIndex(index);
+  }, []);
+
+  const handleSelectGeofenceDraftVertex = useCallback((index: number | null) => {
+    setSelectedGeofenceDraftVertexIndex(index);
+  }, []);
+
+  const handleUndoGeofenceVertex = useCallback(() => {
+    setGeofenceDraftPoints((currentPoints) => currentPoints.slice(0, -1).map((point, index) => ({
+      ...point,
+      sequence: index,
+    })));
+    setSelectedGeofenceDraftVertexIndex((currentIndex) => {
+      if (currentIndex === null) {
+        return null;
+      }
+      if (currentIndex <= 0) {
+        return null;
+      }
+      return currentIndex - 1;
+    });
+  }, []);
+
+  const handleRemoveSelectedGeofenceVertex = useCallback(() => {
+    setGeofenceDraftPoints((currentPoints) => {
+      if (
+        selectedGeofenceDraftVertexIndex === null
+        || selectedGeofenceDraftVertexIndex < 0
+        || selectedGeofenceDraftVertexIndex >= currentPoints.length
+      ) {
+        return currentPoints;
+      }
+
+      return currentPoints
+        .filter((_, pointIndex) => pointIndex !== selectedGeofenceDraftVertexIndex)
+        .map((point, pointIndex) => ({
+          ...point,
+          sequence: pointIndex,
+        }));
+    });
+    setSelectedGeofenceDraftVertexIndex(null);
+  }, [selectedGeofenceDraftVertexIndex]);
+
+  const handleClearGeofenceVertices = useCallback(() => {
+    setGeofenceDraftPoints([]);
+    setSelectedGeofenceDraftVertexIndex(null);
+  }, []);
+
+  const handleStartCreateGeofenceDraft = useCallback(() => {
     clearGeofenceDraft();
   }, [clearGeofenceDraft]);
 
-  const handleCompleteGeofenceDrawing = useCallback(async () => {
+  const handleCancelGeofenceDraft = useCallback(() => {
+    clearGeofenceDraft();
+  }, [clearGeofenceDraft]);
+
+  const toDraftPoints = useCallback((points: Geofence['points']): GeofencePointInput[] => {
+    return [...points]
+      .sort((left, right) => left.sequence - right.sequence)
+      .map((point, index) => ({
+        sequence: index,
+        latitude: point.latitude,
+        longitude: point.longitude,
+      }));
+  }, []);
+
+  const handleStartEditGeofence = useCallback((geofenceId: number) => {
+    const geofence = geofences.find((entry) => entry.id === geofenceId);
+    if (!geofence) {
+      return;
+    }
+
+    setGeofenceEditorMode('edit');
+    setEditingGeofenceId(geofence.id);
+    setGeofenceDraftName(geofence.name);
+    setGeofenceDraftPoints(toDraftPoints(geofence.points));
+    setSelectedGeofenceDraftVertexIndex(null);
+  }, [geofences, toDraftPoints]);
+
+  const handleSaveGeofenceDraft = useCallback(async () => {
     if (!isGeofenceModeEnabled || !selectedDrone || freeMode) {
       return;
     }
@@ -236,24 +326,47 @@ export default function App() {
       return;
     }
 
-    const created = await createGeofence({
-      name: trimmedName,
-      isActive: true,
-      points: geofenceDraftPoints,
-    });
+    if (geofenceEditorMode === 'edit' && editingGeofenceId !== null) {
+      const updated = await updateGeofence(editingGeofenceId, {
+        name: trimmedName,
+        points: geofenceDraftPoints,
+      });
+      if (updated) {
+        clearGeofenceDraft();
+      }
+      return;
+    }
 
+    const created = await createGeofence({ name: trimmedName, isActive: true, points: geofenceDraftPoints });
     if (created) {
       clearGeofenceDraft();
     }
   }, [
     clearGeofenceDraft,
     createGeofence,
+    editingGeofenceId,
     freeMode,
+    geofenceEditorMode,
     geofenceDraftName,
     geofenceDraftPoints,
     isGeofenceModeEnabled,
     selectedDrone,
+    updateGeofence,
   ]);
+
+  const handleToggleGeofenceActive = useCallback(async (geofenceId: number, isActive: boolean) => {
+    await setGeofenceActive(geofenceId, isActive);
+  }, [setGeofenceActive]);
+
+  const handleDeleteGeofence = useCallback(async (geofenceId: number) => {
+    const deleted = await deleteGeofence(geofenceId);
+    if (!deleted) {
+      return;
+    }
+    if (editingGeofenceId === geofenceId) {
+      clearGeofenceDraft();
+    }
+  }, [clearGeofenceDraft, deleteGeofence, editingGeofenceId]);
 
   const handleRemovePlanningWaypoint = useCallback((localId: number) => {
     setPlanningWaypoints((current) => current.filter((waypoint) => waypoint.localId !== localId));
@@ -571,6 +684,12 @@ export default function App() {
     && !freeMode
     && selectedDrone !== null
     && activeMission?.status !== 'ACTIVE';
+  const mapGeofences = useMemo(() => {
+    if (geofenceEditorMode !== 'edit' || editingGeofenceId === null) {
+      return geofences;
+    }
+    return geofences.filter((geofence) => geofence.id !== editingGeofenceId);
+  }, [editingGeofenceId, geofenceEditorMode, geofences]);
 
   // Compose the waypoints shown on the map: active mission progress takes priority over editable draft state.
   const mapMissionWaypoints = useMemo((): MissionWaypoint[] => {
@@ -706,7 +825,7 @@ export default function App() {
                 telemetry={telemetry}
                 fleetTelemetry={fleetTelemetry}
                 lastKnownTelemetry={lastKnownTelemetry}
-                geofences={geofences}
+                geofences={mapGeofences}
                 performanceStage={performanceStage}
                 selectedDrone={selectedDrone}
                 freeMode={freeMode}
@@ -718,14 +837,12 @@ export default function App() {
                 onAddDriverWaypoint={handleAddDriverWaypoint}
                 onSelectDrone={handleActivateDrone}
                 isMissionModeEnabled={isMissionModeEnabled}
-                geofenceDraftName={geofenceDraftName}
                 geofenceDraftPoints={geofenceDraftPoints}
+                selectedGeofenceDraftVertexIndex={selectedGeofenceDraftVertexIndex}
                 isGeofenceSaving={isGeofenceSaving}
-                geofenceError={geofenceError}
                 onAddGeofenceVertex={handleAddGeofenceVertex}
-                onUpdateGeofenceDraftName={handleUpdateGeofenceDraftName}
-                onCompleteGeofenceDrawing={handleCompleteGeofenceDrawing}
-                onCancelGeofenceDrawing={handleCancelGeofenceDrawing}
+                onMoveGeofenceVertex={handleMoveGeofenceVertex}
+                onSelectGeofenceDraftVertex={handleSelectGeofenceDraftVertex}
                 missionWaypoints={mapMissionWaypoints}
                 isMissionWaypointEditingEnabled={isMissionWaypointEditingEnabled}
                 selectedMissionWaypointLocalId={selectedMissionWaypointLocalId}
@@ -756,7 +873,7 @@ export default function App() {
           )}
         </main>
 
-        {selectedDrone && !freeMode && !isMissionModeEnabled && (
+        {selectedDrone && !freeMode && !isMissionModeEnabled && !isGeofenceModeEnabled && (
           <SystemPanel
             telemetry={telemetry}
             history={history}
@@ -796,6 +913,30 @@ export default function App() {
             onExecuteMission={handleExecuteMission}
             onAbortMission={handleAbortMission}
             onDeleteMission={handleDeleteMission}
+          />
+        )}
+
+        {selectedDrone && !freeMode && isGeofenceModeEnabled && (
+          <GeofenceManagementPanel
+            geofences={geofences}
+            geofenceDraftName={geofenceDraftName}
+            geofenceDraftPoints={geofenceDraftPoints}
+            selectedDraftVertexIndex={selectedGeofenceDraftVertexIndex}
+            geofenceEditorMode={geofenceEditorMode}
+            editingGeofenceId={editingGeofenceId}
+            isSaving={isGeofenceSaving}
+            geofenceError={geofenceError}
+            onStartCreateDraft={handleStartCreateGeofenceDraft}
+            onStartEditGeofence={handleStartEditGeofence}
+            onUpdateDraftName={handleUpdateGeofenceDraftName}
+            onSelectDraftVertex={handleSelectGeofenceDraftVertex}
+            onUndoDraftVertex={handleUndoGeofenceVertex}
+            onRemoveSelectedDraftVertex={handleRemoveSelectedGeofenceVertex}
+            onClearDraftVertices={handleClearGeofenceVertices}
+            onSaveDraft={handleSaveGeofenceDraft}
+            onCancelDraft={handleCancelGeofenceDraft}
+            onToggleGeofenceActive={handleToggleGeofenceActive}
+            onDeleteGeofence={handleDeleteGeofence}
           />
         )}
       </div>

@@ -59,14 +59,12 @@ export interface MapComponentProps {
   onAddDriverWaypoint: (latitude: number, longitude: number) => void;
   onSelectDrone: (id: DroneId) => void;
   isMissionModeEnabled: boolean;
-  geofenceDraftName: string;
   geofenceDraftPoints: GeofencePointInput[];
+  selectedGeofenceDraftVertexIndex: number | null;
   isGeofenceSaving: boolean;
-  geofenceError: string | null;
   onAddGeofenceVertex: (latitude: number, longitude: number) => void;
-  onUpdateGeofenceDraftName: (name: string) => void;
-  onCompleteGeofenceDrawing: () => Promise<void>;
-  onCancelGeofenceDrawing: () => void;
+  onMoveGeofenceVertex: (index: number, latitude: number, longitude: number) => void;
+  onSelectGeofenceDraftVertex: (index: number | null) => void;
   /** Planning waypoints (in-memory, not yet saved) OR active mission waypoints */
   missionWaypoints: MissionWaypoint[];
   isMissionWaypointEditingEnabled: boolean;
@@ -181,13 +179,24 @@ export interface GeofenceAlertWindowProps {
   alerts: GeofenceAlert[];
 }
 
-export interface GeofenceDrawToolbarProps {
-  isEnabled: boolean;
-  vertexCount: number;
-  draftName: string;
+export interface GeofenceManagementPanelProps {
+  geofences: Geofence[];
+  geofenceDraftName: string;
+  geofenceDraftPoints: GeofencePointInput[];
+  selectedDraftVertexIndex: number | null;
+  geofenceEditorMode: 'create' | 'edit';
+  editingGeofenceId: number | null;
   isSaving: boolean;
-  error: string | null;
+  geofenceError: string | null;
+  onStartCreateDraft: () => void;
+  onStartEditGeofence: (geofenceId: number) => void;
   onUpdateDraftName: (name: string) => void;
-  onFinish: () => Promise<void>;
-  onCancel: () => void;
+  onSelectDraftVertex: (index: number | null) => void;
+  onUndoDraftVertex: () => void;
+  onRemoveSelectedDraftVertex: () => void;
+  onClearDraftVertices: () => void;
+  onSaveDraft: () => Promise<void>;
+  onCancelDraft: () => void;
+  onToggleGeofenceActive: (geofenceId: number, isActive: boolean) => Promise<void>;
+  onDeleteGeofence: (geofenceId: number) => Promise<void>;
 }

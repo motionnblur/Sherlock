@@ -20,7 +20,6 @@ import type { DriverWaypoint, DroneId, TelemetryPoint } from '../interfaces/tele
 import { formatFixed } from '../utils/formatters';
 import { matchesNavigationDirection } from '../utils/navigation';
 import FreeModeAssetWindow from './FreeModeAssetWindow';
-import GeofenceDrawToolbar from './GeofenceDrawToolbar';
 import {
   buildAxisFrame,
   buildDragState,
@@ -54,6 +53,7 @@ import {
   clearGeofenceVisuals,
   renderActiveGeofences,
   renderDraftGeofence,
+  tryParsePickedDraftVertexIndex,
   type GeofenceVisuals,
 } from './map/geofenceScene';
 
@@ -65,6 +65,10 @@ interface CameraControllerState {
   enableLook: boolean;
 }
 
+interface GeofenceDraftDragState {
+  vertexIndex: number;
+}
+
 interface MapInteractionState {
   freeMode: boolean;
   isCoarsePointer: boolean;
@@ -73,13 +77,17 @@ interface MapInteractionState {
   isGeofenceSaving: boolean;
   isMissionModeEnabled: boolean;
   isMissionWaypointEditingEnabled: boolean;
+  selectedGeofenceDraftVertexIndex: number | null;
   missionWaypoints: MissionWaypoint[];
+  geofenceDraftPointsLength: number;
   selectedDrone: DroneId | null;
   selectedMissionWaypointLocalId: number | null;
   selectedDisplayTelemetry: TelemetryPoint | null;
   onAddDriverWaypoint: (latitude: number, longitude: number) => void;
   onAddMissionWaypoint: (latitude: number, longitude: number) => void;
   onAddGeofenceVertex: (latitude: number, longitude: number) => void;
+  onMoveGeofenceVertex: (index: number, latitude: number, longitude: number) => void;
+  onSelectGeofenceDraftVertex: (index: number | null) => void;
   onMoveMissionWaypoint: (localId: number, position: {
     latitude: number;
     longitude: number;
@@ -143,13 +151,11 @@ export default function MapComponent({
   onAddDriverWaypoint,
   onSelectDrone,
   isMissionModeEnabled,
-  geofenceDraftName,
   geofenceDraftPoints,
-  geofenceError,
+  selectedGeofenceDraftVertexIndex,
   onAddGeofenceVertex,
-  onUpdateGeofenceDraftName,
-  onCompleteGeofenceDrawing,
-  onCancelGeofenceDrawing,
+  onMoveGeofenceVertex,
+  onSelectGeofenceDraftVertex,
   missionWaypoints,
   isMissionWaypointEditingEnabled,
   selectedMissionWaypointLocalId,
@@ -182,6 +188,8 @@ export default function MapComponent({
   const missionGizmoDragStateRef = useRef<MissionGizmoDragState | null>(null);
   const missionGizmoDragCameraStateRef = useRef<CameraControllerState | null>(null);
   const suppressNextMissionClickRef = useRef(false);
+  const geofenceDraftDragStateRef = useRef<GeofenceDraftDragState | null>(null);
+  const suppressNextGeofenceClickRef = useRef(false);
   const cameraControllerStateRef = useRef<CameraControllerState | null>(null);
 
   const [viewer, setViewer] = useState<Cesium.Viewer | null>(null);
@@ -203,13 +211,17 @@ export default function MapComponent({
     isGeofenceSaving,
     isMissionModeEnabled,
     isMissionWaypointEditingEnabled,
+    selectedGeofenceDraftVertexIndex,
     missionWaypoints,
+    geofenceDraftPointsLength: geofenceDraftPoints.length,
     selectedDrone,
     selectedMissionWaypointLocalId,
     selectedDisplayTelemetry,
     onAddDriverWaypoint,
     onAddMissionWaypoint,
     onAddGeofenceVertex,
+    onMoveGeofenceVertex,
+    onSelectGeofenceDraftVertex,
     onMoveMissionWaypoint,
     onSelectMissionWaypoint,
   });
@@ -221,13 +233,17 @@ export default function MapComponent({
     isGeofenceSaving,
     isMissionModeEnabled,
     isMissionWaypointEditingEnabled,
+    selectedGeofenceDraftVertexIndex,
     missionWaypoints,
+    geofenceDraftPointsLength: geofenceDraftPoints.length,
     selectedDrone,
     selectedMissionWaypointLocalId,
     selectedDisplayTelemetry,
     onAddDriverWaypoint,
     onAddMissionWaypoint,
     onAddGeofenceVertex,
+    onMoveGeofenceVertex,
+    onSelectGeofenceDraftVertex,
     onMoveMissionWaypoint,
     onSelectMissionWaypoint,
   };
@@ -644,8 +660,8 @@ export default function MapComponent({
       return;
     }
 
-    renderDraftGeofence(viewer, geofenceDraftPoints, draftGeofenceVisualRef);
-  }, [geofenceDraftPoints, selectedDrone, viewer]);
+    renderDraftGeofence(viewer, geofenceDraftPoints, draftGeofenceVisualRef, selectedGeofenceDraftVertexIndex);
+  }, [geofenceDraftPoints, selectedDrone, selectedGeofenceDraftVertexIndex, viewer]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
@@ -710,17 +726,13 @@ export default function MapComponent({
         && !interactionState.isGeofenceSaving
         && interactionState.selectedDrone
       ) {
-        const worldPosition = pickWorldPosition(viewer, movement.position);
-        if (!worldPosition) {
+        const pickedDraftVertexIndex = tryParsePickedDraftVertexIndex(viewer.scene.pick(movement.position));
+        if (pickedDraftVertexIndex !== null && pickedDraftVertexIndex < interactionState.geofenceDraftPointsLength) {
+          geofenceDraftDragStateRef.current = { vertexIndex: pickedDraftVertexIndex };
+          interactionState.onSelectGeofenceDraftVertex(pickedDraftVertexIndex);
+          viewer.scene.requestRender();
           return;
         }
-        const cartographic = Cesium.Cartographic.fromCartesian(worldPosition);
-        interactionState.onAddGeofenceVertex(
-          Cesium.Math.toDegrees(cartographic.latitude),
-          Cesium.Math.toDegrees(cartographic.longitude),
-        );
-        viewer.scene.requestRender();
-        return;
       }
 
       if (
@@ -775,6 +787,32 @@ export default function MapComponent({
     };
 
     const onMouseMove = (movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+      const geofenceDragState = geofenceDraftDragStateRef.current;
+      if (geofenceDragState) {
+        const interactionState = interactionStateRef.current;
+        if (
+          interactionState.isGeofenceModeEnabled
+          && !interactionState.freeMode
+          && !interactionState.isGeofenceSaving
+          && interactionState.selectedDrone
+        ) {
+          const worldPosition = pickWorldPosition(viewer, movement.endPosition);
+          if (!worldPosition) {
+            return;
+          }
+          const cartographic = Cesium.Cartographic.fromCartesian(worldPosition);
+          interactionState.onMoveGeofenceVertex(
+            geofenceDragState.vertexIndex,
+            Cesium.Math.toDegrees(cartographic.latitude),
+            Cesium.Math.toDegrees(cartographic.longitude),
+          );
+          suppressNextGeofenceClickRef.current = true;
+          viewer.scene.requestRender();
+          return;
+        }
+        geofenceDraftDragStateRef.current = null;
+      }
+
       const dragState = missionGizmoDragStateRef.current;
       if (!dragState) {
         return;
@@ -793,6 +831,10 @@ export default function MapComponent({
     };
 
     const onLeftUp = () => {
+      if (geofenceDraftDragStateRef.current) {
+        geofenceDraftDragStateRef.current = null;
+        viewer.scene.requestRender();
+      }
       if (!missionGizmoDragStateRef.current) {
         return;
       }
@@ -813,6 +855,38 @@ export default function MapComponent({
       const interactionState = interactionStateRef.current;
       if (suppressNextMissionClickRef.current) {
         suppressNextMissionClickRef.current = false;
+        return;
+      }
+      if (suppressNextGeofenceClickRef.current) {
+        suppressNextGeofenceClickRef.current = false;
+        return;
+      }
+
+      if (
+        interactionState.isGeofenceModeEnabled
+        && !interactionState.freeMode
+        && !interactionState.isGeofenceSaving
+        && interactionState.selectedDrone
+      ) {
+        const pickedObject = viewer.scene.pick(movement.position);
+        const pickedDraftVertexIndex = tryParsePickedDraftVertexIndex(pickedObject);
+        if (pickedDraftVertexIndex !== null && pickedDraftVertexIndex < interactionState.geofenceDraftPointsLength) {
+          interactionState.onSelectGeofenceDraftVertex(pickedDraftVertexIndex);
+          viewer.scene.requestRender();
+          return;
+        }
+
+        interactionState.onSelectGeofenceDraftVertex(null);
+        const worldPosition = pickWorldPosition(viewer, movement.position);
+        if (!worldPosition) {
+          return;
+        }
+        const cartographic = Cesium.Cartographic.fromCartesian(worldPosition);
+        interactionState.onAddGeofenceVertex(
+          Cesium.Math.toDegrees(cartographic.latitude),
+          Cesium.Math.toDegrees(cartographic.longitude),
+        );
+        viewer.scene.requestRender();
         return;
       }
 
@@ -879,6 +953,8 @@ export default function MapComponent({
       viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.MOUSE_MOVE);
       viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_UP);
       viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
+      geofenceDraftDragStateRef.current = null;
+      suppressNextGeofenceClickRef.current = false;
       missionGizmoDragStateRef.current = null;
       if (missionGizmoDragCameraStateRef.current) {
         const cameraController = viewer.scene.screenSpaceCameraController;
@@ -952,6 +1028,8 @@ export default function MapComponent({
       clearMissionGizmoEntities(viewer, missionGizmoEntitiesRef);
       clearGeofenceVisuals(viewer, geofenceVisualsRef);
       clearDraftGeofence(viewer, draftGeofenceVisualRef);
+      geofenceDraftDragStateRef.current = null;
+      suppressNextGeofenceClickRef.current = false;
       missionGizmoDragStateRef.current = null;
     };
   }, [viewer]);
@@ -969,16 +1047,6 @@ export default function MapComponent({
       {selectedLiveTelemetry && selectedDrone && !freeMode && (
         <SelectedTelemetryBanner telemetry={selectedLiveTelemetry} />
       )}
-      <GeofenceDrawToolbar
-        isEnabled={isGeofenceModeEnabled && !freeMode && Boolean(selectedDrone)}
-        vertexCount={geofenceDraftPoints.length}
-        draftName={geofenceDraftName}
-        isSaving={isGeofenceSaving}
-        error={geofenceError}
-        onUpdateDraftName={onUpdateGeofenceDraftName}
-        onFinish={onCompleteGeofenceDrawing}
-        onCancel={onCancelGeofenceDrawing}
-      />
 
     </div>
   );

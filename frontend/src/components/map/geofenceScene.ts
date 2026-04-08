@@ -11,7 +11,9 @@ const INACTIVE_VERTEX = Cesium.Color.fromCssColorString('#3d4f63');
 const DRAFT_FILL = Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.12);
 const DRAFT_OUTLINE = Cesium.Color.fromCssColorString('#00FF41').withAlpha(0.9);
 const DRAFT_VERTEX = Cesium.Color.fromCssColorString('#00FF41');
+const DRAFT_SELECTED_VERTEX = Cesium.Color.fromCssColorString('#FFB400');
 const LABEL_FONT = '10px "JetBrains Mono", monospace';
+const DRAFT_VERTEX_NAME_PREFIX = 'geofence-draft-vertex-';
 
 export interface GeofenceVisuals {
   fill: Cesium.Entity;
@@ -97,6 +99,7 @@ export function renderDraftGeofence(
   viewer: Cesium.Viewer,
   points: GeofencePointInput[],
   draftVisualRef: MutableRefObject<GeofenceVisuals | null>,
+  selectedVertexIndex: number | null,
 ): void {
   clearDraftGeofence(viewer, draftVisualRef);
 
@@ -151,13 +154,13 @@ export function renderDraftGeofence(
   });
   const vertices = points.map((point, index) =>
     viewer.entities.add({
-      name: `geofence-draft-vertex-${index}`,
+      name: `${DRAFT_VERTEX_NAME_PREFIX}${index}`,
       position: Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, 0),
       point: {
-        pixelSize: 5,
-        color: DRAFT_VERTEX,
+        pixelSize: selectedVertexIndex === index ? 8 : 5,
+        color: selectedVertexIndex === index ? DRAFT_SELECTED_VERTEX : DRAFT_VERTEX,
         outlineColor: Cesium.Color.BLACK,
-        outlineWidth: 1,
+        outlineWidth: selectedVertexIndex === index ? 2 : 1,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },
     }),
@@ -165,6 +168,19 @@ export function renderDraftGeofence(
 
   draftVisualRef.current = { fill, outline, vertices, label };
   viewer.scene.requestRender();
+}
+
+export function tryParsePickedDraftVertexIndex(pickedObject: unknown): number | null {
+  const maybePicked = pickedObject as { id?: unknown } | undefined;
+  const id = maybePicked?.id;
+  if (!(id instanceof Cesium.Entity) || typeof id.name !== 'string') {
+    return null;
+  }
+  if (!id.name.startsWith(DRAFT_VERTEX_NAME_PREFIX)) {
+    return null;
+  }
+  const index = Number.parseInt(id.name.slice(DRAFT_VERTEX_NAME_PREFIX.length), 10);
+  return Number.isInteger(index) && index >= 0 ? index : null;
 }
 
 export function clearGeofenceVisuals(
