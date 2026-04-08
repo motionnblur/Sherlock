@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AuthToken } from '../interfaces/auth';
 import type { Geofence, GeofenceRequest, UseGeofencesResult } from '../interfaces/geofence';
-import { parseGeofenceListResponse } from '../utils/telemetry';
+import { parseGeofenceListResponse, parseGeofenceResponse } from '../utils/telemetry';
 import { useAuth } from './useAuth';
 
 const GEOFENCES_PATH = '/api/geofences';
@@ -94,7 +94,12 @@ export function useGeofences(authToken: AuthToken | null): UseGeofencesResult {
         return null;
       }
 
-      const geofence = (await response.json()) as Geofence;
+      const payload = (await response.json()) as unknown;
+      const geofence = parseGeofenceResponse(payload);
+      if (!geofence) {
+        setGeofenceError('INVALID GEOFENCE RESPONSE');
+        return null;
+      }
       setGeofences((current) => {
         const next = current.filter((entry) => entry.id !== geofence.id);
         return [geofence, ...next].sort((a, b) => (
@@ -147,7 +152,12 @@ export function useGeofences(authToken: AuthToken | null): UseGeofencesResult {
         return null;
       }
 
-      const geofence = (await response.json()) as Geofence;
+      const payload = (await response.json()) as unknown;
+      const geofence = parseGeofenceResponse(payload);
+      if (!geofence) {
+        setGeofenceError('INVALID GEOFENCE RESPONSE');
+        return null;
+      }
       setGeofences((current) => current.map((entry) => (entry.id === geofence.id ? geofence : entry)));
       return geofence;
     } catch {

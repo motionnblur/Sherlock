@@ -90,15 +90,39 @@ function isGeofence(value: unknown): value is Geofence {
     return false;
   }
 
-  const candidate = value as Partial<Geofence>;
+  const candidate = value as Partial<Geofence> & { active?: unknown };
+  const isActive = typeof candidate.isActive === 'boolean'
+    ? candidate.isActive
+    : (typeof candidate.active === 'boolean' ? candidate.active : null);
+
+  if (isActive === null) {
+    return false;
+  }
+
   return (
     typeof candidate.id === 'number'
     && typeof candidate.name === 'string'
-    && typeof candidate.isActive === 'boolean'
     && typeof candidate.createdAt === 'string'
     && Array.isArray(candidate.points)
     && candidate.points.every(isGeofencePoint)
   );
+}
+
+function normalizeGeofence(raw: unknown): Geofence | null {
+  if (!isGeofence(raw)) {
+    return null;
+  }
+
+  const candidate = raw as Geofence & { active?: unknown };
+  const isActive = typeof candidate.isActive === 'boolean' ? candidate.isActive : Boolean(candidate.active);
+
+  return {
+    id: candidate.id,
+    name: candidate.name,
+    isActive,
+    createdAt: candidate.createdAt,
+    points: candidate.points,
+  };
 }
 
 export function parseGeofenceListResponse(payload: unknown): Geofence[] {
@@ -106,7 +130,13 @@ export function parseGeofenceListResponse(payload: unknown): Geofence[] {
     return [];
   }
 
-  return payload.filter(isGeofence);
+  return payload
+    .map(normalizeGeofence)
+    .filter((geofence): geofence is Geofence => geofence !== null);
+}
+
+export function parseGeofenceResponse(payload: unknown): Geofence | null {
+  return normalizeGeofence(payload);
 }
 
 export function parseGeofenceAlertMessage(body: string): GeofenceAlert | null {

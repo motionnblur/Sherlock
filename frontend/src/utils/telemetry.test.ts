@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseGeofenceAlertMessage, parseGeofenceListResponse } from './telemetry';
+import { parseGeofenceAlertMessage, parseGeofenceListResponse, parseGeofenceResponse } from './telemetry';
 
 describe('geofence parsing', () => {
   it('parses geofence alerts', () => {
@@ -51,5 +51,21 @@ describe('geofence parsing', () => {
 
     expect(geofences).toHaveLength(1);
     expect(geofences[0]?.name).toBe('ALPHA');
+  });
+
+  it('accepts backend geofence payloads with active field', () => {
+    const geofence = parseGeofenceResponse({
+      id: 2,
+      name: 'BRAVO',
+      active: true,
+      createdAt: '2026-04-08T00:00:00Z',
+      points: [
+        { id: 1, sequence: 0, latitude: 37.0, longitude: 23.0 },
+        { id: 2, sequence: 1, latitude: 37.0, longitude: 24.0 },
+        { id: 3, sequence: 2, latitude: 38.0, longitude: 24.0 },
+      ],
+    });
+
+    expect(geofence?.isActive).toBe(true);
   });
 });
