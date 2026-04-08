@@ -101,6 +101,9 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
       if (!alert) {
         return;
       }
+      if (!droneId || alert.droneId !== droneId) {
+        return;
+      }
 
       const alertKey = `${alert.droneId}:${alert.geofenceId}:${alert.eventType}:${alert.timestamp}`;
       if (geofenceAlertKeysRef.current.includes(alertKey)) {
