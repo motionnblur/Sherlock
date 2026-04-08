@@ -14,8 +14,18 @@ import org.springframework.stereotype.Service;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
+
+import static com.sherlock.groundcontrol.service.MissionExecutionSupport.DispatchSnapshot;
+import static com.sherlock.groundcontrol.service.MissionExecutionSupport.Distances;
+import static com.sherlock.groundcontrol.service.MissionExecutionSupport.ExecutionState;
+import static com.sherlock.groundcontrol.service.MissionExecutionSupport.WaypointPhase;
+import static com.sherlock.groundcontrol.service.MissionExecutionSupport.hasNewTelemetrySample;
+import static com.sherlock.groundcontrol.service.MissionExecutionSupport.hasProgressEvidence;
+import static com.sherlock.groundcontrol.service.MissionExecutionSupport.isTelemetryFresh;
+import static com.sherlock.groundcontrol.service.MissionExecutionSupport.isWithinArrivalWindow;
+import static com.sherlock.groundcontrol.service.MissionExecutionSupport.resetArrivalCandidate;
+import static com.sherlock.groundcontrol.service.MissionExecutionSupport.resetWaypointPhase;
+import static com.sherlock.groundcontrol.service.MissionExecutionSupport.toWaypointDistances;
 
 /**
  * Server-side mission execution engine.
@@ -32,11 +42,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 public class MissionExecutorService {
 
-    private static final double  ARRIVED_HORIZONTAL_METERS = 30.0;
-    private static final double  ARRIVED_VERTICAL_METERS   = 15.0;
-    private static final int     TELEMETRY_TICK_MS          = 500;
-    private static final String  PROGRESS_TOPIC_PREFIX      = "/topic/missions/";
-    private static final String  PROGRESS_TOPIC_SUFFIX      = "/progress";
+    private static final double ARRIVED_HORIZONTAL_METERS = 5.0;
+    private static final double ARRIVED_VERTICAL_METERS = 6.0;
+    private static final int REQUIRED_ARRIVAL_CONFIRMATION_TICKS = 3;
+    private static final long MIN_ARRIVAL_DWELL_MS = 1000L;
+    private static final long MIN_POST_DISPATCH_CHECK_DELAY_MS = 1500L;
+    private static final double MIN_PROGRESS_TOWARD_TARGET_METERS = 3.0;
+    private static final double MIN_TRAVEL_FROM_DISPATCH_METERS = 3.0;
+    private static final double CLOSE_START_HORIZONTAL_METERS = 2.0;
+    private static final double CLOSE_START_VERTICAL_METERS = 2.0;
+    private static final long MAX_TELEMETRY_AGE_MS = 2500L;
+    private static final long WAYPOINT_PROGRESS_TIMEOUT_MS = 120_000L;
+    private static final long DISPATCH_RETRY_BACKOFF_MS = 1500L;
+    private static final int MAX_DISPATCH_ATTEMPTS_PER_WAYPOINT = 12;
+    private static final int TELEMETRY_TICK_MS = 500;
+    private static final String PROGRESS_TOPIC_PREFIX = "/topic/missions/";
+    private static final String PROGRESS_TOPIC_SUFFIX = "/progress";
 
     public enum ExecuteResult {
         STARTED,
@@ -68,7 +89,7 @@ public class MissionExecutorService {
         }
 
         MissionEntity mission = activated.get();
-        ExecutionState state = new ExecutionState(droneId, mission.getWaypoints().size());
+        ExecutionState state = new ExecutionState(droneId);
         activeMissions.put(missionId, state);
 
         publishProgress(mission);
@@ -101,11 +122,15 @@ public class MissionExecutorService {
     // ── Execution logic ───────────────────────────────────────────────────────────
 
     private void advanceMission(Long missionId, ExecutionState state) {
+        long nowMillis = System.currentTimeMillis();
         Optional<TelemetryDTO> maybeTelemetry = telemetryService.getLastKnown(state.droneId);
         if (maybeTelemetry.isEmpty()) {
             return;
         }
         TelemetryDTO telemetry = maybeTelemetry.get();
+        if (!isTelemetryFresh(telemetry, nowMillis, MAX_TELEMETRY_AGE_MS)) {
+            return;
+        }
 
         Optional<MissionDTO> maybeMission = missionService.getMission(missionId);
         if (maybeMission.isEmpty()) {
@@ -127,30 +152,105 @@ public class MissionExecutorService {
 
         var currentWaypoint = mission.getWaypoints().get(currentIndex);
 
-        if (state.gotoDispatched.get()) {
-            boolean arrived = hasArrived(telemetry, currentWaypoint);
-            if (!arrived) {
-                return;
-            }
-            // Drone reached the waypoint — advance
-            missionService.markWaypointReached(missionId, currentIndex).ifPresent(updated -> {
-                publishProgress(updated);
-                if (updated.getStatus() == MissionEntity.MissionStatus.COMPLETED) {
-                    activeMissions.remove(missionId);
-                } else {
-                    state.currentWaypointIndex.incrementAndGet();
-                    state.gotoDispatched.set(false);
-                }
-            });
-        } else {
-            dispatchGoto(missionId, state, currentWaypoint);
+        WaypointPhase phase = state.phase.get();
+        if (phase == WaypointPhase.READY_TO_DISPATCH) {
+            dispatchGoto(missionId, state, currentWaypoint, telemetry, nowMillis);
+            return;
         }
+
+        evaluateWaypointProgress(
+                missionId,
+                state,
+                telemetry,
+                currentWaypoint,
+                nowMillis,
+                phase == WaypointPhase.ARRIVAL_CANDIDATE
+        );
     }
 
-    private void dispatchGoto(Long missionId, ExecutionState state, com.sherlock.groundcontrol.dto.WaypointDTO waypoint) {
+    private void evaluateWaypointProgress(
+            Long missionId,
+            ExecutionState state,
+            TelemetryDTO telemetry,
+            com.sherlock.groundcontrol.dto.WaypointDTO waypoint,
+            long nowMillis,
+            boolean isArrivalCandidatePhase
+    ) {
+        DispatchSnapshot dispatchSnapshot = state.dispatchSnapshot;
+        if (dispatchSnapshot == null) {
+            resetWaypointPhase(state);
+            return;
+        }
+
+        if (hasWaypointTimedOut(state, nowMillis)) {
+            handleWaypointTimeout(missionId, state, nowMillis);
+            return;
+        }
+
+        if (!isPastPostDispatchDelay(state, nowMillis)) {
+            return;
+        }
+
+        if (!hasNewTelemetrySample(state, telemetry)) {
+            return;
+        }
+
+        Distances distances = toWaypointDistances(telemetry, waypoint);
+        if (!isWithinArrivalWindow(distances, ARRIVED_HORIZONTAL_METERS, ARRIVED_VERTICAL_METERS)) {
+            resetArrivalCandidate(state);
+            return;
+        }
+
+        boolean hasProgressEvidence = hasProgressEvidence(
+                dispatchSnapshot,
+                telemetry,
+                distances,
+                MIN_PROGRESS_TOWARD_TARGET_METERS,
+                MIN_TRAVEL_FROM_DISPATCH_METERS,
+                CLOSE_START_HORIZONTAL_METERS,
+                CLOSE_START_VERTICAL_METERS
+        );
+        if (!hasProgressEvidence) {
+            resetArrivalCandidate(state);
+            return;
+        }
+
+        boolean telemetryAdvancedSinceDispatch = telemetry.getTimestamp().toEpochMilli() > dispatchSnapshot.telemetryTimestampMillis();
+        if (!telemetryAdvancedSinceDispatch) {
+            return;
+        }
+
+        if (!isArrivalCandidatePhase) {
+            state.phase.set(WaypointPhase.ARRIVAL_CANDIDATE);
+            state.arrivalConfirmationTicks.set(1);
+            state.arrivalCandidateSinceMillis.set(nowMillis);
+            return;
+        }
+
+        int confirmationTicks = state.arrivalConfirmationTicks.incrementAndGet();
+        long dwellMillis = nowMillis - state.arrivalCandidateSinceMillis.get();
+        if (confirmationTicks < REQUIRED_ARRIVAL_CONFIRMATION_TICKS || dwellMillis < MIN_ARRIVAL_DWELL_MS) {
+            return;
+        }
+
+        markWaypointReached(missionId, state);
+    }
+
+    private void dispatchGoto(
+            Long missionId,
+            ExecutionState state,
+            com.sherlock.groundcontrol.dto.WaypointDTO waypoint,
+            TelemetryDTO telemetry,
+            long nowMillis
+    ) {
         if (droneCommandService.isEmpty()) {
             return;
         }
+        if (isDispatchBackoffActive(state, nowMillis)) {
+            return;
+        }
+
+        state.lastDispatchAttemptMillis.set(nowMillis);
 
         DroneCommandDTO command = new DroneCommandDTO();
         command.setCommandType(CommandType.GOTO);
@@ -160,32 +260,118 @@ public class MissionExecutorService {
 
         DroneCommandService.DispatchResult result = droneCommandService.get().sendCommand(state.droneId, command);
         if (result == DroneCommandService.DispatchResult.DISPATCHED) {
-            state.gotoDispatched.set(true);
-            log.debug("Mission {} WP{} GOTO dispatched to '{}'",
-                    missionId, state.currentWaypointIndex.get(), state.droneId);
-        } else {
-            log.warn("Mission {} WP{} GOTO dispatch failed: {} — will retry next tick",
-                    missionId, state.currentWaypointIndex.get(), result);
+            Distances distanceAtDispatch = toWaypointDistances(telemetry, waypoint);
+            state.dispatchSnapshot = new DispatchSnapshot(
+                    telemetry.getLatitude(),
+                    telemetry.getLongitude(),
+                    telemetry.getTimestamp().toEpochMilli(),
+                    distanceAtDispatch
+            );
+            state.dispatchWallClockMillis.set(nowMillis);
+            state.phase.set(WaypointPhase.IN_TRANSIT);
+            state.arrivalCandidateSinceMillis.set(0L);
+            state.arrivalConfirmationTicks.set(0);
+            state.dispatchAttempts.incrementAndGet();
+            state.lastProcessedTelemetryTimestampMillis.set(telemetry.getTimestamp().toEpochMilli());
+            log.info(
+                    "Mission {} WP{} GOTO dispatched to '{}' (attempt {}, dist={}m)",
+                    missionId,
+                    state.currentWaypointIndex.get(),
+                    state.droneId,
+                    state.dispatchAttempts.get(),
+                    String.format("%.1f", distanceAtDispatch.horizontalMeters())
+            );
+            return;
         }
-    }
 
-    private static boolean hasArrived(TelemetryDTO telemetry, com.sherlock.groundcontrol.dto.WaypointDTO waypoint) {
-        double horizontalDistance = haversineDistanceMeters(
-                telemetry.getLatitude(), telemetry.getLongitude(),
-                waypoint.getLatitude(), waypoint.getLongitude()
+        int attempts = state.dispatchAttempts.incrementAndGet();
+        if (attempts >= MAX_DISPATCH_ATTEMPTS_PER_WAYPOINT) {
+            failMission(
+                    missionId,
+                    String.format(
+                            "GOTO dispatch failed %d times for waypoint %d (%s)",
+                            attempts,
+                            state.currentWaypointIndex.get(),
+                            result
+                    )
+            );
+            return;
+        }
+        log.warn(
+                "Mission {} WP{} dispatch attempt {}/{} failed: {}",
+                missionId,
+                state.currentWaypointIndex.get(),
+                attempts,
+                MAX_DISPATCH_ATTEMPTS_PER_WAYPOINT,
+                result
         );
-        double verticalDistance = Math.abs(telemetry.getAltitude() - waypoint.getAltitude());
-        return horizontalDistance <= ARRIVED_HORIZONTAL_METERS && verticalDistance <= ARRIVED_VERTICAL_METERS;
     }
 
-    private static double haversineDistanceMeters(double lat1, double lon1, double lat2, double lon2) {
-        final double earthRadiusMeters = 6_371_000.0;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLon = Math.toRadians(lon2 - lon1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                 + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                 * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    private void markWaypointReached(Long missionId, ExecutionState state) {
+        int reachedWaypointIndex = state.currentWaypointIndex.get();
+        missionService.markWaypointReached(missionId, reachedWaypointIndex).ifPresent(updated -> {
+            publishProgress(updated);
+            if (updated.getStatus() == MissionEntity.MissionStatus.COMPLETED) {
+                activeMissions.remove(missionId);
+                return;
+            }
+            state.currentWaypointIndex.incrementAndGet();
+            resetWaypointPhase(state);
+        });
+    }
+
+    private void handleWaypointTimeout(Long missionId, ExecutionState state, long nowMillis) {
+        if (state.dispatchAttempts.get() >= MAX_DISPATCH_ATTEMPTS_PER_WAYPOINT) {
+            failMission(
+                    missionId,
+                    String.format(
+                            "Waypoint %d timeout after %d dispatch attempts",
+                            state.currentWaypointIndex.get(),
+                            state.dispatchAttempts.get()
+                    )
+            );
+            return;
+        }
+
+        state.phase.set(WaypointPhase.READY_TO_DISPATCH);
+        state.dispatchSnapshot = null;
+        state.arrivalCandidateSinceMillis.set(0L);
+        state.arrivalConfirmationTicks.set(0);
+        state.dispatchWallClockMillis.set(nowMillis);
+        log.warn(
+                "Mission {} WP{} timed out waiting for arrival — re-dispatching",
+                missionId,
+                state.currentWaypointIndex.get()
+        );
+    }
+
+    private boolean hasWaypointTimedOut(ExecutionState state, long nowMillis) {
+        long dispatchMillis = state.dispatchWallClockMillis.get();
+        if (dispatchMillis <= 0L) {
+            return false;
+        }
+        return nowMillis - dispatchMillis > WAYPOINT_PROGRESS_TIMEOUT_MS;
+    }
+
+    private boolean isPastPostDispatchDelay(ExecutionState state, long nowMillis) {
+        long dispatchMillis = state.dispatchWallClockMillis.get();
+        if (dispatchMillis <= 0L) {
+            return false;
+        }
+        return nowMillis - dispatchMillis >= MIN_POST_DISPATCH_CHECK_DELAY_MS;
+    }
+
+    private boolean isDispatchBackoffActive(ExecutionState state, long nowMillis) {
+        long lastAttemptMillis = state.lastDispatchAttemptMillis.get();
+        return lastAttemptMillis > 0L && nowMillis - lastAttemptMillis < DISPATCH_RETRY_BACKOFF_MS;
+    }
+
+    private void failMission(Long missionId, String reason) {
+        activeMissions.remove(missionId);
+        missionService.abortMission(missionId).ifPresentOrElse(mission -> {
+            publishProgress(mission);
+            log.error("Mission id={} aborted by executor fail-safe: {}", missionId, reason);
+        }, () -> log.error("Mission id={} fail-safe triggered but mission could not be aborted: {}", missionId, reason));
     }
 
     private void publishProgress(MissionEntity mission) {
@@ -195,22 +381,5 @@ public class MissionExecutorService {
 
     private void publishProgress(MissionDTO dto) {
         messagingTemplate.convertAndSend(PROGRESS_TOPIC_PREFIX + dto.getId() + PROGRESS_TOPIC_SUFFIX, dto);
-    }
-
-    // ── Inner state ───────────────────────────────────────────────────────────────
-
-    private static final class ExecutionState {
-
-        final String        droneId;
-        final int           totalWaypoints;
-        final AtomicInteger currentWaypointIndex;
-        final AtomicBoolean gotoDispatched;
-
-        ExecutionState(String droneId, int totalWaypoints) {
-            this.droneId              = droneId;
-            this.totalWaypoints       = totalWaypoints;
-            this.currentWaypointIndex = new AtomicInteger(0);
-            this.gotoDispatched       = new AtomicBoolean(false);
-        }
     }
 }

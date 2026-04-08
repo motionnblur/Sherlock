@@ -82,7 +82,7 @@ com.sherlock.groundcontrol
     ├── DroneCommandService.java     # Translates RTH/ARM/DISARM/TAKEOFF/GOTO → MAVLink command packets via MavlinkAdapterService (@ConditionalOnProperty)
     ├── DroneStreamService.java      # Resolves HLS stream URL from MEDIAMTX_HLS_BASE_URL
     ├── MavlinkAdapterService.java   # UDP :14550 listener + snapshot merge + @Scheduled STOMP publish (@ConditionalOnProperty)
-    ├── MissionExecutorService.java  # Server-side mission execution: @Scheduled tick, GOTO dispatch, waypoint arrival detection, STOMP progress publish
+    ├── MissionExecutorService.java  # Server-side mission execution: finite-state waypoint progression, guarded arrival confirmation, timeout/retry fail-safe, STOMP progress publish
     ├── MissionService.java          # Mission CRUD + lifecycle transitions (PLANNED→ACTIVE→COMPLETED|ABORTED); no execution logic
     ├── TelemetryService.java        # persistBatch() + getLastKnown(droneId) + history lookup + bounded last-known cache
     └── TelemetrySimulator.java      # @Scheduled 500ms fleet tick, per-drone full stream + fleet-lite summary + battery alerts
@@ -267,9 +267,20 @@ Spring Security already protects all endpoints except documented public routes. 
 `PUT /api/missions/{id}` updates an existing mission in-place and is restricted to missions in `PLANNED` state.
 
 - `200 OK` — mission name/waypoints overwritten successfully
-- `400 Bad Request` — invalid payload (blank name, <2 waypoints, missing coordinates/altitude)
+- `400 Bad Request` — invalid payload (blank name, <2 waypoints, missing coordinates/altitude, or consecutive waypoints closer than 5 meters)
 - `404 Not Found` — mission does not exist
 - `409 Conflict` — mission is not `PLANNED`
+
+### Mission execution safety gates
+
+`MissionExecutorService` does not advance waypoints on a single in-threshold tick. Arrival is confirmed only when all gates pass:
+- Telemetry is fresh (bounded age) and newer than the dispatch sample
+- A minimum post-dispatch delay has elapsed
+- Distance-to-target is within strict thresholds (5 m horizontal, 6 m vertical)
+- Movement evidence exists since dispatch (toward-target delta or travel delta), except true close-start cases
+- In-threshold condition remains stable for multiple consecutive ticks (dwell-based confirmation)
+
+If progress stalls, the executor uses bounded re-dispatch attempts and aborts the mission via fail-safe when limits are exceeded.
 
 ---
 

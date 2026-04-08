@@ -29,6 +29,8 @@ public class MissionService {
 
     private static final int MAX_WAYPOINTS_PER_MISSION = 100;
     private static final int MAX_MISSION_NAME_LENGTH    = 100;
+    private static final double MIN_CONSECUTIVE_WAYPOINT_SPACING_METERS = 5.0;
+    private static final double EARTH_RADIUS_METERS = 6_371_000.0;
 
     private final MissionRepository missionRepository;
 
@@ -242,5 +244,33 @@ public class MissionService {
                 throw new IllegalArgumentException("All waypoints must have latitude, longitude, and altitude");
             }
         }
+        for (int index = 1; index < request.getWaypoints().size(); index++) {
+            WaypointDTO previous = request.getWaypoints().get(index - 1);
+            WaypointDTO current = request.getWaypoints().get(index);
+            double spacingMeters = haversineDistanceMeters(
+                    previous.getLatitude(),
+                    previous.getLongitude(),
+                    current.getLatitude(),
+                    current.getLongitude()
+            );
+            if (spacingMeters < MIN_CONSECUTIVE_WAYPOINT_SPACING_METERS) {
+                throw new IllegalArgumentException(
+                        "Consecutive waypoints must be at least "
+                                + MIN_CONSECUTIVE_WAYPOINT_SPACING_METERS
+                                + " meters apart"
+                );
+            }
+        }
+    }
+
+    private static double haversineDistanceMeters(double lat1, double lon1, double lat2, double lon2) {
+        double deltaLatitudeRadians = Math.toRadians(lat2 - lat1);
+        double deltaLongitudeRadians = Math.toRadians(lon2 - lon1);
+        double latitude1Radians = Math.toRadians(lat1);
+        double latitude2Radians = Math.toRadians(lat2);
+        double a = Math.sin(deltaLatitudeRadians / 2) * Math.sin(deltaLatitudeRadians / 2)
+                + Math.cos(latitude1Radians) * Math.cos(latitude2Radians)
+                * Math.sin(deltaLongitudeRadians / 2) * Math.sin(deltaLongitudeRadians / 2);
+        return EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 }
