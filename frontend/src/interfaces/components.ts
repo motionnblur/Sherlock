@@ -177,6 +177,7 @@ export interface LowBatteryWindowProps {
 
 export interface GeofenceAlertWindowProps {
   alerts: GeofenceAlert[];
+  onSelectDrone: (droneId: DroneId) => void;
 }
 
 export interface GeofenceManagementPanelProps {

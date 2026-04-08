@@ -861,7 +861,7 @@ export default function App() {
               )}
 
               {geofenceAlerts.length > 0 && (
-                <GeofenceAlertWindow alerts={geofenceAlerts} />
+                <GeofenceAlertWindow alerts={geofenceAlerts} onSelectDrone={handleActivateDrone} />
               )}
 
               {freeMode && showAllAssets && filteredBatteryAlerts.length > 0 && (

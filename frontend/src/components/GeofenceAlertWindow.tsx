@@ -11,7 +11,7 @@ function getToneClassName(tone: string): string {
   return tone === 'danger' ? 'text-danger' : 'text-caution';
 }
 
-export default function GeofenceAlertWindow({ alerts }: GeofenceAlertWindowProps) {
+export default function GeofenceAlertWindow({ alerts, onSelectDrone }: GeofenceAlertWindowProps) {
   if (alerts.length === 0) {
     return null;
   }
@@ -31,9 +31,11 @@ export default function GeofenceAlertWindow({ alerts }: GeofenceAlertWindowProps
         {alerts.map((alert) => {
           const tone = getEventTone(alert.eventType);
           return (
-            <div
+            <button
+              type="button"
               key={`${alert.droneId}-${alert.geofenceId}-${alert.eventType}-${alert.timestamp}`}
-              className="flex flex-col gap-1 px-3 py-2 border-b border-line last:border-b-0"
+              className="flex flex-col gap-1 px-3 py-2 border-b border-line last:border-b-0 w-full text-left hover:bg-elevated cursor-pointer transition-colors"
+              onClick={() => onSelectDrone(alert.droneId)}
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[10px] font-bold tracking-widest text-neon">{alert.droneId}</span>
@@ -45,7 +47,7 @@ export default function GeofenceAlertWindow({ alerts }: GeofenceAlertWindowProps
                 <span className="text-muted">{alert.geofenceName}</span>
                 <span className={`${getToneClassName(tone)} tabular-nums`}>{formatUtcTime(alert.timestamp)}</span>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
