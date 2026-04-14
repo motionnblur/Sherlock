@@ -117,7 +117,7 @@ services:
         exit 1;
       fi;
       if [ -d .git ]; then
-        git config --global --add safe.directory /ardupilot;
+        git config --global safe.directory '*';
       fi;
       if [ ! -f modules/waf/waf-light ]; then
         if [ ! -d .git ]; then
