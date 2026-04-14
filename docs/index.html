@@ -399,6 +399,7 @@
     <li><a href="#simulate">Simulating</a></li>
     <li><a href="#ui-tour">UI Tour</a></li>
     <li><a href="#mission-planning">Missions</a></li>
+    <li><a href="#ardupilot-sitl">MAVLink / SITL</a></li>
     <li><span class="badge">◈ TRAINING MODE ◈</span></li>
   </ul>
 </nav>
@@ -1362,9 +1363,584 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
 
   <hr />
 
+  <!-- ═══════════════════════════════ ARDUPILOT / MAVLINK / SITL ══════════════════ -->
+  <section id="ardupilot-sitl">
+    <div class="section-label">Section 09</div>
+    <h2>ArduPilot, MAVLink &amp; SITL — Developer Guide</h2>
+    <p>
+      This section covers everything a developer needs to understand and work with
+      real drone communication in Sherlock GCS. It explains the three layers —
+      <strong>MAVLink</strong> (the protocol), <strong>ArduPilot</strong> (the flight
+      software), and <strong>SITL</strong> (the simulator) — and how they integrate
+      with the backend.
+    </p>
+
+    <h3>Concepts — What Is Each Thing?</h3>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">▸</div>
+        <div class="step-body">
+          <div class="step-title">MAVLink — the drone communication protocol</div>
+          <p class="step-desc">
+            MAVLink (Micro Air Vehicle Link) is a lightweight binary messaging protocol
+            used by almost every open-source autopilot in the world. It defines how a
+            ground control station and a drone exchange information: position, attitude,
+            battery, arm state, flight mode, GPS quality, and C2 commands.
+            Messages are compact binary frames (v1 = 8-byte header + payload + CRC;
+            v2 adds a 14-byte header with message signing support).
+            Sherlock implements its own MAVLink parser and decoder with no external library —
+            see <span class="inline-code">backend/src/…/mavlink/</span>.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">▸</div>
+        <div class="step-body">
+          <div class="step-title">ArduPilot — the flight control firmware</div>
+          <p class="step-desc">
+            ArduPilot is the open-source autopilot software that runs on real drone
+            flight controllers (Pixhawk, CubeOrange, etc.). It speaks MAVLink natively.
+            When a real drone is powered on and connected, it continuously streams MAVLink
+            frames over a serial or UDP link. In development, ArduPilot runs entirely in
+            software — no hardware needed — via SITL.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">▸</div>
+        <div class="step-body">
+          <div class="step-title">SITL — Software In The Loop simulation</div>
+          <p class="step-desc">
+            SITL compiles the full ArduPilot firmware and runs it as a normal process on
+            your Linux machine (or inside Docker). It simulates physics, sensors (GPS,
+            IMU, barometer, compass), and motor outputs. From the perspective of Sherlock's
+            backend, SITL is indistinguishable from a real drone: it sends the same MAVLink
+            frames over UDP on port 14550. This means you can develop and test every
+            feature — arm, takeoff, GOTO, mission execution — without a physical aircraft.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Drone ID Naming Convention</h3>
+    <p>
+      Sherlock runs the software simulator and the MAVLink adapter <strong>simultaneously</strong>.
+      They are distinguished by their drone IDs:
+    </p>
+    <table>
+      <thead><tr><th>ID prefix</th><th>Source</th><th>Example</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>SHERLOCK-XX</td>
+          <td>TelemetrySimulator (Java, always on)</td>
+          <td>SHERLOCK-01</td>
+          <td>Pure software, no MAVLink. Always present. C2 commands return 503.</td>
+        </tr>
+        <tr>
+          <td>MAVLINK-XX</td>
+          <td>MavlinkAdapterService (only when MAVLINK_ENABLED=true)</td>
+          <td>MAVLINK-1</td>
+          <td>Real MAVLink system ID mapped to this prefix. Supports full C2.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      The <span class="inline-code">XX</span> in <span class="inline-code">MAVLINK-XX</span>
+      is the MAVLink system ID reported in the drone's HEARTBEAT message (usually 1 for a
+      single-vehicle setup). Each new system ID seen on UDP:14550 gets its own
+      <span class="inline-code">DroneSnapshot</span> entry.
+    </p>
+
+    <h3>How the MAVLink Adapter Works (Backend)</h3>
+    <p>
+      <span class="inline-code">MavlinkAdapterService</span> is activated only when
+      <span class="inline-code">app.mavlink.enabled=true</span> (set via
+      <span class="inline-code">MAVLINK_ENABLED=true</span> in your
+      <span class="inline-code">.env</span>). Here is what happens at runtime:
+    </p>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">UDP listener binds on :14550</div>
+          <p class="step-desc">
+            A background thread opens a <span class="inline-code">DatagramSocket</span>
+            on the configured port (default 14550) and enters a blocking receive loop.
+            Every UDP datagram that arrives is handed to
+            <span class="inline-code">MavlinkFrameParser.parsePacket()</span>.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Frame parsed — v1 (0xFE) or v2 (0xFD)</div>
+          <p class="step-desc">
+            The parser checks the start byte to select the correct frame format,
+            reads the message ID, extracts the payload bytes, and returns a
+            <span class="inline-code">MavlinkFrame</span> record. CRC validation is
+            performed using the MAVLink CRC-16 with the per-message seed byte.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Message decoded and merged into DroneSnapshot</div>
+          <p class="step-desc">
+            <span class="inline-code">MavlinkMessageDecoder</span> handles 6 message types
+            (see table below). Each decoded result is merged into the
+            <span class="inline-code">DroneSnapshot</span> for the sending system ID.
+            The snapshot is a mutable in-memory object — only the fields covered by each
+            message type are updated on each frame. Fields not yet seen remain null.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Scheduled 500 ms publish tick</div>
+          <p class="step-desc">
+            A separate <span class="inline-code">@Scheduled</span> method fires every
+            500 ms. For each known <span class="inline-code">DroneSnapshot</span> it
+            builds a <span class="inline-code">TelemetryDTO</span> from the current
+            merged state, broadcasts it to STOMP
+            <span class="inline-code">/topic/telemetry/MAVLINK-{sysId}</span>,
+            and persists it to PostgreSQL via
+            <span class="inline-code">TelemetryService.persistBatch()</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Decoded MAVLink Message Types</h3>
+    <table>
+      <thead><tr><th>MAVLink Message</th><th>ID</th><th>Fields extracted</th></tr></thead>
+      <tbody>
+        <tr><td>HEARTBEAT</td><td>0</td><td>arm state (<span class="inline-code">isArmed</span>), flight mode string (<span class="inline-code">flightMode</span>)</td></tr>
+        <tr><td>SYS_STATUS</td><td>1</td><td>battery percentage (<span class="inline-code">battery</span>)</td></tr>
+        <tr><td>GPS_RAW_INT</td><td>24</td><td>fix type (<span class="inline-code">fixType</span>), HDOP (<span class="inline-code">hdop</span>), satellite count (<span class="inline-code">satelliteCount</span>)</td></tr>
+        <tr><td>ATTITUDE</td><td>30</td><td>roll and pitch in degrees (<span class="inline-code">roll</span>, <span class="inline-code">pitch</span>)</td></tr>
+        <tr><td>GLOBAL_POSITION_INT</td><td>33</td><td>latitude, longitude, altitude AMSL (<span class="inline-code">altitude</span>), relative altitude, heading (<span class="inline-code">heading</span>), ground speed (<span class="inline-code">speed</span>)</td></tr>
+        <tr><td>RADIO_STATUS</td><td>109</td><td>RF link quality 0–100 (<span class="inline-code">rssi</span>)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Supported C2 Commands</h3>
+    <p>
+      Commands are sent via
+      <span class="inline-code">POST /api/drones/MAVLINK-1/command</span> with a JSON body.
+      The backend translates them to MAVLink
+      <span class="inline-code">COMMAND_LONG</span> (id 76) packets and sends them
+      back to the drone's last-seen UDP source address.
+    </p>
+    <table>
+      <thead><tr><th>commandType</th><th>MAV_CMD</th><th>Body fields</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>RTH</td>
+          <td>20 — NAV_RETURN_TO_LAUNCH</td>
+          <td>none</td>
+          <td>Returns drone to home position and lands</td>
+        </tr>
+        <tr>
+          <td>ARM</td>
+          <td>400 — COMPONENT_ARM_DISARM</td>
+          <td>none</td>
+          <td>Arms motors (param1=1, param2=21196 force-arm)</td>
+        </tr>
+        <tr>
+          <td>DISARM</td>
+          <td>400 — COMPONENT_ARM_DISARM</td>
+          <td>none</td>
+          <td>Disarms motors (param1=0)</td>
+        </tr>
+        <tr>
+          <td>TAKEOFF</td>
+          <td>176 + 400 + 22 sequence</td>
+          <td>none</td>
+          <td>Sets GUIDED mode → force-arm → NAV_TAKEOFF to 20 m. Returns 409 if EKF/GPS/home not ready.</td>
+        </tr>
+        <tr>
+          <td>GOTO</td>
+          <td>176 + 86 sequence</td>
+          <td><span class="inline-code">latitude</span>, <span class="inline-code">longitude</span>, <span class="inline-code">altitude</span> (AMSL)</td>
+          <td>Sets GUIDED mode → SET_POSITION_TARGET_GLOBAL_INT. Altitude is converted from AMSL to relative-home using live snapshot before dispatch.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-title">GOTO altitude frame</div>
+      <p>
+        The UI and the REST API accept altitude in <strong>AMSL (metres above mean sea level)</strong>
+        — the same frame as all other telemetry. Internally, before the MAVLink packet is built,
+        the backend reads the live <span class="inline-code">GLOBAL_POSITION_INT</span> snapshot
+        to compute the home-relative altitude:
+        <span class="inline-code">rel_alt = requested_AMSL − (alt_AMSL − relative_alt)</span>.
+        This conversion is transparent to the frontend.
+      </p>
+    </div>
+
+    <h3>Running With ArduPilot SITL — Full Guide</h3>
+
+    <h4 style="font-size:.8rem;color:var(--neon);letter-spacing:.08em;margin:1.25rem 0 .4rem;text-transform:uppercase;">Option A — Docker (Recommended for dev teams)</h4>
+    <p>
+      The <span class="inline-code">sitl</span> Docker Compose profile runs ArduPilot
+      inside a container. The ArduPilot repo is mounted from your host machine — no
+      separate clone inside the container. The container auto-initialises submodules and
+      installs Python dependencies on first run.
+    </p>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Clone ArduPilot onto your host machine</div>
+          <div class="code-block" style="margin-top:.5rem">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+            <pre><code><span class="cmd">git clone</span> https://github.com/ArduPilot/ardupilot.git ~/ardupilot</code></pre>
+          </div>
+          <p class="step-desc">
+            You do <strong>not</strong> need to initialise submodules on the host. The
+            container's startup script does that automatically inside Docker. Just clone
+            the top-level repo.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Configure .env</div>
+          <div class="code-block" style="margin-top:.5rem">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+            <pre><code><span class="comment"># .env — add or update these two lines</span>
+MAVLINK_ENABLED=true
+ARDUPILOT_REPO=/home/yourname/ardupilot   <span class="comment"># absolute path to your clone</span></code></pre>
+          </div>
+          <p class="step-desc">
+            <span class="inline-code">ARDUPILOT_REPO</span> must be an absolute path.
+            The Docker Compose bind-mount uses this value directly.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Start the full stack with the sitl profile</div>
+          <div class="code-block" style="margin-top:.5rem">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+            <pre><code><span class="cmd">docker compose --profile dev --profile sitl up --build</span></code></pre>
+          </div>
+          <p class="step-desc">
+            The <span class="inline-code">sitl</span> container mounts your ArduPilot
+            repo, runs <span class="inline-code">git submodule update --init --recursive</span>
+            if submodules are missing, installs <span class="inline-code">pymavlink</span>
+            and <span class="inline-code">MAVProxy</span> if absent, then compiles and
+            launches <span class="inline-code">sim_vehicle.py -v ArduCopter</span>.
+            <br/><br/>
+            <strong>First-boot compile time:</strong> expect 5–15 minutes for the initial
+            ArduCopter build. Subsequent starts are instant — the compiled artefacts are
+            cached in the mounted repo directory on your host.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Wait for SITL to report EKF active</div>
+          <p class="step-desc">
+            Watch <span class="inline-code">docker logs -f sherlock-sitl</span>.
+            The drone is ready to receive commands once you see:
+          </p>
+          <div class="code-block" style="margin-top:.5rem">
+            <pre><code>AP: EKF3 IMU0 is using GPS
+AP: EKF3 IMU1 is using GPS</code></pre>
+          </div>
+          <p class="step-desc">
+            At this point the backend has already seen HEARTBEAT frames and created a
+            <span class="inline-code">MAVLINK-1</span> entry. The drone will appear in the
+            asset selector alongside the simulated SHERLOCK-XX drones.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">Git ownership inside Docker — already fixed</div>
+      <p>
+        Docker runs the SITL container as root, but your mounted ArduPilot repo is
+        owned by your host user. Git refuses to operate on directories owned by a
+        different user ("dubious ownership"). The
+        <span class="inline-code">docker-compose.yml</span> startup script resolves
+        this by running
+        <span class="inline-code">git config --global safe.directory '*'</span>
+        inside the container before any git operations. This is scoped entirely inside
+        the throwaway container and has <strong>no effect on your host git config</strong>.
+      </p>
+    </div>
+
+    <h4 style="font-size:.8rem;color:var(--neon);letter-spacing:.08em;margin:1.75rem 0 .4rem;text-transform:uppercase;">Option B — Local SITL (no Docker)</h4>
+    <p>
+      If you prefer running ArduPilot directly on your host (faster iteration, easier
+      to attach a debugger):
+    </p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="comment"># 1. Install ArduPilot build dependencies (Ubuntu/Debian)</span>
+<span class="cmd">cd</span> ~/ardupilot
+<span class="cmd">Tools/environment_install/install-prereqs-ubuntu.sh</span> -y
+. ~/.profile
+
+<span class="comment"># 2. Configure and build ArduCopter for SITL</span>
+<span class="cmd">./waf</span> configure --board sitl
+<span class="cmd">./waf</span> copter
+
+<span class="comment"># 3. Launch SITL — sends MAVLink to localhost:14550</span>
+<span class="cmd">Tools/autotest/sim_vehicle.py</span> \
+  -v ArduCopter \
+  --out=udp:127.0.0.1:14550</code></pre>
+    </div>
+    <p>
+      In a second terminal, start the Sherlock backend with
+      <span class="inline-code">MAVLINK_ENABLED=true</span>:
+    </p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="cmd">cd</span> backend
+MAVLINK_ENABLED=true <span class="cmd">mvn</span> spring-boot:run</code></pre>
+    </div>
+
+    <h4 style="font-size:.8rem;color:var(--neon);letter-spacing:.08em;margin:1.75rem 0 .4rem;text-transform:uppercase;">Option C — Real Drone</h4>
+    <p>
+      Point your drone's telemetry output at your machine's IP on UDP port 14550.
+      On ArduPilot-based autopilots this is configured via the
+      <span class="inline-code">SERIAL*_BAUD</span> and
+      <span class="inline-code">SERIAL*_PROTOCOL</span> parameters, typically using
+      a companion computer (Raspberry Pi) that forwards the serial link over UDP.
+      Set <span class="inline-code">MAVLINK_ENABLED=true</span> and the adapter
+      automatically discovers the drone when the first HEARTBEAT arrives.
+    </p>
+
+    <h3>Typical SITL First-Launch Timeline</h3>
+    <table>
+      <thead><tr><th>Time</th><th>What you see in logs</th><th>What it means</th></tr></thead>
+      <tbody>
+        <tr><td>0 s</td><td><span class="inline-code">Initializing ArduPilot git submodules…</span></td><td>Container started, cloning submodules (first run only)</td></tr>
+        <tr><td>1–3 min</td><td><span class="inline-code">Installing required SITL Python dependencies…</span></td><td>pip installs pymavlink + MAVProxy (first run only)</td></tr>
+        <tr><td>3–15 min</td><td><span class="inline-code">[ 1/1414] Compiling…</span></td><td>Full ArduCopter compile — progress counter climbs to 1414</td></tr>
+        <tr><td>+0 s</td><td><span class="inline-code">SIM_VEHICLE: Starting up at SITL location</span></td><td>Compile done, SITL launching</td></tr>
+        <tr><td>+5 s</td><td><span class="inline-code">AP: ArduCopter V4.x.x-dev</span></td><td>Firmware booted</td></tr>
+        <tr><td>+10 s</td><td><span class="inline-code">AP: EKF3 IMU0 initialised</span></td><td>Navigation filter started</td></tr>
+        <tr><td>+20 s</td><td><span class="inline-code">AP: GPS 1: detected u-blox</span></td><td>Simulated GPS locked</td></tr>
+        <tr><td>+30 s</td><td><span class="inline-code">AP: EKF3 IMU0 is using GPS</span></td><td><strong>Ready for commands</strong> — MAVLINK-1 appears in GCS</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Typical Development Workflow with SITL</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Start the full stack</div>
+          <div class="code-block" style="margin-top:.5rem">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+            <pre><code><span class="cmd">docker compose --profile dev --profile sitl up --build</span></code></pre>
+          </div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Wait for SITL to reach GPS lock (~30 s after compile)</div>
+          <div class="code-block" style="margin-top:.5rem">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+            <pre><code><span class="cmd">docker logs -f sherlock-sitl</span>   <span class="comment"># watch for "EKF3 IMU0 is using GPS"</span></code></pre>
+          </div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Open the GCS and select MAVLINK-1</div>
+          <p class="step-desc">
+            Go to <a href="http://localhost:5173">http://localhost:5173</a> and log in.
+            The asset selection overlay will list both <span class="inline-code">SHERLOCK-XX</span>
+            (simulated) and <span class="inline-code">MAVLINK-1</span> (SITL) drones.
+            Select <strong>MAVLINK-1</strong> for full C2 access.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">ARM the drone</div>
+          <p class="step-desc">
+            Click <strong>ARM</strong> in the System Panel. SITL will respond with
+            arm confirmation — the ARM button border turns neon and
+            <span class="inline-code">isArmed: true</span> appears in telemetry.
+            If arm is rejected, the EKF may not be ready yet; wait a few more seconds.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">TAKEOFF</div>
+          <p class="step-desc">
+            Click <strong>TAKEOFF</strong>. The backend sends GUIDED mode + force-arm +
+            NAV_TAKEOFF to 20 m. Watch the altitude value in the Telemetry Panel climb.
+            The SITL logs will show the motors ramping and the drone climbing.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <div class="step-title">Click-to-GOTO via Driver Mode</div>
+          <p class="step-desc">
+            Enable <strong>DRIVER MODE</strong> in the System Panel.
+            Left-click anywhere on the globe — Sherlock sends a GOTO command with that
+            position at the drone's current altitude. The drone navigates there while you
+            watch it move on the map.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <div class="step-title">Execute a saved mission</div>
+          <p class="step-desc">
+            Switch to <strong>MISSION PLAN</strong> mode, place waypoints on the map,
+            save the mission, then click <strong>EXECUTE</strong> in the SAVED tab.
+            Select <strong>MAVLINK-1</strong> as the target drone. The server-side
+            execution loop starts and drives the drone through each waypoint sequentially.
+          </p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">8</div>
+        <div class="step-body">
+          <div class="step-title">RTH when done</div>
+          <p class="step-desc">
+            Click <strong>RTH</strong> to send Return To Home. The drone will fly back
+            to its arm position and land automatically. Then click
+            <strong>DISARM</strong>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <h3>SITL Environment Variables</h3>
+    <table>
+      <thead><tr><th>Variable</th><th>Default</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td>MAVLINK_ENABLED</td><td>false</td><td>Must be <span class="inline-code">true</span> to activate the MAVLink adapter and DroneCommandService</td></tr>
+        <tr><td>MAVLINK_UDP_PORT</td><td>14550</td><td>UDP port the backend listens on. SITL / drone must target this port.</td></tr>
+        <tr><td>ARDUPILOT_REPO</td><td>./ardupilot</td><td>Absolute path to your ArduPilot git clone on the host. Mounted into the SITL container.</td></tr>
+        <tr><td>SITL_VEHICLE</td><td>ArduCopter</td><td>ArduPilot vehicle type passed to <span class="inline-code">sim_vehicle.py -v</span>. Other options: <span class="inline-code">ArduPlane</span>, <span class="inline-code">Rover</span>.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Monitoring MAVLink Traffic</h3>
+    <p>
+      To inspect raw MAVLink frames during development without modifying backend code,
+      use <strong>MAVProxy</strong> on the host to tap the UDP stream:
+    </p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">copy</button>
+      <pre><code><span class="comment"># Install MAVProxy</span>
+<span class="cmd">pip3 install</span> MAVProxy
+
+<span class="comment"># Connect to the SITL UDP stream and forward a copy to the backend</span>
+<span class="cmd">mavproxy.py</span> \
+  --master=udp:0.0.0.0:14555 \
+  --out=udp:127.0.0.1:14550 \
+  --out=udp:127.0.0.1:14556
+
+<span class="comment"># Then point SITL to 14555 instead of 14550</span>
+<span class="cmd">sim_vehicle.py</span> -v ArduCopter --out=udp:127.0.0.1:14555</code></pre>
+    </div>
+    <p>
+      MAVProxy's console prints each incoming frame type in real time, making it easy
+      to confirm which messages are flowing before debugging the backend decoder.
+    </p>
+
+    <h3>Troubleshooting SITL</h3>
+
+    <h4 style="font-size:.8rem;color:var(--caution);letter-spacing:.08em;margin:1.25rem 0 .4rem;text-transform:uppercase;">SITL container exits with "Build failed"</h4>
+    <p>
+      The most common cause is an incomplete submodule checkout. Inside the container,
+      git may refuse to operate on mounted directories due to ownership differences
+      (host user vs container root). This is fixed in the
+      <span class="inline-code">docker-compose.yml</span> startup script with
+      <span class="inline-code">git config --global safe.directory '*'</span>.
+      If you are on an older version of this repo, update the compose file to use the
+      wildcard rather than the specific path.
+    </p>
+
+    <h4 style="font-size:.8rem;color:var(--caution);letter-spacing:.08em;margin:1.25rem 0 .4rem;text-transform:uppercase;">MAVLINK-1 never appears in the asset selector</h4>
+    <p>
+      The backend has not received a HEARTBEAT from SITL yet. Check that:
+    </p>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">▸</div>
+        <div class="step-body">
+          <div class="step-title"><span class="inline-code">MAVLINK_ENABLED=true</span> is set in your <span class="inline-code">.env</span> and the backend was restarted after the change</div>
+          <p class="step-desc">The adapter is a <span class="inline-code">@ConditionalOnProperty</span> bean — it does not activate at runtime; it requires a restart.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">▸</div>
+        <div class="step-body">
+          <div class="step-title">SITL is fully booted (EKF active + GPS lock)</div>
+          <p class="step-desc">SITL sends HEARTBEAT frames immediately, but the drone is useless before GPS lock. Check <span class="inline-code">docker logs sherlock-sitl</span> for <em>"EKF3 IMU0 is using GPS"</em>.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">▸</div>
+        <div class="step-body">
+          <div class="step-title">Both containers are on the same Docker network</div>
+          <p class="step-desc">The SITL container sends MAVLink to <span class="inline-code">backend:14550</span> using the Docker internal hostname. Run <span class="inline-code">docker inspect sherlock-sitl</span> and confirm <span class="inline-code">sherlock-net</span> is listed under Networks.</p>
+        </div>
+      </div>
+    </div>
+
+    <h4 style="font-size:.8rem;color:var(--caution);letter-spacing:.08em;margin:1.25rem 0 .4rem;text-transform:uppercase;">ARM returns 409 Conflict</h4>
+    <p>
+      TAKEOFF and GOTO require navigation readiness — EKF must be healthy, GPS must be
+      locked, and a home position must be set. Wait until the SITL log shows
+      <em>"Field Elevation Set"</em> and <em>"EKF3 IMU0 is using GPS"</em>.
+      ARM alone (without TAKEOFF) can usually proceed earlier once HEARTBEAT reports
+      the vehicle is not locked out.
+    </p>
+
+    <h4 style="font-size:.8rem;color:var(--caution);letter-spacing:.08em;margin:1.25rem 0 .4rem;text-transform:uppercase;">Mission EXECUTE returns 503 Service Unavailable</h4>
+    <p>
+      The MAVLink adapter is disabled.
+      Set <span class="inline-code">MAVLINK_ENABLED=true</span> in <span class="inline-code">.env</span>
+      and restart the backend. You can still create and save missions — only execution requires
+      the adapter.
+    </p>
+
+    <h4 style="font-size:.8rem;color:var(--caution);letter-spacing:.08em;margin:1.25rem 0 .4rem;text-transform:uppercase;">Drone stops mid-mission / mission aborts</h4>
+    <p>
+      The <span class="inline-code">MissionExecutorService</span> has built-in fail-safe guards:
+      if the drone does not reach a waypoint within a bounded retry count it aborts the mission
+      automatically. Common causes in SITL: waypoint altitude is set too high (drone cannot
+      climb fast enough before timeout), or a GOTO command was rejected because the vehicle
+      was not in GUIDED mode when the tick fired. Try reducing waypoint altitude or spacing
+      waypoints farther apart.
+    </p>
+  </section>
+
+  <hr />
+
   <!-- ═══════════════════════════════ TROUBLESHOOTING ═══════════════════════════════ -->
   <section id="troubleshooting">
-    <div class="section-label">Section 09</div>
+    <div class="section-label">Section 10</div>
     <h2>Common Problems</h2>
 
     <h3>Login button stays disabled / nothing happens</h3>
@@ -1482,7 +2058,7 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
 </div>
 
 <footer>
-  <span>SHERLOCK GCS</span> — SKYTRACK v1.1 — WALKTHROUGH REFERENCE — ◈ TRAINING MODE ◈
+  <span>SHERLOCK GCS</span> — SKYTRACK v1.2 — WALKTHROUGH REFERENCE — ◈ TRAINING MODE ◈
 </footer>
 
 <script>
