@@ -1,0 +1,24 @@
+# Bağımlılıklar (En çok token harcayan yer)
+node_modules/
+vendor/
+.gradle/
+.mvn/
+
+# Build çıktıları
+dist/
+build/
+target/
+out/
+*.log
+
+# Gizli dosyalar ve cache
+.git/
+.idea/
+.vscode/
+.cache/
+.opencode/
+
+# Büyük veri dosyaları
+*.json
+*.lock
+*.csv
