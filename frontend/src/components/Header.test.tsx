@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import Header from './Header';
 import { NAVIGATION_DIRECTION_ALL } from '../constants/navigation';
 
@@ -243,19 +243,20 @@ describe('Header', () => {
     expect(header).toHaveClass('flex', 'items-center', 'justify-between', 'px-4', 'h-11', 'bg-panel', 'border-b', 'border-line');
   });
 
-  it('closes settings when clicking outside', async () => {
+  it('closes settings when clicking outside', () => {
     render(<Header {...defaultProps} />);
-    
+
     // Open settings
     fireEvent.click(screen.getByText('SETTINGS'));
     expect(screen.getByText('FREE MODE: OFF')).toBeInTheDocument();
-    
-    // Click outside (simulate clicking on body)
-    fireEvent.mouseDown(document.body);
-    
-    await waitFor(() => {
-      expect(screen.queryByText('FREE MODE: OFF')).not.toBeInTheDocument();
+
+    // Click outside — wrap in act() to flush the React state update triggered by the window
+    // mousedown listener. waitFor() is incompatible with vi.useFakeTimers() used in beforeEach.
+    act(() => {
+      fireEvent.mouseDown(document.body);
     });
+
+    expect(screen.queryByText('FREE MODE: OFF')).not.toBeInTheDocument();
   });
 
   it('hides settings when drone is deselected', () => {

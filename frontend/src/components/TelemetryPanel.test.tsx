@@ -61,14 +61,16 @@ describe('TelemetryPanel', () => {
     
     expect(screen.getByText('◈ Telemetry Feed')).toBeInTheDocument();
     expect(screen.getByText('○ WAIT')).toBeInTheDocument();
-    expect(screen.getByText('PLATFORM NONE')).toBeInTheDocument();
+    // 'PLATFORM' and 'NONE' are split across a text node and a <span> — match the span directly
+    expect(screen.getByText('NONE')).toBeInTheDocument();
   });
 
   it('renders with telemetry data', () => {
     render(<TelemetryPanel telemetry={mockTelemetry} />);
     
     expect(screen.getByText('● LIVE')).toBeInTheDocument();
-    expect(screen.getByText('PLATFORM SHERLOCK-01')).toBeInTheDocument();
+    // 'PLATFORM' and the drone ID are split across a text node and a <span> — match the span directly
+    expect(screen.getByText('SHERLOCK-01')).toBeInTheDocument();
   });
 
   it('renders all section headers', () => {

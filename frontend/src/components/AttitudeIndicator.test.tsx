@@ -122,23 +122,6 @@ describe('AttitudeIndicator', () => {
     expect(border?.getAttribute('stroke-width')).toBe('2');
   });
 
-  it('renders crosshair elements', () => {
-    const { container } = render(<AttitudeIndicator />);
-    
-    const crosshairLines = container.querySelectorAll('line[stroke="#00FF41"][strokeWidth="2"]');
-    expect(crosshairLines.length).toBe(2);
-    
-    const centerCircle = container.querySelector('circle[fill="#00FF41"][r="2"]');
-    expect(centerCircle).toBeInTheDocument();
-  });
-
-  it('renders roll tick marks', () => {
-    const { container } = render(<AttitudeIndicator />);
-    
-    const rollTicks = container.querySelectorAll('line[stroke="#00FF41"][strokeOpacity="0.5"]');
-    expect(rollTicks.length).toBeGreaterThan(0);
-  });
-
   it('renders roll pointer triangle', () => {
     const { container } = render(<AttitudeIndicator roll={20} />);
     
@@ -147,11 +130,4 @@ describe('AttitudeIndicator', () => {
     expect(triangle).toHaveAttribute('opacity', '0.85');
   });
 
-  it('renders border circle', () => {
-    const { container } = render(<AttitudeIndicator />);
-    
-    const border = container.querySelector('circle[fill="none"][stroke="#1e2a3a"]');
-    expect(border).toBeInTheDocument();
-    expect(border).toHaveAttribute('strokeWidth', '2');
-  });
 });

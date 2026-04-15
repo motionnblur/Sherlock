@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import LoginPage from './LoginPage';
 
-// Mock the useLogin hook
-const mockSubmitLogin = vi.fn();
-const mockUseLogin = vi.fn();
+// vi.mock is hoisted to the top of the file, so variables used inside its factory
+// must also be hoisted via vi.hoisted to avoid "Cannot access before initialization".
+const { mockSubmitLogin, mockUseLogin } = vi.hoisted(() => ({
+  mockSubmitLogin: vi.fn(),
+  mockUseLogin: vi.fn(),
+}));
 
 vi.mock('../hooks/useLogin', () => ({
   useLogin: mockUseLogin,
@@ -145,13 +148,8 @@ describe('LoginPage', () => {
     
     render(<LoginPage />);
     
-    expect(screen.getByText('Authentication failed')).toBeInTheDocument();
-    expect(screen.getByText('Authentication failed')).toHaveClass('text-danger');
-  });
-    
-    render(<LoginPage />);
-    
     expect(screen.getByText('✕ Authentication failed')).toBeInTheDocument();
+    expect(screen.getByText('✕ Authentication failed')).toHaveClass('text-danger');
   });
 
   it('disables inputs when isSubmitting is true', () => {
@@ -189,7 +187,8 @@ describe('LoginPage', () => {
     const mainContainer = container.firstChild;
     expect(mainContainer).toHaveClass('h-screen', 'flex', 'flex-col', 'items-center', 'justify-center', 'bg-surface', 'font-mono');
     
-    const formContainer = screen.getByRole('form').parentElement;
+    // <form> without aria-label is not exposed as role="form"; query it directly
+    const formContainer = container.querySelector('form')!.parentElement;
     expect(formContainer).toHaveClass('w-80', 'border', 'border-line', 'bg-panel');
   });
 
@@ -201,9 +200,10 @@ describe('LoginPage', () => {
 
   it('has autoFocus on username input', () => {
     render(<LoginPage />);
-    
+
     const usernameInput = screen.getByLabelText('Operator ID');
-    expect(usernameInput).toHaveAttribute('autoFocus');
+    // React calls .focus() on mount for autoFocus; the element should be focused
+    expect(usernameInput).toHaveFocus();
   });
 
   it('has proper autocomplete attributes', () => {
