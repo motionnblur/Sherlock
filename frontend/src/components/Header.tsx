@@ -93,14 +93,6 @@ export default function Header({
             SHERLOCK GCS
           </span>
         </div>
-        <div className="w-px h-5 bg-line" />
-        <span className="text-muted text-xs tracking-wider uppercase">
-          SHERLOCK Ground Control System
-        </span>
-      </div>
-
-      <div className="text-caution text-xs font-bold tracking-widest uppercase animate-blink">
-        ◈ TRAINING MODE ◈
       </div>
 
       <div className="flex items-center gap-6">
