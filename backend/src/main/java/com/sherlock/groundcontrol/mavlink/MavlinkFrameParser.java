@@ -239,6 +239,7 @@ public final class MavlinkFrameParser {
             case 24  -> 24;   // GPS_RAW_INT
             case 30  -> 39;   // ATTITUDE
             case 33  -> 104;  // GLOBAL_POSITION_INT
+            case 77  -> 143;  // COMMAND_ACK
             case 76  -> 152;  // COMMAND_LONG
             case 86  -> 5;    // SET_POSITION_TARGET_GLOBAL_INT
             case 109 -> 185;  // RADIO_STATUS

@@ -786,8 +786,9 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
             to the WebSocket with a JWT in the STOMP CONNECT headers.
             The server validates the token before the subscription is granted.
             Each message is then validated and stored in React state —
-            the globe moves, panels update, and geofence alert trays appear when
-            the backend emits a breach notification.
+            the globe moves, panels update, geofence alert trays appear when
+            the backend emits a breach notification, and command lifecycle updates
+            arrive on <span class="inline-code">/topic/commands/{droneId}</span>.
           </p>
         </div>
       </div>
@@ -828,7 +829,8 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
         <tr><td>POST /api/telemetry/last-known</td><td>Bearer token</td><td>Bulk last-known telemetry for a supplied list of drone IDs</td></tr>
         <tr><td>GET /api/telemetry/history</td><td>Bearer token</td><td>Last 150 telemetry points from the database</td></tr>
         <tr><td>GET /api/drones/{droneId}/stream</td><td>Bearer token</td><td>JSON with <span class="inline-code">{ "streamUrl": "http://…/index.m3u8" }</span> — the HLS URL for the live camera</td></tr>
-        <tr><td>POST /api/drones/{droneId}/command</td><td>Bearer token</td><td>Send C2 command (RTH / ARM / DISARM / TAKEOFF / GOTO). 202 dispatched, 409 not ready, 503 MAVLink disabled</td></tr>
+        <tr><td>POST /api/drones/{droneId}/command</td><td>Bearer token</td><td>Send C2 command (RTH / ARM / DISARM / TAKEOFF / GOTO). Response includes lifecycle entry with status: PENDING / SENT / ACKED / REJECTED / TIMEOUT / FAILED</td></tr>
+        <tr><td>GET /api/drones/{droneId}/commands?limit=20</td><td>Bearer token</td><td>Returns recent command lifecycle entries for Command Log bootstrap</td></tr>
         <tr><td>GET /api/geofences</td><td>Bearer token</td><td>List active and inactive geofences newest-first</td></tr>
         <tr><td>POST /api/geofences</td><td>Bearer token</td><td>Create a geofence polygon with ordered vertices; 400 on invalid geometry, 409 on duplicate name</td></tr>
         <tr><td>GET /api/geofences/{id}</td><td>Bearer token</td><td>Return one geofence with ordered polygon points</td></tr>
@@ -1109,8 +1111,8 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
     <h3>Right panel — System / Mission Planning</h3>
     <p>
       In normal mode: compass rose (tracks heading), mission elapsed clock, altitude
-      trend mini-chart, C2 command buttons (RTH / ARM / DISARM / TAKEOFF), and a
-      Driver Mode toggle for live click-to-navigate.
+      trend mini-chart, C2 command buttons (RTH / ARM / DISARM / TAKEOFF), command
+      lifecycle log, and a Driver Mode toggle for live click-to-navigate.
     </p>
     <p>
       When <strong>MISSION PLAN</strong> is active, this panel switches to
@@ -1435,7 +1437,7 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
           <td>SHERLOCK-XX</td>
           <td>TelemetrySimulator (Java, always on)</td>
           <td>SHERLOCK-01</td>
-          <td>Pure software, no MAVLink. Always present. C2 commands return 503.</td>
+          <td>Pure software, no MAVLink. Always present. Operator C2 commands are lifecycle-tracked with synthetic ACK.</td>
         </tr>
         <tr>
           <td>MAVLINK-XX</td>
@@ -1523,6 +1525,7 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
         <tr><td>GPS_RAW_INT</td><td>24</td><td>fix type (<span class="inline-code">fixType</span>), HDOP (<span class="inline-code">hdop</span>), satellite count (<span class="inline-code">satelliteCount</span>)</td></tr>
         <tr><td>ATTITUDE</td><td>30</td><td>roll and pitch in degrees (<span class="inline-code">roll</span>, <span class="inline-code">pitch</span>)</td></tr>
         <tr><td>GLOBAL_POSITION_INT</td><td>33</td><td>latitude, longitude, altitude AMSL (<span class="inline-code">altitude</span>), relative altitude, heading (<span class="inline-code">heading</span>), ground speed (<span class="inline-code">speed</span>)</td></tr>
+        <tr><td>COMMAND_ACK</td><td>77</td><td>maps ACK results to command lifecycle transitions (ACKED / REJECTED)</td></tr>
         <tr><td>RADIO_STATUS</td><td>109</td><td>RF link quality 0–100 (<span class="inline-code">rssi</span>)</td></tr>
       </tbody>
     </table>
@@ -1531,7 +1534,7 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
     <p>
       Commands are sent via
       <span class="inline-code">POST /api/drones/MAVLINK-1/command</span> with a JSON body.
-      The backend translates them to MAVLink
+      The backend starts command lifecycle tracking immediately, translates them to MAVLink
       <span class="inline-code">COMMAND_LONG</span> (id 76) packets and sends them
       back to the drone's last-seen UDP source address.
     </p>

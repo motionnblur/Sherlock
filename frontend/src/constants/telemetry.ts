@@ -1,6 +1,7 @@
 export const FLEET_LITE_TOPIC = '/topic/telemetry/lite/fleet';
 export const BATTERY_ALERT_TOPIC = '/topic/alerts/battery';
 export const GEOFENCE_ALERT_TOPIC = '/topic/alerts/geofence';
+export const COMMAND_TOPIC_PREFIX = '/topic/commands/';
 
 export const BATTERY_WARN_THRESHOLD = 20;
 export const BATTERY_CRITICAL_THRESHOLD = 5;
@@ -15,3 +16,4 @@ export const SELECTION_ASSET_ROW_HEIGHT_PX = 40;
 export const MAX_SELECTION_VISIBLE_ROWS = 10;
 export const ASSET_LIST_ROW_HEIGHT_PX = 68;
 export const ASSET_LIST_OVERSCAN_ROWS = 8;
+export const COMMAND_LOG_LIMIT = 20;

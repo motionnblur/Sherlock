@@ -101,10 +101,12 @@ Extended fields (`roll`–`flightMode`) are null in the lite fleet stream and wh
 | WS connect               | `/ws-skytrack` (SockJS)                        |
 | STOMP selected stream    | `/topic/telemetry/{droneId}`                   |
 | STOMP fleet lite stream  | `/topic/telemetry/lite/fleet`                  |
+| STOMP command lifecycle  | `/topic/commands/{droneId}`                    |
 | REST history             | `GET /api/telemetry/history`                   |
 | REST bulk last-known     | `POST /api/telemetry/last-known`               |
 | REST stream URL          | `GET /api/drones/{droneId}/stream`             |
-| **C2 command**           | `POST /api/drones/{droneId}/command` — body: `{ commandType: "RTH" \| "ARM" \| "DISARM" \| "TAKEOFF" \| "GOTO", latitude?: number, longitude?: number, altitude?: number }` (`GOTO` altitude is accepted as AMSL from UI and converted to relative-home meters using live MAVLink snapshot; `409` when vehicle navigation readiness is not met) |
+| **C2 command**           | `POST /api/drones/{droneId}/command` — body: `{ commandType: "RTH" \| "ARM" \| "DISARM" \| "TAKEOFF" \| "GOTO", latitude?: number, longitude?: number, altitude?: number }`; response includes `CommandLifecycleDTO` with status `PENDING \| SENT \| ACKED \| REJECTED \| TIMEOUT \| FAILED` (`GOTO` altitude is accepted as AMSL from UI and converted to relative-home meters using live MAVLink snapshot; `409` when vehicle navigation readiness is not met) |
+| **Command history**      | `GET /api/drones/{droneId}/commands?limit=20` — returns recent command lifecycle entries for panel bootstrap |
 | **Mission CRUD**         | `POST /api/missions` · `GET /api/missions` · `GET /api/missions/{id}` · `PUT /api/missions/{id}` · `DELETE /api/missions/{id}` |
 | **Mission execute**      | `POST /api/missions/{id}/execute?droneId=X` — starts server-side execution loop; `503` if MAVLink disabled; `409` if not PLANNED |
 | **Mission abort**        | `POST /api/missions/{id}/abort` |

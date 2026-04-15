@@ -181,6 +181,19 @@ class MavlinkMessageDecoderTest {
     }
 
     @Test
+    void decodeCommandAckParsesCommandAndResult() {
+        ByteBuffer payload = ByteBuffer.allocate(3).order(ByteOrder.LITTLE_ENDIAN);
+        payload.putShort((short) 22);
+        payload.put((byte) 0);
+
+        var decoded = MavlinkMessageDecoder.decodeCommandAck(payload.array());
+
+        assertTrue(decoded.isPresent());
+        assertEquals(22, decoded.get().command());
+        assertEquals(0, decoded.get().result());
+    }
+
+    @Test
     void decodeMethodsRejectShortPayloads() {
         assertTrue(MavlinkMessageDecoder.decodeHeartbeat(new byte[8]).isEmpty());
         assertTrue(MavlinkMessageDecoder.decodeSysStatus(new byte[18]).isEmpty());
@@ -188,5 +201,6 @@ class MavlinkMessageDecoderTest {
         assertTrue(MavlinkMessageDecoder.decodeAttitude(new byte[27]).isEmpty());
         assertTrue(MavlinkMessageDecoder.decodeGlobalPositionInt(new byte[27]).isEmpty());
         assertTrue(MavlinkMessageDecoder.decodeRadioStatus(new byte[0]).isEmpty());
+        assertTrue(MavlinkMessageDecoder.decodeCommandAck(new byte[2]).isEmpty());
     }
 }

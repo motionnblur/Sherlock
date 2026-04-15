@@ -18,6 +18,7 @@ public final class MavlinkMessageDecoder {
     public static final int MSG_GPS_RAW_INT        = 24;
     public static final int MSG_ATTITUDE           = 30;
     public static final int MSG_GLOBAL_POSITION_INT = 33;
+    public static final int MSG_COMMAND_ACK        = 77;
     public static final int MSG_RADIO_STATUS       = 109;
 
     private static final int MAV_MODE_FLAG_SAFETY_ARMED = 0x80;
@@ -67,6 +68,8 @@ public final class MavlinkMessageDecoder {
             double latitude, double longitude, double altitudeMsl, double relativeAltitudeMeters,
             double speed, double heading
     ) {}
+
+    public record CommandAckData(int command, int result) {}
 
     public record RadioStatusData(int rssiPercent) {}
 
@@ -163,6 +166,16 @@ public final class MavlinkMessageDecoder {
         }
         int rssiPercent = (int) Math.round((rssiRaw / (double) RSSI_MAX_RAW) * 100.0);
         return Optional.of(new RadioStatusData(Math.min(100, rssiPercent)));
+    }
+
+    public static Optional<CommandAckData> decodeCommandAck(byte[] payload) {
+        if (payload.length < 3) {
+            return Optional.empty();
+        }
+        ByteBuffer buffer = le(payload);
+        int command = buffer.getShort() & 0xFFFF;
+        int result = buffer.get() & 0xFF;
+        return Optional.of(new CommandAckData(command, result));
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────────

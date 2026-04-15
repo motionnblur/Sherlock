@@ -1,3 +1,4 @@
+import type { CommandLogEntry, CommandStatus, CommandType } from '../interfaces/command';
 import type { Geofence, GeofenceAlert, GeofencePoint } from '../interfaces/geofence';
 import type { TelemetryByDrone, TelemetryPoint } from '../interfaces/telemetry';
 
@@ -177,6 +178,71 @@ export function parseGeofenceAlertMessage(body: string): GeofenceAlert | null {
   } catch {
     return null;
   }
+}
+
+const COMMAND_TYPES: CommandType[] = ['RTH', 'ARM', 'DISARM', 'TAKEOFF', 'GOTO'];
+const COMMAND_STATUSES: CommandStatus[] = ['PENDING', 'SENT', 'ACKED', 'REJECTED', 'TIMEOUT', 'FAILED'];
+
+function isCommandType(value: unknown): value is CommandType {
+  return typeof value === 'string' && COMMAND_TYPES.includes(value as CommandType);
+}
+
+function isCommandStatus(value: unknown): value is CommandStatus {
+  return typeof value === 'string' && COMMAND_STATUSES.includes(value as CommandStatus);
+}
+
+function isIsoTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+}
+
+export function parseCommandLifecycleMessage(body: string): CommandLogEntry | null {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    return normalizeCommandEntry(parsed);
+  } catch {
+    return null;
+  }
+}
+
+export function parseCommandHistoryResponse(payload: unknown): CommandLogEntry[] {
+  if (!payload || typeof payload !== 'object') {
+    return [];
+  }
+  const candidate = payload as { commands?: unknown };
+  if (!Array.isArray(candidate.commands)) {
+    return [];
+  }
+  return candidate.commands
+    .map(normalizeCommandEntry)
+    .filter((entry): entry is CommandLogEntry => entry !== null);
+}
+
+function normalizeCommandEntry(payload: unknown): CommandLogEntry | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  const candidate = payload as Record<string, unknown>;
+  if (
+    typeof candidate.commandId !== 'string'
+    || typeof candidate.droneId !== 'string'
+    || !isCommandType(candidate.commandType)
+    || !isCommandStatus(candidate.status)
+    || !isIsoTimestamp(candidate.requestedAt)
+    || !isIsoTimestamp(candidate.updatedAt)
+    || (candidate.detail !== undefined && candidate.detail !== null && typeof candidate.detail !== 'string')
+  ) {
+    return null;
+  }
+
+  return {
+    commandId: candidate.commandId,
+    droneId: candidate.droneId,
+    commandType: candidate.commandType,
+    status: candidate.status,
+    requestedAt: candidate.requestedAt,
+    updatedAt: candidate.updatedAt,
+    detail: (candidate.detail as string | null | undefined) ?? null,
+  };
 }
 
 export function parseLastKnownTelemetryMap(payload: unknown): TelemetryByDrone {

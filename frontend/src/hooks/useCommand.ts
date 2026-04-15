@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react';
 import type { AuthToken } from '../interfaces/auth';
+import type { CommandType } from '../interfaces/command';
 import type { DroneId } from '../interfaces/telemetry';
 import { useAuth } from './useAuth';
 
-export type CommandType = 'RTH' | 'ARM' | 'DISARM' | 'TAKEOFF' | 'GOTO';
+export type { CommandType };
 
 export interface CommandOptions {
   latitude?: number;

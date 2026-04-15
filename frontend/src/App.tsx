@@ -102,7 +102,8 @@ export default function App() {
     deleteGeofence,
     setGeofenceActive,
   } = useGeofences(authToken);
-  const { telemetry, fleetTelemetry, connected, history, batteryAlerts, geofenceAlerts } = useTelemetry(selectedDrone, freeMode, showAllAssets);
+  const { telemetry, fleetTelemetry, connected, history, batteryAlerts, geofenceAlerts, commandLog } =
+    useTelemetry(selectedDrone, freeMode, showAllAssets);
   const lastKnownTelemetry = useLastKnownTelemetry(droneIds, selectedDrone !== null);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
   const { sendCommand, isSending: isCommandSending, commandError } = useCommand(selectedDrone, authToken);
@@ -881,6 +882,7 @@ export default function App() {
             onSendCommand={sendCommand}
             isCommandSending={isCommandSending}
             commandError={commandError}
+            commandLog={commandLog}
             isDriverModeEnabled={isDriverModeEnabled}
             isDriverModeAvailable={isDriverModeAvailable}
             onToggleDriverMode={handleToggleDriverMode}

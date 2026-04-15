@@ -14,6 +14,10 @@ app:
     enabled: ${MAVLINK_ENABLED:false}
     # Standard MAVLink GCS ground port — drone or SITL must target this address.
     udp-port: ${MAVLINK_UDP_PORT:14550}
+  command:
+    lifecycle:
+      per-drone-limit: ${COMMAND_HISTORY_PER_DRONE_LIMIT:20}
+      ack-timeout-ms: ${COMMAND_ACK_TIMEOUT_MS:5000}
 
 spring:
   datasource:

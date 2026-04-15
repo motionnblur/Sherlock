@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseGeofenceAlertMessage, parseGeofenceListResponse, parseGeofenceResponse } from './telemetry';
+import {
+  parseCommandHistoryResponse,
+  parseCommandLifecycleMessage,
+  parseGeofenceAlertMessage,
+  parseGeofenceListResponse,
+  parseGeofenceResponse,
+} from './telemetry';
 
 describe('geofence parsing', () => {
   it('parses geofence alerts', () => {
@@ -67,5 +73,44 @@ describe('geofence parsing', () => {
     });
 
     expect(geofence?.isActive).toBe(true);
+  });
+});
+
+describe('command lifecycle parsing', () => {
+  it('parses single command lifecycle payload', () => {
+    const entry = parseCommandLifecycleMessage(JSON.stringify({
+      commandId: 'cmd-1',
+      droneId: 'MAVLINK-01',
+      commandType: 'RTH',
+      status: 'ACKED',
+      requestedAt: '2026-04-15T00:00:00Z',
+      updatedAt: '2026-04-15T00:00:01Z',
+      detail: 'COMMAND_ACK ACCEPTED',
+    }));
+
+    expect(entry?.status).toBe('ACKED');
+    expect(entry?.commandType).toBe('RTH');
+  });
+
+  it('filters malformed command history items', () => {
+    const parsed = parseCommandHistoryResponse({
+      commands: [
+        {
+          commandId: 'cmd-1',
+          droneId: 'MAVLINK-01',
+          commandType: 'ARM',
+          status: 'SENT',
+          requestedAt: '2026-04-15T00:00:00Z',
+          updatedAt: '2026-04-15T00:00:01Z',
+        },
+        {
+          commandId: 'bad',
+          droneId: 1,
+        },
+      ],
+    });
+
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.commandId).toBe('cmd-1');
   });
 });

@@ -34,6 +34,7 @@ src/
 │   └── AuthContext.tsx          # AuthProvider: JWT state in sessionStorage, login(), logout()
 ├── interfaces/
 │   ├── auth.ts                  # LoginCredentials, AuthToken interfaces
+│   ├── command.ts               # Command lifecycle models (status + command log entry)
 │   ├── components.ts            # Component prop interfaces (HeaderProps includes mission/geofence toggles; MapComponentProps includes mission and geofence overlays)
 │   ├── geofence.ts              # Geofence domain models, request shapes, alert payloads, hook return type
 │   ├── hooks.ts                 # Hook return interfaces
@@ -47,7 +48,7 @@ src/
 │   ├── useLogin.ts              # Login form submission logic; calls POST /api/auth/login
 │   ├── useMission.ts            # Mission CRUD (create/update/delete) + execute/abort; polls GET /api/missions/{id} every 1s while ACTIVE; 401 → logout
 │   ├── useGeofences.ts          # CRUD hook for /api/geofences + activate/deactivate + geofence error handling
-│   ├── useTelemetry.ts          # STOMP client; selected stream + bounded fleet summary; auto-logout on auth error
+│   ├── useTelemetry.ts          # STOMP client; selected stream + bounded fleet summary + command lifecycle log (REST bootstrap + STOMP updates)
 │   ├── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
 │   └── useDroneRegistry.ts      # Polls GET /api/drones every 30s; 401 → logout
 ├── utils/
@@ -70,7 +71,7 @@ src/
     ├── SectionHeader.tsx        # Shared panel section divider/header component
     ├── LowBatteryWindow.tsx     # Floating bottom-right panel; battery alerts in FREE MODE + SHOW ALL only
     ├── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
-    ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, datalink (RSSI/arm/mode), C2 command buttons + DRIVER MODE toggle
+    ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, datalink (RSSI/arm/mode), C2 commands + command lifecycle log + DRIVER MODE toggle
     └── TelemetryPanel.tsx       # Left sidebar: position/kinematics/battery + attitude indicator + GPS quality
     └── map/
         ├── cesiumScene.ts       # Cesium viewer + entity/primitive helper functions/constants
@@ -157,7 +158,7 @@ Pattern for a section header inside a panel:
 `src/hooks/useTelemetry.ts` — the single source of truth for live data.
 
 ```ts
-const { telemetry, fleetTelemetry, connected, history, batteryAlerts, geofenceAlerts } = useTelemetry(
+const { telemetry, fleetTelemetry, connected, history, batteryAlerts, geofenceAlerts, commandLog } = useTelemetry(
   selectedDrone,
   freeMode,
   showAllAssets,
@@ -178,6 +179,7 @@ const { telemetry, fleetTelemetry, connected, history, batteryAlerts, geofenceAl
 | `history`       | `TelemetryPoint[]`       | Last 150 selected-drone telemetry packets |
 | `batteryAlerts` | `LowBatteryAlert[]`      | Active low-battery alerts, sorted by battery ascending; sourced from `/topic/alerts/battery` (event-driven, emitted only on threshold crossing) |
 | `geofenceAlerts` | `GeofenceAlert[]`      | Active geofence enter/exit alerts; sourced from `/topic/alerts/geofence` and deduped in arrival order |
+| `commandLog`    | `CommandLogEntry[]`      | Last command lifecycle events for selected drone; bootstrapped from `GET /api/drones/{id}/commands?limit=20` and updated from STOMP `/topic/commands/{id}` |
 
 ### useCommand
 
@@ -189,13 +191,14 @@ const { sendCommand, isSending, commandError } = useCommand(selectedDrone, authT
 // commandError: 'DRONE NOT CONNECTED' | 'VEHICLE NOT READY' | 'INVALID COMMAND' | 'MAVLINK DISABLED' | 'CMD FAILED (xxx)' | null
 ```
 
-When `app.mavlink.enabled=false` on the server, `sendCommand` will set `commandError = 'MAVLINK DISABLED'` without crashing. The hook is always instantiated — it is safe to call even on simulated drones (server returns 503).
+When `app.mavlink.enabled=false` on the server, `sendCommand` still reports `MAVLINK DISABLED` for non-simulator drones. Simulator drones (`SHERLOCK-*`) receive server-side synthetic ACK lifecycle updates.
 If the command endpoint returns `401`, the hook immediately calls `logout()` to return the operator to `LoginPage`.
 
 Subscription model:
 - Always subscribes to selected full stream: `/topic/telemetry/{droneId}`
 - In Free Mode + SHOW ASSET ALL, also subscribes to `/topic/telemetry/lite/fleet` and `/topic/alerts/battery`
 - Always subscribes to `/topic/alerts/geofence` for the selected drone so geofence breaches are visible outside Free Mode as well
+- Always subscribes to `/topic/commands/{droneId}` for command lifecycle transitions
 - Never opens one STOMP subscription per drone in all-assets mode
 - SHOW ASSETS BY NAW filtering is client-side (heading-based) and does not create extra backend topics or subscriptions
 

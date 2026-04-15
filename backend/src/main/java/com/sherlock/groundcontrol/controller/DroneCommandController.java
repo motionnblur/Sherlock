@@ -1,45 +1,45 @@
 package com.sherlock.groundcontrol.controller;
 
+import com.sherlock.groundcontrol.dto.CommandHistoryResponseDTO;
+import com.sherlock.groundcontrol.dto.CommandLifecycleDTO;
 import com.sherlock.groundcontrol.dto.DroneCommandDTO;
-import com.sherlock.groundcontrol.service.DroneCommandService;
-import com.sherlock.groundcontrol.service.DroneCommandService.DispatchResult;
-import lombok.extern.slf4j.Slf4j;
+import com.sherlock.groundcontrol.service.CommandLifecycleService;
+import com.sherlock.groundcontrol.service.OperatorCommandService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Optional;
-
 /**
- * Exposes the C2 command endpoint.
+ * Exposes operator command lifecycle endpoints.
  *
  * POST /api/drones/{droneId}/command
  * Body: { "commandType": "RTH" | "ARM" | "DISARM" | "TAKEOFF" | "GOTO",
  *         "latitude"?: number, "longitude"?: number, "altitude"?: number }
  *
- * Returns 202 Accepted if the packet was dispatched.
- * Returns 409 if TAKEOFF/GOTO is requested before the vehicle became navigation-ready.
- * Returns 503 if MAVLink adapter is not enabled.
- * Returns 422 if the drone is not currently connected.
+ * Valid command payloads always return a lifecycle body (`CommandLifecycleDTO`) and
+ * are lifecycle-tracked through PENDING/SENT/ACKED/REJECTED/TIMEOUT/FAILED.
+ *
+ * GET /api/drones/{droneId}/commands?limit=20 returns recent lifecycle entries
+ * for UI bootstrap.
  */
 @RestController
 @RequestMapping("/api/drones/{droneId}")
-@Slf4j
+@RequiredArgsConstructor
 public class DroneCommandController {
 
-    private final Optional<DroneCommandService> droneCommandService;
-
-    // Optional injection: service may not exist when app.mavlink.enabled=false
-    public DroneCommandController(Optional<DroneCommandService> droneCommandService) {
-        this.droneCommandService = droneCommandService;
-    }
+    private static final int DEFAULT_COMMAND_HISTORY_LIMIT = 20;
+    private final OperatorCommandService operatorCommandService;
+    private final CommandLifecycleService commandLifecycleService;
 
     @PostMapping("/command")
-    public ResponseEntity<Void> sendCommand(
+    public ResponseEntity<CommandLifecycleDTO> sendCommand(
             @PathVariable String droneId,
             @RequestBody DroneCommandDTO commandDTO
     ) {
@@ -51,18 +51,21 @@ public class DroneCommandController {
             return ResponseEntity.badRequest().build();
         }
 
-        return droneCommandService
-                .map(service -> {
-                    DispatchResult dispatchResult = service.sendCommand(droneId, commandDTO);
-                    return switch (dispatchResult) {
-                        case DISPATCHED -> ResponseEntity.accepted().<Void>build();
-                        case TAKEOFF_NOT_READY, NAVIGATION_NOT_READY -> ResponseEntity.status(HttpStatus.CONFLICT).<Void>build();
-                        case DRONE_UNAVAILABLE -> ResponseEntity.unprocessableEntity().<Void>build();
-                    };
-                })
-                .orElseGet(() -> {
-                    log.warn("Command request for '{}' rejected — MAVLink adapter not enabled", droneId);
-                    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
-                });
+        OperatorCommandService.SubmissionResult result = operatorCommandService.submitCommand(droneId, commandDTO);
+        HttpStatus status = result.httpStatus();
+        return ResponseEntity.status(status).body(result.lifecycle());
+    }
+
+    @GetMapping("/commands")
+    public ResponseEntity<CommandHistoryResponseDTO> getRecentCommands(
+            @PathVariable String droneId,
+            @RequestParam(name = "limit", defaultValue = "20") Integer limit
+    ) {
+        int requestedLimit = limit == null ? DEFAULT_COMMAND_HISTORY_LIMIT : limit;
+        return ResponseEntity.ok(
+                CommandHistoryResponseDTO.builder()
+                        .commands(commandLifecycleService.getRecentCommands(droneId, requestedLimit))
+                        .build()
+        );
     }
 }

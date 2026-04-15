@@ -30,12 +30,14 @@ com.sherlock.groundcontrol
 ├── controller/
 │   ├── AuthController.java         # POST /api/auth/login, POST /api/auth/logout
 │   ├── GeofenceController.java    # CRUD + activate/deactivate /api/geofences
-│   ├── DroneCommandController.java # POST /api/drones/{droneId}/command — RTH/ARM/DISARM/TAKEOFF/GOTO
+│   ├── DroneCommandController.java # POST /api/drones/{droneId}/command + GET /api/drones/{droneId}/commands
 │   ├── GlobalExceptionHandler.java # @RestControllerAdvice — auth + generic errors
 │   ├── MissionController.java      # CRUD + execute/abort — POST/GET/PUT/DELETE /api/missions, /execute, /abort
 │   ├── TelemetryController.java    # REST: GET /api/telemetry/history + POST /api/telemetry/last-known
 │   └── DroneStreamController.java  # REST: GET /api/drones/{droneId}/stream
 ├── dto/
+│   ├── CommandHistoryResponseDTO.java # Wire: { commands: CommandLifecycleDTO[] }
+│   ├── CommandLifecycleDTO.java    # Wire: { commandId, droneId, commandType, status, requestedAt, updatedAt, detail? }
 │   ├── BulkLastKnownRequestDTO.java   # Wire object: { droneIds: string[] }
 │   ├── BulkLastKnownResponseDTO.java  # Wire object: { telemetry: LastKnownTelemetryDTO[] }
 │   ├── GeofenceAlertDTO.java         # Wire object: { droneId, geofenceId, geofenceName, eventType, lat/lon/altitude, timestamp }
@@ -72,7 +74,7 @@ com.sherlock.groundcontrol
 │   ├── DroneSnapshot.java          # Mutable merged state per MAVLink system ID
 │   ├── MavlinkFrame.java           # Parsed frame record (v1 or v2)
 │   ├── MavlinkFrameParser.java     # Parse UDP datagrams → MavlinkFrame; build COMMAND_LONG
-│   └── MavlinkMessageDecoder.java  # Decode 6 message types + typed result records
+│   └── MavlinkMessageDecoder.java  # Decode telemetry + COMMAND_ACK payloads into typed result records
 ├── repository/
 │   ├── AuthAuditLogRepository.java
 │   ├── GeofenceRepository.java
@@ -89,6 +91,7 @@ com.sherlock.groundcontrol
 └── service/
     ├── AuthAuditService.java        # Persists every login attempt to auth_audit_log
     ├── AuthService.java             # authenticate(), logout(), lockout, blacklist purge
+    ├── CommandLifecycleService.java # In-memory command lifecycle (PENDING→...); timeout scan + /topic/commands publish
     ├── DevDataInitializer.java      # ApplicationRunner — creates seed operator when DEV_SEED_USER/DEV_SEED_PASSWORD are set
     ├── DroneCommandService.java     # Translates RTH/ARM/DISARM/TAKEOFF/GOTO → MAVLink command packets via MavlinkAdapterService (@ConditionalOnProperty)
     ├── DroneStreamService.java      # Resolves HLS stream URL from MEDIAMTX_HLS_BASE_URL
@@ -99,6 +102,7 @@ com.sherlock.groundcontrol
     ├── MavlinkAdapterService.java   # UDP :14550 listener + snapshot merge + @Scheduled STOMP publish (@ConditionalOnProperty)
     ├── MissionExecutorService.java  # Server-side mission execution: finite-state waypoint progression, guarded arrival confirmation, timeout/retry fail-safe, STOMP progress publish
     ├── MissionService.java          # Mission CRUD + lifecycle transitions (PLANNED→ACTIVE→COMPLETED|ABORTED); no execution logic
+    ├── OperatorCommandService.java  # Operator command orchestration + lifecycle tracking + simulator fake ACK path
     ├── TelemetryService.java        # persistBatch() + getLastKnown(droneId) + history lookup + bounded last-known cache
     └── TelemetrySimulator.java      # @Scheduled 500ms fleet tick, per-drone full stream + fleet-lite summary + battery/geofence alerts
 ```
@@ -122,6 +126,8 @@ app.jwt.secret: ${JWT_SECRET:<dev-default>}   # MUST be overridden in production
 app.jwt.expiration-hours: ${JWT_EXPIRATION_HOURS:8}
 app.simulator.fleet-size: ${SIMULATOR_FLEET_SIZE:5}
 app.telemetry.last-known-cache-size: ${TELEMETRY_LAST_KNOWN_CACHE_SIZE:10000}
+app.command.lifecycle.per-drone-limit: ${COMMAND_HISTORY_PER_DRONE_LIMIT:20}
+app.command.lifecycle.ack-timeout-ms: ${COMMAND_ACK_TIMEOUT_MS:5000}
 ```
 
 | Environment Variable       | Default                    | Purpose                                       |
@@ -135,6 +141,8 @@ app.telemetry.last-known-cache-size: ${TELEMETRY_LAST_KNOWN_CACHE_SIZE:10000}
 | `MEDIAMTX_HLS_BASE_URL`    | `http://localhost:8888`    | Base URL of MediaMTX HLS output as seen by the **browser**. In Docker use `/hls` (nginx proxies it). In local dev the default hits MediaMTX directly. |
 | `MAVLINK_ENABLED`          | `false`                    | Set `true` to activate `MavlinkAdapterService` and `DroneCommandService`. Simulator continues running in parallel. |
 | `MAVLINK_UDP_PORT`         | `14550`                    | UDP port the MAVLink adapter listens on. Drone / SITL must target `<host>:14550`. |
+| `COMMAND_HISTORY_PER_DRONE_LIMIT` | `20`               | In-memory command lifecycle history depth per drone (used by `GET /api/drones/{id}/commands`). |
+| `COMMAND_ACK_TIMEOUT_MS`   | `5000`                     | Time budget for command ACK tracking before status becomes `TIMEOUT`. |
 
 For Docker, these are injected by `docker-compose.yml`. For local dev, the defaults work against a local PostgreSQL instance with user/db `sherlock`.
 
@@ -209,7 +217,7 @@ Drone / SITL ──UDP:14550──► MavlinkAdapterService.listenLoop()
                                       ──persist──► PostgreSQL
 ```
 
-Decoded message types: `HEARTBEAT` (arm/mode), `SYS_STATUS` (battery), `GPS_RAW_INT` (fix/HDOP/sats), `ATTITUDE` (roll/pitch), `GLOBAL_POSITION_INT` (position/speed/heading), `RADIO_STATUS` (RSSI).
+Decoded message types: `HEARTBEAT` (arm/mode), `SYS_STATUS` (battery), `GPS_RAW_INT` (fix/HDOP/sats), `ATTITUDE` (roll/pitch), `GLOBAL_POSITION_INT` (position/speed/heading), `RADIO_STATUS` (RSSI), `COMMAND_ACK` (command lifecycle updates).
 
 ### Outbound C2
 
@@ -217,7 +225,7 @@ Decoded message types: `HEARTBEAT` (arm/mode), `SYS_STATUS` (battery), `GPS_RAW_
 POST /api/drones/MAVLINK-01/command  { commandType: "GOTO", latitude: -35.3632, longitude: 149.1653, altitude: 584.0 }
         │
         ▼
-DroneCommandController → DroneCommandService.sendCommand()
+DroneCommandController → OperatorCommandService.submitCommand() → DroneCommandService.sendCommand()
         │
         ▼
 MavlinkFrameParser.buildCommandLong()   ← MAVLink v1 COMMAND_LONG (id=76)
@@ -226,12 +234,17 @@ MavlinkFrameParser.buildCommandLong()   ← MAVLink v1 COMMAND_LONG (id=76)
 MavlinkAdapterService.sendPacket()      ← UDP back to drone's source address
 ```
 
-`POST /api/drones/{droneId}/command` response semantics:
-- `202 Accepted` when command packets are dispatched
+`POST /api/drones/{droneId}/command` response semantics (body is always `CommandLifecycleDTO` for valid payloads):
+- `202 Accepted` when command lifecycle tracking starts (`PENDING → SENT` and then `ACKED`/`REJECTED`/`TIMEOUT`)
 - `400 Bad Request` when payload is invalid (for example `GOTO` without latitude/longitude/altitude)
-- `409 Conflict` when `TAKEOFF` or `GOTO` is requested before navigation readiness (for example no position estimate / not armed)
-- `422 Unprocessable Entity` when the MAVLink drone is not currently connected/commandable
-- `503 Service Unavailable` when MAVLink integration is disabled
+- `409 Conflict` when `TAKEOFF` or `GOTO` is requested before navigation readiness (lifecycle final status `FAILED`)
+- `422 Unprocessable Entity` when the MAVLink drone is not currently connected/commandable (lifecycle final status `FAILED`)
+- `503 Service Unavailable` when MAVLink integration is disabled and target is not a simulator drone (lifecycle final status `FAILED`)
+
+Lifecycle retrieval and live updates:
+- `GET /api/drones/{droneId}/commands?limit=20` returns the latest in-memory lifecycle entries
+- STOMP `/topic/commands/{droneId}` publishes every lifecycle transition
+- Simulator drones (`SHERLOCK-*`) emit immediate fake ACK transitions for operator commands
 
 **Supported commands:**
 

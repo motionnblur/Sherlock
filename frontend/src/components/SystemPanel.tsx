@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { CommandLogEntry } from '../interfaces/command';
 import type {
   AltitudeTrendProps,
   CompassRoseProps,
@@ -89,6 +90,23 @@ function LogEntry({ entry, index }: LogEntryProps) {
   );
 }
 
+function CommandStatusEntry({ entry }: { entry: CommandLogEntry }) {
+  return (
+    <div className="py-0.5 border-b border-line last:border-0">
+      <div className="flex items-center justify-between text-[9px]">
+        <span className="tabular-nums text-muted">{formatUtcTime(entry.updatedAt)}</span>
+        <span className="text-neon font-bold tracking-wider">{entry.commandType}</span>
+        <span className={`font-bold tracking-wider ${statusColorClass(entry.status)}`}>{entry.status}</span>
+      </div>
+      {entry.detail && (
+        <div className="text-[8px] text-muted tracking-wider mt-0.5 truncate">
+          {entry.detail}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RssiBar({ value }: { value: number | undefined }) {
   if (value == null) {
     return <span className="text-[10px] text-muted">NO DATA</span>;
@@ -107,6 +125,22 @@ function RssiBar({ value }: { value: number | undefined }) {
 
 function clamp(val: number, min: number, max: number) {
   return Math.max(min, Math.min(max, val));
+}
+
+function statusColorClass(status: CommandLogEntry['status']): string {
+  switch (status) {
+    case 'ACKED':
+      return 'text-neon';
+    case 'PENDING':
+    case 'SENT':
+      return 'text-caution';
+    case 'REJECTED':
+    case 'TIMEOUT':
+    case 'FAILED':
+      return 'text-danger';
+    default:
+      return 'text-muted';
+  }
 }
 
 interface CommandButtonProps {
@@ -137,6 +171,7 @@ export default function SystemPanel({
   onSendCommand,
   isCommandSending,
   commandError,
+  commandLog,
   isDriverModeEnabled,
   isDriverModeAvailable,
   onToggleDriverMode,
@@ -284,6 +319,19 @@ export default function SystemPanel({
           {recentLog.length > 0
             ? recentLog.map((entry, index) => <LogEntry key={index} entry={entry} index={index} />)
             : <span className="text-[9px] text-muted">AWAITING DATA...</span>
+          }
+        </div>
+
+        <SectionHeader title="COMMAND LOG" />
+        <div className="py-0.5">
+          <div className="flex items-center justify-between text-[8px] text-muted pb-0.5 border-b border-line mb-0.5">
+            <span>TIME (UTC)</span>
+            <span>CMD</span>
+            <span>STATUS</span>
+          </div>
+          {commandLog.length > 0
+            ? commandLog.map((entry) => <CommandStatusEntry key={entry.commandId} entry={entry} />)
+            : <span className="text-[9px] text-muted">NO COMMANDS YET</span>
           }
         </div>
       </div>

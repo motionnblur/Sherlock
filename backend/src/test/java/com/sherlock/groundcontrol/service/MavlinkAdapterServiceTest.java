@@ -29,8 +29,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class MavlinkAdapterServiceTest {
@@ -44,6 +44,9 @@ class MavlinkAdapterServiceTest {
     @Mock
     private GeofenceBreachService geofenceBreachService;
 
+    @Mock
+    private CommandLifecycleService commandLifecycleService;
+
     private DatagramSocket createdSocket;
 
     @AfterEach
@@ -55,7 +58,12 @@ class MavlinkAdapterServiceTest {
 
     @Test
     void broadcastSnapshotsDoesNothingWhenNoSnapshotsExist() {
-        MavlinkAdapterService service = new MavlinkAdapterService(messagingTemplate, telemetryService, geofenceBreachService);
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
 
         service.broadcastSnapshots();
 
@@ -65,7 +73,12 @@ class MavlinkAdapterServiceTest {
 
     @Test
     void broadcastSnapshotsPublishesTelemetryAndFleetLiteForFreshSnapshot() throws Exception {
-        MavlinkAdapterService service = new MavlinkAdapterService(messagingTemplate, telemetryService, geofenceBreachService);
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
         DroneSnapshot snapshot = positionedSnapshot(1, true, Instant.now(), new InetSocketAddress("127.0.0.1", 14550));
         putSnapshot(service, snapshot);
 
@@ -83,7 +96,12 @@ class MavlinkAdapterServiceTest {
 
     @Test
     void broadcastSnapshotsDropsStaleSnapshots() throws Exception {
-        MavlinkAdapterService service = new MavlinkAdapterService(messagingTemplate, telemetryService, geofenceBreachService);
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
         DroneSnapshot stale = positionedSnapshot(3, false, Instant.now().minusSeconds(20), new InetSocketAddress("127.0.0.1", 14551));
         putSnapshot(service, stale);
 
@@ -95,7 +113,12 @@ class MavlinkAdapterServiceTest {
 
     @Test
     void registryAndResolutionMethodsUseVisibilityAndCommandabilityRules() throws Exception {
-        MavlinkAdapterService service = new MavlinkAdapterService(messagingTemplate, telemetryService, geofenceBreachService);
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
         DroneSnapshot visible = positionedSnapshot(1, true, Instant.now(), new InetSocketAddress("127.0.0.1", 14550));
         DroneSnapshot hiddenNoSource = positionedSnapshot(2, true, Instant.now(), null);
         DroneSnapshot stale = positionedSnapshot(4, true, Instant.now().minusSeconds(20), new InetSocketAddress("127.0.0.1", 14552));
@@ -114,7 +137,12 @@ class MavlinkAdapterServiceTest {
 
     @Test
     void armAndAltitudeReferenceQueriesRequireFreshCommandableSnapshot() throws Exception {
-        MavlinkAdapterService service = new MavlinkAdapterService(messagingTemplate, telemetryService, geofenceBreachService);
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
 
         DroneSnapshot armed = positionedSnapshot(5, true, Instant.now(), new InetSocketAddress("127.0.0.1", 14555));
         armed.setAltitudeMsl(1200.0);
@@ -136,7 +164,12 @@ class MavlinkAdapterServiceTest {
 
     @Test
     void sendPacketReturnsFalseForUnknownOrUnavailableSocket() throws Exception {
-        MavlinkAdapterService service = new MavlinkAdapterService(messagingTemplate, telemetryService, geofenceBreachService);
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
 
         assertFalse(service.sendPacket(99, new byte[]{1}));
 
@@ -148,7 +181,12 @@ class MavlinkAdapterServiceTest {
 
     @Test
     void sendPacketReturnsTrueWhenSocketAndCommandableSnapshotExist() throws Exception {
-        MavlinkAdapterService service = new MavlinkAdapterService(messagingTemplate, telemetryService, geofenceBreachService);
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
 
         DroneSnapshot commandable = positionedSnapshot(8, true, Instant.now(), new InetSocketAddress("127.0.0.1", 14558));
         putSnapshot(service, commandable);
@@ -161,7 +199,12 @@ class MavlinkAdapterServiceTest {
 
     @Test
     void nextSeqNumWrapsAtEightBitBoundary() {
-        MavlinkAdapterService service = new MavlinkAdapterService(messagingTemplate, telemetryService, geofenceBreachService);
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
         int first = service.nextSeqNum();
         int lastBeforeWrap = -1;
         for (int index = 0; index < 255; index++) {
@@ -176,14 +219,20 @@ class MavlinkAdapterServiceTest {
 
     @Test
     void applySupportedMessageUpdatesSnapshotForEachHandledMessageType() throws Exception {
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
         DroneSnapshot snapshot = new DroneSnapshot(1);
 
-        assertTrue(invokeApplySupportedMessage(new MavlinkFrame(1, 1, 1, 1, 0, heartbeatPayload()), snapshot));
-        assertTrue(invokeApplySupportedMessage(new MavlinkFrame(1, 1, 1, 1, 1, sysStatusPayload()), snapshot));
-        assertTrue(invokeApplySupportedMessage(new MavlinkFrame(1, 1, 1, 1, 24, gpsRawIntPayload()), snapshot));
-        assertTrue(invokeApplySupportedMessage(new MavlinkFrame(1, 1, 1, 1, 30, attitudePayload()), snapshot));
-        assertTrue(invokeApplySupportedMessage(new MavlinkFrame(1, 1, 1, 1, 33, globalPositionPayload()), snapshot));
-        assertTrue(invokeApplySupportedMessage(new MavlinkFrame(1, 1, 1, 1, 109, radioStatusPayload()), snapshot));
+        assertTrue(invokeApplySupportedMessage(service, new MavlinkFrame(1, 1, 1, 1, 0, heartbeatPayload()), snapshot));
+        assertTrue(invokeApplySupportedMessage(service, new MavlinkFrame(1, 1, 1, 1, 1, sysStatusPayload()), snapshot));
+        assertTrue(invokeApplySupportedMessage(service, new MavlinkFrame(1, 1, 1, 1, 24, gpsRawIntPayload()), snapshot));
+        assertTrue(invokeApplySupportedMessage(service, new MavlinkFrame(1, 1, 1, 1, 30, attitudePayload()), snapshot));
+        assertTrue(invokeApplySupportedMessage(service, new MavlinkFrame(1, 1, 1, 1, 33, globalPositionPayload()), snapshot));
+        assertTrue(invokeApplySupportedMessage(service, new MavlinkFrame(1, 1, 1, 1, 109, radioStatusPayload()), snapshot));
 
         assertEquals("GUIDED", snapshot.getFlightMode());
         assertTrue(snapshot.getBatteryPercent() != null && snapshot.getBatteryPercent() > 0);
@@ -194,16 +243,47 @@ class MavlinkAdapterServiceTest {
 
     @Test
     void applySupportedMessageReturnsFalseForUnknownOrInvalidPayloads() throws Exception {
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
         DroneSnapshot snapshot = new DroneSnapshot(1);
 
-        assertFalse(invokeApplySupportedMessage(new MavlinkFrame(1, 1, 1, 1, 250, new byte[0]), snapshot));
-        assertFalse(invokeApplySupportedMessage(new MavlinkFrame(1, 1, 1, 1, 0, new byte[3]), snapshot));
-        assertFalse(invokeApplySupportedMessage(new MavlinkFrame(1, 1, 1, 1, 109, new byte[0]), snapshot));
+        assertFalse(invokeApplySupportedMessage(service, new MavlinkFrame(1, 1, 1, 1, 250, new byte[0]), snapshot));
+        assertFalse(invokeApplySupportedMessage(service, new MavlinkFrame(1, 1, 1, 1, 0, new byte[3]), snapshot));
+        assertFalse(invokeApplySupportedMessage(service, new MavlinkFrame(1, 1, 1, 1, 109, new byte[0]), snapshot));
+    }
+
+    @Test
+    void applyFrameRoutesCommandAckToCommandLifecycleService() throws Exception {
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
+        DroneSnapshot snapshot = positionedSnapshot(1, true, Instant.now(), new InetSocketAddress("127.0.0.1", 14559));
+        putSnapshot(service, snapshot);
+
+        invokeApplyFrame(
+                service,
+                new MavlinkFrame(1, 1, 1, 1, 77, commandAckPayload(22, 0)),
+                snapshot.getSourceAddress()
+        );
+
+        verify(commandLifecycleService).resolveCommandAck("MAVLINK-01", 22, 0);
     }
 
     @Test
     void applyFrameCreatesSnapshotAndAssociatesSourceAddress() throws Exception {
-        MavlinkAdapterService service = new MavlinkAdapterService(messagingTemplate, telemetryService, geofenceBreachService);
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
         InetSocketAddress source = new InetSocketAddress("127.0.0.1", 14560);
 
         invokeApplyFrame(service, new MavlinkFrame(1, 1, 9, 1, 0, heartbeatPayload()), source);
@@ -216,7 +296,12 @@ class MavlinkAdapterServiceTest {
 
     @Test
     void startAndStopManageUdpSocketLifecycle() throws Exception {
-        MavlinkAdapterService service = new MavlinkAdapterService(messagingTemplate, telemetryService, geofenceBreachService);
+        MavlinkAdapterService service = new MavlinkAdapterService(
+                messagingTemplate,
+                telemetryService,
+                geofenceBreachService,
+                commandLifecycleService
+        );
         setField(service, "udpPort", 0);
 
         service.start();
@@ -272,10 +357,14 @@ class MavlinkAdapterServiceTest {
         return field.get(target);
     }
 
-    private static boolean invokeApplySupportedMessage(MavlinkFrame frame, DroneSnapshot snapshot) throws Exception {
+    private static boolean invokeApplySupportedMessage(
+            MavlinkAdapterService service,
+            MavlinkFrame frame,
+            DroneSnapshot snapshot
+    ) throws Exception {
         Method method = MavlinkAdapterService.class.getDeclaredMethod("applySupportedMessage", MavlinkFrame.class, DroneSnapshot.class);
         method.setAccessible(true);
-        return (boolean) method.invoke(null, frame, snapshot);
+        return (boolean) method.invoke(service, frame, snapshot);
     }
 
     private static void invokeApplyFrame(MavlinkAdapterService service, MavlinkFrame frame, InetSocketAddress source) throws Exception {
@@ -293,6 +382,14 @@ class MavlinkAdapterServiceTest {
                 .put((byte) 0x80)
                 .put((byte) 0)
                 .put((byte) 3)
+                .array();
+    }
+
+    private static byte[] commandAckPayload(int command, int result) {
+        return ByteBuffer.allocate(3)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .putShort((short) command)
+                .put((byte) result)
                 .array();
     }
 

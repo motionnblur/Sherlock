@@ -51,6 +51,7 @@ public class MavlinkAdapterService {
     private final SimpMessagingTemplate messagingTemplate;
     private final TelemetryService telemetryService;
     private final GeofenceBreachService geofenceBreachService;
+    private final CommandLifecycleService commandLifecycleService;
 
     @Value("${app.mavlink.udp-port:14550}")
     private int udpPort;
@@ -65,11 +66,13 @@ public class MavlinkAdapterService {
     public MavlinkAdapterService(
             SimpMessagingTemplate messagingTemplate,
             TelemetryService telemetryService,
-            GeofenceBreachService geofenceBreachService
+            GeofenceBreachService geofenceBreachService,
+            CommandLifecycleService commandLifecycleService
     ) {
         this.messagingTemplate = messagingTemplate;
         this.telemetryService  = telemetryService;
         this.geofenceBreachService = geofenceBreachService;
+        this.commandLifecycleService = commandLifecycleService;
     }
 
     @PostConstruct
@@ -120,8 +123,8 @@ public class MavlinkAdapterService {
         DroneSnapshot snapshot = snapshots.computeIfAbsent(frame.systemId(), DroneSnapshot::new);
         snapshot.setSourceAddress(source);
         Instant receivedAt = Instant.now();
-        boolean isSupportedTelemetry = applySupportedMessage(frame, snapshot);
-        if (isSupportedTelemetry) {
+        boolean isSupportedMessage = applySupportedMessage(frame, snapshot);
+        if (isSupportedMessage) {
             snapshot.setLastSeen(receivedAt);
         }
     }
@@ -257,13 +260,14 @@ public class MavlinkAdapterService {
         return DRONE_ID_PREFIX + String.format("%02d", systemId);
     }
 
-    private static boolean applySupportedMessage(MavlinkFrame frame, DroneSnapshot snapshot) {
+    private boolean applySupportedMessage(MavlinkFrame frame, DroneSnapshot snapshot) {
         return switch (frame.messageId()) {
             case MavlinkMessageDecoder.MSG_HEARTBEAT -> applyHeartbeat(frame, snapshot);
             case MavlinkMessageDecoder.MSG_SYS_STATUS -> applySysStatus(frame, snapshot);
             case MavlinkMessageDecoder.MSG_GPS_RAW_INT -> applyGpsRawInt(frame, snapshot);
             case MavlinkMessageDecoder.MSG_ATTITUDE -> applyAttitude(frame, snapshot);
             case MavlinkMessageDecoder.MSG_GLOBAL_POSITION_INT -> applyGlobalPositionInt(frame, snapshot);
+            case MavlinkMessageDecoder.MSG_COMMAND_ACK -> applyCommandAck(frame, snapshot);
             case MavlinkMessageDecoder.MSG_RADIO_STATUS -> applyRadioStatus(frame, snapshot);
             default -> false;
         };
@@ -331,6 +335,17 @@ public class MavlinkAdapterService {
             return false;
         }
         snapshot.setRssiPercent(decoded.get().rssiPercent());
+        return true;
+    }
+
+    private boolean applyCommandAck(MavlinkFrame frame, DroneSnapshot snapshot) {
+        Optional<MavlinkMessageDecoder.CommandAckData> decoded = MavlinkMessageDecoder.decodeCommandAck(frame.payload());
+        if (decoded.isEmpty()) {
+            return false;
+        }
+        MavlinkMessageDecoder.CommandAckData commandAck = decoded.get();
+        String droneId = droneIdFor(snapshot.getSystemId());
+        commandLifecycleService.resolveCommandAck(droneId, commandAck.command(), commandAck.result());
         return true;
     }
 

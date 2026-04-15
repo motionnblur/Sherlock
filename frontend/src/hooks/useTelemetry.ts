@@ -5,16 +5,21 @@ import {
   BATTERY_ALERT_TOPIC,
   BATTERY_CRITICAL_THRESHOLD,
   BATTERY_WARN_THRESHOLD,
+  COMMAND_LOG_LIMIT,
+  COMMAND_TOPIC_PREFIX,
   FLEET_LITE_TOPIC,
   GEOFENCE_ALERT_HISTORY_LIMIT,
   GEOFENCE_ALERT_TOPIC,
   TELEMETRY_HISTORY_LIMIT,
 } from '../constants/telemetry';
+import type { CommandLogEntry } from '../interfaces/command';
 import type { UseTelemetryResult } from '../interfaces/hooks';
 import type { GeofenceAlert } from '../interfaces/geofence';
 import type { LowBatteryAlert, TelemetryByDrone, TelemetryPoint } from '../interfaces/telemetry';
 import {
   parseBatteryAlertMessage,
+  parseCommandHistoryResponse,
+  parseCommandLifecycleMessage,
   parseGeofenceAlertMessage,
   parseTelemetryListMessage,
   parseTelemetryMessage,
@@ -22,6 +27,7 @@ import {
 import { useAuth } from './useAuth';
 
 const WS_URL = import.meta.env.VITE_WS_URL || '/ws-skytrack';
+const COMMAND_HISTORY_PATH = (droneId: string) => `/api/drones/${droneId}/commands?limit=${COMMAND_LOG_LIMIT}`;
 
 /**
  * Manages the STOMP/SockJS WebSocket connection and exposes live telemetry state.
@@ -36,6 +42,7 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
   const [history, setHistory] = useState<TelemetryPoint[]>([]);
   const [batteryAlertMap, setBatteryAlertMap] = useState<Record<string, LowBatteryAlert>>({});
   const [geofenceAlerts, setGeofenceAlerts] = useState<GeofenceAlert[]>([]);
+  const [commandLog, setCommandLog] = useState<CommandLogEntry[]>([]);
   const geofenceAlertKeysRef = useRef<string[]>([]);
   const clientRef = useRef<Client | null>(null);
 
@@ -47,6 +54,7 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
       setHistory([]);
       setBatteryAlertMap({});
       setGeofenceAlerts([]);
+      setCommandLog([]);
       geofenceAlertKeysRef.current = [];
     };
 
@@ -142,6 +150,31 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
       });
     };
 
+    const upsertCommandLog = (entry: CommandLogEntry) => {
+      setCommandLog((previous) => {
+        const merged = new Map<string, CommandLogEntry>();
+        for (const item of previous) {
+          merged.set(item.commandId, item);
+        }
+        merged.set(entry.commandId, entry);
+
+        return Array.from(merged.values())
+          .sort((left, right) => Date.parse(right.requestedAt) - Date.parse(left.requestedAt))
+          .slice(0, COMMAND_LOG_LIMIT);
+      });
+    };
+
+    const handleCommandLifecycleMessage = (message: IMessage) => {
+      const commandUpdate = parseCommandLifecycleMessage(message.body);
+      if (!commandUpdate) {
+        return;
+      }
+      if (!droneId || commandUpdate.droneId !== droneId) {
+        return;
+      }
+      upsertCommandLog(commandUpdate);
+    };
+
     if (!droneId || !authToken) {
       if (clientRef.current) {
         clientRef.current.deactivate();
@@ -150,6 +183,35 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
       resetState();
       return;
     }
+
+    setCommandLog([]);
+
+    const bootstrapController = new AbortController();
+    const fetchCommandHistory = async () => {
+      try {
+        const response = await fetch(COMMAND_HISTORY_PATH(droneId), {
+          headers: {
+            Authorization: `Bearer ${authToken.token}`,
+          },
+          signal: bootstrapController.signal,
+        });
+        if (response.status === 401) {
+          logout();
+          return;
+        }
+        if (!response.ok) {
+          return;
+        }
+        const payload = await response.json();
+        const entries = parseCommandHistoryResponse(payload)
+          .sort((left, right) => Date.parse(right.requestedAt) - Date.parse(left.requestedAt))
+          .slice(0, COMMAND_LOG_LIMIT);
+        setCommandLog(entries);
+      } catch {
+        // Bootstrap failure must not block telemetry subscriptions.
+      }
+    };
+    void fetchCommandHistory();
 
     const client = new Client({
       webSocketFactory: () => new SockJS(WS_URL) as WebSocket,
@@ -172,6 +234,7 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
           client.subscribe(BATTERY_ALERT_TOPIC, handleBatteryAlertMessage);
         }
         client.subscribe(GEOFENCE_ALERT_TOPIC, handleGeofenceAlertMessage);
+        client.subscribe(`${COMMAND_TOPIC_PREFIX}${droneId}`, handleCommandLifecycleMessage);
       },
 
       onDisconnect: () => setConnected(false),
@@ -193,6 +256,7 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
     clientRef.current = client;
 
     return () => {
+      bootstrapController.abort();
       client.deactivate();
       clientRef.current = null;
     };
@@ -200,5 +264,5 @@ export function useTelemetry(droneId: string | null, freeMode = false, showAllAs
 
   const batteryAlerts = Object.values(batteryAlertMap).sort((a, b) => a.battery - b.battery);
 
-  return { telemetry, fleetTelemetry, connected, history, batteryAlerts, geofenceAlerts };
+  return { telemetry, fleetTelemetry, connected, history, batteryAlerts, geofenceAlerts, commandLog };
 }

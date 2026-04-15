@@ -81,6 +81,17 @@ class MavlinkFrameParserTest {
         assertTrue(MavlinkFrameParser.parsePacket(withSignatureBytes, withSignatureBytes.length).isPresent());
     }
 
+    @Test
+    void parseV2CommandAckFrameAcceptsKnownCrcExtra() {
+        byte[] payload = commandAckPayload(22, 0);
+        byte[] frame = buildV2Frame(payload, 77, 2, 5, 1, 0);
+
+        Optional<MavlinkFrame> parsed = MavlinkFrameParser.parsePacket(frame, frame.length);
+
+        assertTrue(parsed.isPresent());
+        assertEquals(77, parsed.get().messageId());
+    }
+
     private static byte[] heartbeatPayload(int customMode, int baseMode) {
         ByteBuffer payload = ByteBuffer.allocate(9).order(ByteOrder.LITTLE_ENDIAN);
         payload.putInt(customMode);
@@ -89,6 +100,13 @@ class MavlinkFrameParserTest {
         payload.put((byte) baseMode);
         payload.put((byte) 0);
         payload.put((byte) 3);
+        return payload.array();
+    }
+
+    private static byte[] commandAckPayload(int command, int result) {
+        ByteBuffer payload = ByteBuffer.allocate(3).order(ByteOrder.LITTLE_ENDIAN);
+        payload.putShort((short) command);
+        payload.put((byte) result);
         return payload.array();
     }
 
@@ -130,6 +148,7 @@ class MavlinkFrameParserTest {
             case 24 -> 24;
             case 30 -> 39;
             case 33 -> 104;
+            case 77 -> 143;
             case 76 -> 152;
             case 86 -> 5;
             case 109 -> 185;

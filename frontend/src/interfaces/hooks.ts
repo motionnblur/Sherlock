@@ -1,3 +1,4 @@
+import type { CommandLogEntry } from './command';
 import type { GeofenceAlert } from './geofence';
 import type { LowBatteryAlert, TelemetryByDrone, TelemetryPoint } from './telemetry';
 
@@ -8,4 +9,5 @@ export interface UseTelemetryResult {
   history: TelemetryPoint[];
   batteryAlerts: LowBatteryAlert[];
   geofenceAlerts: GeofenceAlert[];
+  commandLog: CommandLogEntry[];
 }

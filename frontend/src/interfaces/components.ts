@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { PerformanceStage } from '../constants/performance';
 import type { CommandType } from '../hooks/useCommand';
+import type { CommandLogEntry } from './command';
 import type { Geofence, GeofenceAlert, GeofencePointInput } from './geofence';
 import type { DriverWaypoint, DroneId, LowBatteryAlert, NavigationDirection, TelemetryByDrone, TelemetryPoint } from './telemetry';
 import type {
@@ -122,6 +123,7 @@ export interface SystemPanelProps {
   onSendCommand: (commandType: CommandType) => Promise<boolean>;
   isCommandSending: boolean;
   commandError: string | null;
+  commandLog: CommandLogEntry[];
   isDriverModeEnabled: boolean;
   isDriverModeAvailable: boolean;
   onToggleDriverMode: () => void;
