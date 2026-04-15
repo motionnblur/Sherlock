@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import type { CommandLogEntry } from '../interfaces/command';
+import { useEffect, useRef, useState } from "react";
+import type { CommandLogEntry } from "../interfaces/command";
 import type {
   AltitudeTrendProps,
   CompassRoseProps,
   LogEntryProps,
   MissionClockProps,
   SystemPanelProps,
-} from '../interfaces/components';
-import type { CommandType } from '../hooks/useCommand';
-import SectionHeader from './SectionHeader';
-import { BLANK_VALUE, formatUtcTime } from '../utils/formatters';
+} from "../interfaces/components";
+import type { CommandType } from "../hooks/useCommand";
+import SectionHeader from "./SectionHeader";
+import { BLANK_VALUE, formatUtcTime } from "../utils/formatters";
 
 function MissionClock({ started }: MissionClockProps) {
   const [elapsed, setElapsed] = useState(0);
@@ -31,9 +31,9 @@ function MissionClock({ started }: MissionClockProps) {
     return () => clearInterval(id);
   }, [started]);
 
-  const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
-  const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
-  const s = String(elapsed % 60).padStart(2, '0');
+  const h = String(Math.floor(elapsed / 3600)).padStart(2, "0");
+  const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0");
+  const s = String(elapsed % 60).padStart(2, "0");
 
   return (
     <span className="text-neon font-bold tabular-nums tracking-widest">
@@ -57,15 +57,17 @@ function AltitudeTrend({ history }: AltitudeTrendProps) {
 function CompassRose({ heading }: CompassRoseProps) {
   if (heading == null) return null;
 
-  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
   const active = dirs[Math.round(heading / 45) % 8];
 
   return (
     <div className="grid grid-cols-3 gap-0.5 w-16 text-center text-[9px] font-bold">
-      {['NW', 'N', 'NE', 'W', '·', 'E', 'SW', 'S', 'SE'].map((d) => (
+      {["NW", "N", "NE", "W", "·", "E", "SW", "S", "SE"].map((d) => (
         <span
           key={d}
-          className={d === active ? 'text-neon' : d === '·' ? 'text-line' : 'text-muted'}
+          className={
+            d === active ? "text-neon" : d === "·" ? "text-line" : "text-muted"
+          }
         >
           {d}
         </span>
@@ -80,29 +82,64 @@ function LogEntry({ entry, index }: LogEntryProps) {
   return (
     <div
       className={`flex items-center justify-between py-0.5 text-[9px] border-b border-line last:border-0 ${
-        index === 0 ? 'text-neon' : 'text-muted'
+        index === 0 ? "text-neon" : "text-muted"
       }`}
     >
       <span className="tabular-nums">{time}</span>
-      <span className="tabular-nums">{entry.altitude?.toFixed(0) ?? BLANK_VALUE}m</span>
-      <span className="tabular-nums">{entry.speed?.toFixed(0) ?? BLANK_VALUE}km/h</span>
+      <span className="tabular-nums">
+        {entry.altitude?.toFixed(0) ?? BLANK_VALUE}m
+      </span>
+      <span className="tabular-nums">
+        {entry.speed?.toFixed(0) ?? BLANK_VALUE}km/h
+      </span>
     </div>
   );
 }
 
 function CommandStatusEntry({ entry }: { entry: CommandLogEntry }) {
   return (
-    <div className="py-0.5 border-b border-line last:border-0">
+    <div className="py-1 border-b border-line last:border-0">
       <div className="flex items-center justify-between text-[9px]">
-        <span className="tabular-nums text-muted">{formatUtcTime(entry.updatedAt)}</span>
-        <span className="text-neon font-bold tracking-wider">{entry.commandType}</span>
-        <span className={`font-bold tracking-wider ${statusColorClass(entry.status)}`}>{entry.status}</span>
+        <span className="tabular-nums text-muted">
+          {formatUtcTime(entry.updatedAt)}
+        </span>
+        <span className="text-neon font-bold tracking-wider">
+          {entry.commandType}
+        </span>
+        <span
+          className={`font-bold tracking-wider ${statusColorClass(entry.status)}`}
+        >
+          {entry.status}
+        </span>
       </div>
       {entry.detail && (
-        <div className="text-[8px] text-muted tracking-wider mt-0.5 truncate">
+        <div className="text-[8px] text-muted tracking-wider mt-0.5 leading-tight opacity-60">
           {entry.detail}
         </div>
       )}
+    </div>
+  );
+}
+
+function CommandLog({ log }: { log: CommandLogEntry[] }) {
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between text-[8px] text-muted pb-1 border-b border-line mb-0.5 pr-2">
+        <span>TIME (UTC)</span>
+        <span className="translate-x-1">CMD</span>
+        <span>STATUS</span>
+      </div>
+      <div className="max-h-[145px] overflow-y-auto pr-1">
+        {log.length > 0 ? (
+          log.map((entry) => (
+            <CommandStatusEntry key={entry.commandId} entry={entry} />
+          ))
+        ) : (
+          <div className="text-[9px] text-muted py-2 tracking-widest uppercase">
+            No commands yet
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -112,12 +149,13 @@ function RssiBar({ value }: { value: number | undefined }) {
     return <span className="text-[10px] text-muted">NO DATA</span>;
   }
   const filled = Math.round(clamp(value, 0, 100) / 20); // 0-5 blocks
-  const empty  = 5 - filled;
-  const color  = value < 30 ? 'text-danger' : value < 60 ? 'text-caution' : 'text-neon';
+  const empty = 5 - filled;
+  const color =
+    value < 30 ? "text-danger" : value < 60 ? "text-caution" : "text-neon";
   return (
     <span className={`text-[10px] font-bold tracking-wider ${color}`}>
-      {'▮'.repeat(filled)}
-      <span className="text-muted">{'▯'.repeat(empty)}</span>
+      {"▮".repeat(filled)}
+      <span className="text-muted">{"▯".repeat(empty)}</span>
       <span className="ml-1">{value}%</span>
     </span>
   );
@@ -127,19 +165,19 @@ function clamp(val: number, min: number, max: number) {
   return Math.max(min, Math.min(max, val));
 }
 
-function statusColorClass(status: CommandLogEntry['status']): string {
+function statusColorClass(status: CommandLogEntry["status"]): string {
   switch (status) {
-    case 'ACKED':
-      return 'text-neon';
-    case 'PENDING':
-    case 'SENT':
-      return 'text-caution';
-    case 'REJECTED':
-    case 'TIMEOUT':
-    case 'FAILED':
-      return 'text-danger';
+    case "ACKED":
+      return "text-neon";
+    case "PENDING":
+    case "SENT":
+      return "text-caution";
+    case "REJECTED":
+    case "TIMEOUT":
+    case "FAILED":
+      return "text-danger";
     default:
-      return 'text-muted';
+      return "text-muted";
   }
 }
 
@@ -151,7 +189,13 @@ interface CommandButtonProps {
   onSend: (c: CommandType) => void;
 }
 
-function CommandButton({ label, commandType, isSending, colorClass, onSend }: CommandButtonProps) {
+function CommandButton({
+  label,
+  commandType,
+  isSending,
+  colorClass,
+  onSend,
+}: CommandButtonProps) {
   return (
     <button
       className={`flex-1 py-1 text-[9px] font-bold tracking-widest border ${colorClass}
@@ -217,26 +261,43 @@ export default function SystemPanel({
         <SectionHeader title="DATALINK" />
         <div className="py-1 space-y-1">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted text-[10px] tracking-wider">STATUS</span>
-            <span className={`font-bold text-[10px] ${connected ? 'text-neon' : 'text-danger animate-blink'}`}>
-              {connected ? '● NOMINAL' : '○ LOST'}
+            <span className="text-muted text-[10px] tracking-wider">
+              STATUS
+            </span>
+            <span
+              className={`font-bold text-[10px] ${connected ? "text-neon" : "text-danger animate-blink"}`}
+            >
+              {connected ? "● NOMINAL" : "○ LOST"}
             </span>
           </div>
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted text-[10px] tracking-wider">PROTOCOL</span>
+            <span className="text-muted text-[10px] tracking-wider">
+              PROTOCOL
+            </span>
             <span className="text-neon text-[10px]">STOMP/WS</span>
           </div>
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted text-[10px] tracking-wider">RF LINK</span>
+            <span className="text-muted text-[10px] tracking-wider">
+              RF LINK
+            </span>
             <RssiBar value={t?.rssi} />
           </div>
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted text-[10px] tracking-wider">ARMED</span>
-            <span className={`font-bold text-[10px] ${
-              t?.isArmed === true  ? 'text-danger animate-blink' :
-              t?.isArmed === false ? 'text-neon' : 'text-muted'
-            }`}>
-              {t?.isArmed === true ? '⚠ ARMED' : t?.isArmed === false ? 'SAFE' : BLANK_VALUE}
+            <span
+              className={`font-bold text-[10px] ${
+                t?.isArmed === true
+                  ? "text-danger animate-blink"
+                  : t?.isArmed === false
+                    ? "text-neon"
+                    : "text-muted"
+              }`}
+            >
+              {t?.isArmed === true
+                ? "⚠ ARMED"
+                : t?.isArmed === false
+                  ? "SAFE"
+                  : BLANK_VALUE}
             </span>
           </div>
           <div className="flex items-center justify-between text-xs">
@@ -282,10 +343,10 @@ export default function SystemPanel({
           <button
             className={`w-full py-1 text-[9px] font-bold tracking-widest border transition-colors ${
               isDriverModeEnabled
-                ? 'border-neon text-neon bg-elevated'
+                ? "border-neon text-neon bg-elevated"
                 : isDriverModeAvailable
-                  ? 'border-line text-muted hover:bg-elevated'
-                  : 'border-line text-muted opacity-50 cursor-not-allowed'
+                  ? "border-line text-muted hover:bg-elevated"
+                  : "border-line text-muted opacity-50 cursor-not-allowed"
             }`}
             onClick={onToggleDriverMode}
             disabled={isCommandSending || !isDriverModeAvailable}
@@ -294,7 +355,8 @@ export default function SystemPanel({
           </button>
           {isDriverModeEnabled && (
             <div className="text-[9px] text-caution tracking-widest">
-              L-CLICK MAP TO ADD WAYPOINTS ({driverWaypointCount}) — AIRBORNE REQUIRED
+              L-CLICK MAP TO ADD WAYPOINTS ({driverWaypointCount}) — AIRBORNE
+              REQUIRED
             </div>
           )}
           {commandError && (
@@ -316,24 +378,17 @@ export default function SystemPanel({
             <span>ALT</span>
             <span>SPD</span>
           </div>
-          {recentLog.length > 0
-            ? recentLog.map((entry, index) => <LogEntry key={index} entry={entry} index={index} />)
-            : <span className="text-[9px] text-muted">AWAITING DATA...</span>
-          }
+          {recentLog.length > 0 ? (
+            recentLog.map((entry, index) => (
+              <LogEntry key={index} entry={entry} index={index} />
+            ))
+          ) : (
+            <span className="text-[9px] text-muted">AWAITING DATA...</span>
+          )}
         </div>
 
         <SectionHeader title="COMMAND LOG" />
-        <div className="py-0.5">
-          <div className="flex items-center justify-between text-[8px] text-muted pb-0.5 border-b border-line mb-0.5">
-            <span>TIME (UTC)</span>
-            <span>CMD</span>
-            <span>STATUS</span>
-          </div>
-          {commandLog.length > 0
-            ? commandLog.map((entry) => <CommandStatusEntry key={entry.commandId} entry={entry} />)
-            : <span className="text-[9px] text-muted">NO COMMANDS YET</span>
-          }
-        </div>
+        <CommandLog log={commandLog} />
       </div>
     </aside>
   );
