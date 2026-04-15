@@ -22,7 +22,7 @@ export default function LoginPage() {
             SHERLOCK GCS
           </span>
           <div className="flex-1" />
-          <span className="text-muted text-[9px] tracking-widest uppercase">SKYTRACK</span>
+          <span className="text-muted text-[9px] tracking-widest uppercase">SHERLOCK</span>
         </div>
 
         {/* Title */}

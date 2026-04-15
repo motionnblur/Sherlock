@@ -98,7 +98,7 @@ export default function StatusBar({
         <span className="text-line">|</span>
         <div className="flex items-center gap-1.5">
           <span className="text-muted">SYSTEM</span>
-          <span className="text-neon">SKYTRACK v1.0</span>
+          <span className="text-neon">SHERLOCK v1.0</span>
         </div>
       </div>
     </footer>

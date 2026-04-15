@@ -173,7 +173,7 @@ describe('StatusBar', () => {
   it('shows system version', () => {
     render(<StatusBar {...defaultProps} />);
     
-    expect(screen.getByText('SKYTRACK v1.0')).toBeInTheDocument();
+    expect(screen.getByText('SHERLOCK v1.0')).toBeInTheDocument();
   });
 
   it('applies correct styling classes', () => {

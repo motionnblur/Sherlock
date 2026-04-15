@@ -95,7 +95,7 @@ export default function Header({
         </div>
         <div className="w-px h-5 bg-line" />
         <span className="text-muted text-xs tracking-wider uppercase">
-          SKYTRACK Ground Control System
+          SHERLOCK Ground Control System
         </span>
       </div>
 

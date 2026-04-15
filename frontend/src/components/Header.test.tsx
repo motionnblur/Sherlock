@@ -48,7 +48,7 @@ describe('Header', () => {
     render(<Header {...defaultProps} />);
     
     expect(screen.getByText('SHERLOCK GCS')).toBeInTheDocument();
-    expect(screen.getByText('SKYTRACK Ground Control System')).toBeInTheDocument();
+    expect(screen.getByText('SHERLOCK Ground Control System')).toBeInTheDocument();
     expect(screen.getByText('◈ TRAINING MODE ◈')).toBeInTheDocument();
   });
 
