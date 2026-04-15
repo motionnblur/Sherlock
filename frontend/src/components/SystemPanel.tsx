@@ -346,7 +346,7 @@ export default function SystemPanel({
           {isDriverModeEnabled && (
             <div className="text-[9px] text-caution tracking-widest">
               L-CLICK MAP TO ADD WAYPOINTS ({driverWaypointCount}) — AIRBORNE
-              REQUIRED
+              REQUIRED · WHEEL ZOOM IN/OUT
             </div>
           )}
           {commandError && (
