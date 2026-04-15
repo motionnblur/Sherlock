@@ -233,6 +233,17 @@ Place your `.glb` file in `frontend/public/models/`.
 
 ---
 
+## Screenshots
+<img width="322" height="343" alt="Screenshot from 2026-04-16 01-56-29" src="https://github.com/user-attachments/assets/30cc050d-6607-4f83-ae97-9b46712133ff" />
+<img width="1410" height="746" alt="show" src="https://github.com/user-attachments/assets/130cd3bf-6d84-4623-8e94-2c5c9095f2f5" />
+<img width="1915" height="921" alt="Screenshot from 2026-04-16 02-01-59" src="https://github.com/user-attachments/assets/94346cab-5119-4e28-9104-8b3bb6ed5b18" />
+<img width="755" height="657" alt="show-all" src="https://github.com/user-attachments/assets/02963273-4d2a-4b99-9a9a-bc09eb7e3de4" />
+<img width="1030" height="723" alt="show all 2" src="https://github.com/user-attachments/assets/ecf3cdfc-b46b-4fe0-81b4-6ce451ebdc11" />
+<img width="1664" height="851" alt="Geofence" src="https://github.com/user-attachments/assets/babce6ec-c3e5-4549-b20f-3cf3d59e888f" />
+<img width="1662" height="850" alt="mission plan" src="https://github.com/user-attachments/assets/d8cf116e-d508-47a4-b459-e0bc778faeab" />
+<img width="1509" height="849" alt="mission" src="https://github.com/user-attachments/assets/df5e8e2d-c20d-42a9-a652-2c9e253ac93f" />
+<img width="1184" height="797" alt="mission2" src="https://github.com/user-attachments/assets/a26d0f35-431a-4be2-9a58-ec32dd950d13" />
+
 ## License
 
 MIT
