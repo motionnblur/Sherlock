@@ -8,13 +8,14 @@ vi.mock('../constants/navigation', () => ({
   NAVIGATION_DIRECTION_ALL: 'ALL',
 }));
 
-// Mock the UtcClock component
-vi.mock('./Header', async () => {
-  const actual = await vi.importActual('./Header');
-  return {
-    ...actual,
-    UtcClock: () => <span data-testid="utc-clock">12:00:00</span>,
-  };
+// Mock the UtcClock component by mocking Date
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2024-01-01T12:00:00Z'));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('Header', () => {
@@ -54,7 +55,8 @@ describe('Header', () => {
   it('renders UTC clock', () => {
     render(<Header {...defaultProps} />);
     
-    expect(screen.getByTestId('utc-clock')).toBeInTheDocument();
+    // The UTC clock should show 12:00:00 since we mocked the time
+    expect(screen.getByText('12:00:00')).toBeInTheDocument();
   });
 
   it('shows link status when drone is selected', () => {

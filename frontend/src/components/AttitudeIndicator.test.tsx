@@ -63,8 +63,63 @@ describe('AttitudeIndicator', () => {
   it('renders pitch ladder lines', () => {
     const { container } = render(<AttitudeIndicator />);
     
-    const pitchLines = container.querySelectorAll('line[stroke="#00FF41"][strokeOpacity="0.55"]');
+    // Look for pitch ladder lines by checking if they exist in the rendered SVG
+    const lines = container.querySelectorAll('line');
+    const pitchLines = Array.from(lines).filter(line => {
+      const stroke = line.getAttribute('stroke');
+      const strokeOpacity = line.getAttribute('stroke-opacity');
+      return stroke === '#00FF41' && strokeOpacity === '0.55';
+    });
     expect(pitchLines.length).toBeGreaterThan(0);
+  });
+
+  it('renders crosshair elements', () => {
+    const { container } = render(<AttitudeIndicator />);
+    
+    // Look for crosshair lines
+    const lines = container.querySelectorAll('line');
+    const crosshairLines = Array.from(lines).filter(line => {
+      const stroke = line.getAttribute('stroke');
+      const strokeWidth = line.getAttribute('stroke-width');
+      return stroke === '#00FF41' && strokeWidth === '2';
+    });
+    expect(crosshairLines.length).toBe(2);
+    
+    // Look for center circle
+    const circles = container.querySelectorAll('circle');
+    const centerCircle = Array.from(circles).find(circle => {
+      const fill = circle.getAttribute('fill');
+      const r = circle.getAttribute('r');
+      return fill === '#00FF41' && r === '2';
+    });
+    expect(centerCircle).toBeTruthy();
+  });
+
+  it('renders roll tick marks', () => {
+    const { container } = render(<AttitudeIndicator />);
+    
+    // Look for roll tick marks
+    const lines = container.querySelectorAll('line');
+    const rollTicks = Array.from(lines).filter(line => {
+      const stroke = line.getAttribute('stroke');
+      const strokeOpacity = line.getAttribute('stroke-opacity');
+      return stroke === '#00FF41' && strokeOpacity === '0.5';
+    });
+    expect(rollTicks.length).toBeGreaterThan(0);
+  });
+
+  it('renders border circle', () => {
+    const { container } = render(<AttitudeIndicator />);
+    
+    // Look for border circle
+    const circles = container.querySelectorAll('circle');
+    const border = Array.from(circles).find(circle => {
+      const fill = circle.getAttribute('fill');
+      const stroke = circle.getAttribute('stroke');
+      return fill === 'none' && stroke === '#1e2a3a';
+    });
+    expect(border).toBeTruthy();
+    expect(border?.getAttribute('stroke-width')).toBe('2');
   });
 
   it('renders crosshair elements', () => {

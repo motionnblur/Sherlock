@@ -153,10 +153,55 @@ describe('SystemPanel', () => {
   it('renders command buttons', () => {
     render(<SystemPanel {...defaultProps} />);
     
-    expect(screen.getByText('TAKEOFF')).toBeInTheDocument();
-    expect(screen.getByText('RTH')).toBeInTheDocument();
-    expect(screen.getByText('ARM')).toBeInTheDocument();
-    expect(screen.getByText('DISARM')).toBeInTheDocument();
+    // Find buttons by their text content and check they're button elements
+    const buttons = screen.getAllByRole('button');
+    const commandButtons = buttons.filter(button => 
+      ['TAKEOFF', 'RTH', 'ARM', 'DISARM'].includes(button.textContent || '')
+    );
+    
+    expect(commandButtons.length).toBe(4);
+  });
+
+  it('calls onSendCommand when command buttons are clicked', () => {
+    render(<SystemPanel {...defaultProps} />);
+    
+    // Find the actual command buttons (not the text in command log)
+    const buttons = screen.getAllByRole('button');
+    const takeoffButton = buttons.find(button => button.textContent === 'TAKEOFF');
+    const rthButton = buttons.find(button => button.textContent === 'RTH');
+    const armButton = buttons.find(button => button.textContent === 'ARM');
+    const disarmButton = buttons.find(button => button.textContent === 'DISARM');
+    
+    expect(takeoffButton).toBeTruthy();
+    expect(rthButton).toBeTruthy();
+    expect(armButton).toBeTruthy();
+    expect(disarmButton).toBeTruthy();
+    
+    if (takeoffButton) fireEvent.click(takeoffButton);
+    expect(defaultProps.onSendCommand).toHaveBeenCalledWith('TAKEOFF');
+    
+    if (rthButton) fireEvent.click(rthButton);
+    expect(defaultProps.onSendCommand).toHaveBeenCalledWith('RTH');
+    
+    if (armButton) fireEvent.click(armButton);
+    expect(defaultProps.onSendCommand).toHaveBeenCalledWith('ARM');
+    
+    if (disarmButton) fireEvent.click(disarmButton);
+    expect(defaultProps.onSendCommand).toHaveBeenCalledWith('DISARM');
+  });
+
+  it('disables command buttons when isCommandSending is true', () => {
+    render(<SystemPanel {...defaultProps} isCommandSending={true} />);
+    
+    // Find command buttons and check if they're disabled
+    const buttons = screen.getAllByRole('button');
+    const commandButtons = buttons.filter(button => 
+      ['TAKEOFF', 'RTH', 'ARM', 'DISARM'].includes(button.textContent || '')
+    );
+    
+    commandButtons.forEach(button => {
+      expect(button).toBeDisabled();
+    });
   });
 
   it('calls onSendCommand when command buttons are clicked', () => {

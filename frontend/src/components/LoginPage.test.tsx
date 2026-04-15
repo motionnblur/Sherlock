@@ -3,22 +3,17 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import LoginPage from './LoginPage';
 
 // Mock the useLogin hook
+const mockSubmitLogin = vi.fn();
+const mockUseLogin = vi.fn();
+
 vi.mock('../hooks/useLogin', () => ({
-  useLogin: () => ({
-    isSubmitting: false,
-    loginError: null,
-    submitLogin: vi.fn(),
-  }),
+  useLogin: mockUseLogin,
 }));
 
 describe('LoginPage', () => {
-  const mockSubmitLogin = vi.fn();
-
   beforeEach(() => {
     vi.clearAllMocks();
-    
-    // Reset the mock implementation
-    vi.mocked(require('../hooks/useLogin').useLogin).mockReturnValue({
+    mockUseLogin.mockReturnValue({
       isSubmitting: false,
       loginError: null,
       submitLogin: mockSubmitLogin,
@@ -105,7 +100,7 @@ describe('LoginPage', () => {
   });
 
   it('disables submit button when isSubmitting is true', () => {
-    vi.mocked(require('../hooks/useLogin').useLogin).mockReturnValue({
+    mockUseLogin.mockReturnValue({
       isSubmitting: true,
       loginError: null,
       submitLogin: mockSubmitLogin,
@@ -142,7 +137,7 @@ describe('LoginPage', () => {
   });
 
   it('shows login error when present', () => {
-    vi.mocked(require('../hooks/useLogin').useLogin).mockReturnValue({
+    mockUseLogin.mockReturnValue({
       isSubmitting: false,
       loginError: 'Authentication failed',
       submitLogin: mockSubmitLogin,
@@ -150,11 +145,17 @@ describe('LoginPage', () => {
     
     render(<LoginPage />);
     
+    expect(screen.getByText('Authentication failed')).toBeInTheDocument();
+    expect(screen.getByText('Authentication failed')).toHaveClass('text-danger');
+  });
+    
+    render(<LoginPage />);
+    
     expect(screen.getByText('✕ Authentication failed')).toBeInTheDocument();
   });
 
   it('disables inputs when isSubmitting is true', () => {
-    vi.mocked(require('../hooks/useLogin').useLogin).mockReturnValue({
+    mockUseLogin.mockReturnValue({
       isSubmitting: true,
       loginError: null,
       submitLogin: mockSubmitLogin,
@@ -170,7 +171,7 @@ describe('LoginPage', () => {
   });
 
   it('shows authenticating text on button when isSubmitting is true', () => {
-    vi.mocked(require('../hooks/useLogin').useLogin).mockReturnValue({
+    mockUseLogin.mockReturnValue({
       isSubmitting: true,
       loginError: null,
       submitLogin: mockSubmitLogin,
