@@ -386,6 +386,53 @@ The stream URL returned by `GET /api/drones/{droneId}/stream` already uses the M
 
 ---
 
+## Unit Testing
+
+**Runner:** Vitest 4 + `@testing-library/react` 16 + `@testing-library/jest-dom` 6.  
+**Environment:** jsdom (configured in `vitest.config.ts`).  
+**Setup file:** `src/test/setup.ts` — imports jest-dom matchers and runs `cleanup` after each test.
+
+```bash
+cd frontend
+npm test          # vitest run (single pass)
+```
+
+### Coverage
+
+| Layer | Files | What is tested |
+|---|---|---|
+| Utils | `utils/formatters.test.ts` | `clamp`, `formatFixed`, `formatHemisphereCoordinate`, `formatCoordinatePair`, `formatUtcTime`, `getCardinalDirection` |
+| Utils | `utils/geo.test.ts` | `horizontalDistanceMeters` (Haversine) |
+| Utils | `utils/flightReplay.test.ts` | CSV serialization, filename sanitization |
+| Utils | `utils/telemetry.test.ts` | Payload parsing, geofence alerts, command lifecycle |
+| Constants | `constants/performance.test.ts` | `getNextPerformanceStage` stage cycling |
+| Context | `contexts/AuthContext.test.tsx` | `AuthProvider` mount, token persistence, expiry eviction, login/logout |
+| Hooks | `hooks/useAuth.test.tsx` | Context consumption, throws outside provider |
+| Hooks | `hooks/useCommand.test.tsx` | All HTTP status codes → error strings, 401 logout, request body |
+| Hooks | `hooks/useLogin.test.tsx` | Success, failure, error fallback, credential body |
+| Hooks | `hooks/useGeofences.test.tsx` | CRUD operations, 401 logout, error codes |
+| Hooks | `hooks/useDroneRegistry.test.tsx` | Polling, non-string ID filtering, 401 logout |
+| Hooks | `hooks/useStreamUrl.test.tsx` | Fetch, 401 logout, `clearStreamUrl`, auth header |
+| Hooks | `hooks/useLastKnownTelemetry.test.tsx` | Enabled/disabled guard, empty droneIds, 401 logout |
+| Hooks | `hooks/useFlightReplay.test.tsx` | Load, validation, 401 logout, playback controls, seek, clear |
+| Components | `components/AttitudeIndicator.test.tsx` | SVG rendering |
+| Components | `components/Header.test.tsx` | Settings menu, mode toggles |
+| Components | `components/SystemPanel.test.tsx` | C2 commands, command log |
+| Components | `components/StatusBar.test.tsx` | Status indicators, performance stage |
+| Components | `components/TelemetryPanel.test.tsx` | Telemetry display |
+| Components | `components/LoginPage.test.tsx` | Auth form |
+| Components | `components/SectionHeader.test.tsx` | Title rendering |
+
+### Testing patterns
+
+- **Mocking fetch:** use `vi.stubGlobal('fetch', vi.fn().mockResolvedValue({...}))` — always `vi.restoreAllMocks()` in `afterEach`.
+- **Auth in hook tests:** wrap with `{ wrapper: AuthProvider }`. For hooks that read `authToken` from `useAuth()` (e.g. `useStreamUrl`, `useLastKnownTelemetry`), pre-populate `sessionStorage` with a valid token before rendering.
+- **Stable array references:** never pass inline array literals to `renderHook` callbacks when the array appears in a `useEffect` dependency. Declare the array as a `const` outside the callback to avoid infinite re-render loops.
+- **Logout verification:** after triggering a 401 flow, assert `sessionStorage.getItem('skytrack_auth')` is `null` (the `AuthProvider` clears it on `logout()`).
+- **No second STOMP client in tests:** `useTelemetry` is not unit-tested directly; its STOMP client is complex to mock. Prefer integration tests or manual QA for live-data flows.
+
+---
+
 ## Vite Dev Server
 
 ```bash
