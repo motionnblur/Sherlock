@@ -1,5 +1,8 @@
 # SHERLOCK GCS — SKYTRACK Ground Control Station
 
+## ⚠️ Vibe Coding Warning
+> **Warning:** This application was developed using **vibe coding** (AI-assisted generation). Please tread carefully and review the codebase thoroughly before attempting any production deployment or relying on it for critical tasks.
+
 A defense-grade real-time UAV ground control station that visualizes live telemetry on a 3D globe. Built as a full-stack demonstration of WebSocket-driven telemetry streaming.
 
 ```
