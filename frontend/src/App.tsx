@@ -692,6 +692,9 @@ export default function App() {
     return geofences.filter((geofence) => geofence.id !== editingGeofenceId);
   }, [editingGeofenceId, geofenceEditorMode, geofences]);
 
+  const activeGeofenceCount = geofences.filter((g) => g.isActive).length;
+  const hasActiveGeofence = activeGeofenceCount > 0;
+
   // Compose the waypoints shown on the map: active mission progress takes priority over editable draft state.
   const mapMissionWaypoints = useMemo((): MissionWaypoint[] => {
     if (activeMission?.status === 'ACTIVE') {
@@ -887,6 +890,9 @@ export default function App() {
             isDriverModeAvailable={isDriverModeAvailable}
             onToggleDriverMode={handleToggleDriverMode}
             driverWaypointCount={driverWaypoints.length}
+            selectedDroneId={selectedDrone}
+            hasActiveGeofence={hasActiveGeofence}
+            activeGeofenceCount={activeGeofenceCount}
           />
         )}
 

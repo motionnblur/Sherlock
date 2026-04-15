@@ -65,13 +65,15 @@ src/
     ├── LiveVideoWindow.tsx      # Floating 240×240 HLS video window; uses hls.js; mounted inside <main> over the map
     ├── LoginPage.tsx            # Full-screen operator authentication form (shown when unauthenticated)
     ├── MapComponent.tsx         # CesiumJS viewer shell + driver-mode route drawing + mission waypoint rendering + Unity-style X/Y/Z gizmo drag for editable mission nodes
+    ├── FlightLogSection.tsx     # Extracted flight log sub-component; last 8 alt/speed entries from history
     ├── GeofenceAlertWindow.tsx   # Floating alert tray for `/topic/alerts/geofence` enter/exit events
     ├── GeofenceManagementPanel.tsx # Right sidebar geofence manager: DRAW + SAVED tabs with create/edit/delete/activate controls
+    ├── PreflightChecklist.tsx   # GO/NO-GO preflight status panel derived from telemetry + connection props
     ├── MissionPlanningPanel.tsx # Right sidebar in mission mode: NEW tab + SAVED tab + PLANNED mission edit session (rename, add/remove, nudge, save/cancel); ACTIVE mission progress view
     ├── SectionHeader.tsx        # Shared panel section divider/header component
     ├── LowBatteryWindow.tsx     # Floating bottom-right panel; battery alerts in FREE MODE + SHOW ALL only
     ├── StatusBar.tsx            # Bottom bar: alerts, mission status, asset name
-    ├── SystemPanel.tsx          # Right sidebar: compass, mission clock, datalink (RSSI/arm/mode), C2 commands + command lifecycle log + DRIVER MODE toggle
+    ├── SystemPanel.tsx          # Right sidebar: preflight GO/NO-GO checklist, compass, mission clock, datalink (RSSI/arm/mode), C2 commands + command lifecycle log + DRIVER MODE toggle
     └── TelemetryPanel.tsx       # Left sidebar: position/kinematics/battery + attitude indicator + GPS quality
     └── map/
         ├── cesiumScene.ts       # Cesium viewer + entity/primitive helper functions/constants

@@ -128,6 +128,9 @@ export interface SystemPanelProps {
   isDriverModeAvailable: boolean;
   onToggleDriverMode: () => void;
   driverWaypointCount: number;
+  selectedDroneId: string | null;
+  hasActiveGeofence: boolean;
+  activeGeofenceCount: number;
 }
 
 export interface AttitudeIndicatorProps {
@@ -180,6 +183,18 @@ export interface LowBatteryWindowProps {
 export interface GeofenceAlertWindowProps {
   alerts: GeofenceAlert[];
   onSelectDrone: (droneId: DroneId) => void;
+}
+
+export interface PreflightChecklistProps {
+  connected: boolean;
+  telemetry: TelemetryPoint | null;
+  selectedDroneId: string | null;
+  hasActiveGeofence: boolean;
+  activeGeofenceCount: number;
+}
+
+export interface FlightLogSectionProps {
+  history: TelemetryPoint[];
 }
 
 export interface GeofenceManagementPanelProps {

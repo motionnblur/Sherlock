@@ -3,12 +3,13 @@ import type { CommandLogEntry } from "../interfaces/command";
 import type {
   AltitudeTrendProps,
   CompassRoseProps,
-  LogEntryProps,
   MissionClockProps,
   SystemPanelProps,
 } from "../interfaces/components";
 import type { CommandType } from "../hooks/useCommand";
 import SectionHeader from "./SectionHeader";
+import FlightLogSection from "./FlightLogSection";
+import PreflightChecklist from "./PreflightChecklist";
 import { BLANK_VALUE, formatUtcTime } from "../utils/formatters";
 
 function MissionClock({ started }: MissionClockProps) {
@@ -72,26 +73,6 @@ function CompassRose({ heading }: CompassRoseProps) {
           {d}
         </span>
       ))}
-    </div>
-  );
-}
-
-function LogEntry({ entry, index }: LogEntryProps) {
-  const time = formatUtcTime(entry.timestamp);
-
-  return (
-    <div
-      className={`flex items-center justify-between py-0.5 text-[9px] border-b border-line last:border-0 ${
-        index === 0 ? "text-neon" : "text-muted"
-      }`}
-    >
-      <span className="tabular-nums">{time}</span>
-      <span className="tabular-nums">
-        {entry.altitude?.toFixed(0) ?? BLANK_VALUE}m
-      </span>
-      <span className="tabular-nums">
-        {entry.speed?.toFixed(0) ?? BLANK_VALUE}km/h
-      </span>
     </div>
   );
 }
@@ -212,6 +193,9 @@ export default function SystemPanel({
   telemetry: t,
   history,
   connected,
+  selectedDroneId,
+  hasActiveGeofence,
+  activeGeofenceCount,
   onSendCommand,
   isCommandSending,
   commandError,
@@ -221,7 +205,6 @@ export default function SystemPanel({
   onToggleDriverMode,
   driverWaypointCount,
 }: SystemPanelProps) {
-  const recentLog = [...history].reverse().slice(0, 8);
 
   return (
     <aside className="w-52 bg-panel border-l border-line flex flex-col shrink-0 overflow-y-auto">
@@ -232,6 +215,13 @@ export default function SystemPanel({
       </div>
 
       <div className="px-3 py-2 flex flex-col gap-0.5">
+        <PreflightChecklist
+          connected={connected}
+          telemetry={t}
+          selectedDroneId={selectedDroneId}
+          hasActiveGeofence={hasActiveGeofence}
+          activeGeofenceCount={activeGeofenceCount}
+        />
         <SectionHeader title="MISSION CLOCK" />
         <div className="py-1 text-sm">
           <MissionClock started={connected && !!t} />
@@ -371,21 +361,7 @@ export default function SystemPanel({
           )}
         </div>
 
-        <SectionHeader title="FLIGHT LOG" />
-        <div className="py-0.5">
-          <div className="flex items-center justify-between text-[8px] text-muted pb-0.5 border-b border-line mb-0.5">
-            <span>TIME (UTC)</span>
-            <span>ALT</span>
-            <span>SPD</span>
-          </div>
-          {recentLog.length > 0 ? (
-            recentLog.map((entry, index) => (
-              <LogEntry key={index} entry={entry} index={index} />
-            ))
-          ) : (
-            <span className="text-[9px] text-muted">AWAITING DATA...</span>
-          )}
-        </div>
+        <FlightLogSection history={history} />
 
         <SectionHeader title="COMMAND LOG" />
         <CommandLog log={commandLog} />

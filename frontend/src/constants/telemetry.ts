@@ -17,3 +17,8 @@ export const MAX_SELECTION_VISIBLE_ROWS = 10;
 export const ASSET_LIST_ROW_HEIGHT_PX = 68;
 export const ASSET_LIST_OVERSCAN_ROWS = 8;
 export const COMMAND_LOG_LIMIT = 20;
+
+export const PREFLIGHT_TELEMETRY_STALE_MS = 4000;
+export const PREFLIGHT_GPS_FIX_MIN = 3;
+export const PREFLIGHT_SATELLITE_MIN = 6;
+export const PREFLIGHT_RSSI_MIN = 40;
