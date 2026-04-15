@@ -46,14 +46,18 @@ export function parseTelemetryMessage(messageBody: string): TelemetryPoint | nul
 export function parseTelemetryListMessage(messageBody: string): TelemetryPoint[] {
   try {
     const parsed = JSON.parse(messageBody) as unknown;
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.filter(isTelemetryPoint);
+    return parseTelemetryListPayload(parsed);
   } catch {
     return [];
   }
+}
+
+export function parseTelemetryListPayload(payload: unknown): TelemetryPoint[] {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload.filter(isTelemetryPoint);
 }
 
 export function parseBatteryAlertMessage(body: string): { droneId: string; battery: number } | null {

@@ -162,6 +162,9 @@ export default function MapComponent({
   onAddMissionWaypoint,
   onSelectMissionWaypoint,
   onMoveMissionWaypoint,
+  isReplayActive,
+  replayPathPoints,
+  replayCursorPoint,
 }: MapComponentProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
@@ -185,6 +188,8 @@ export default function MapComponent({
   const missionRouteRef = useRef<Cesium.Entity | null>(null);
   const missionWaypointEntitiesRef = useRef<Cesium.Entity[]>([]);
   const missionGizmoEntitiesRef = useRef<Cesium.Entity[]>([]);
+  const replayPathRef = useRef<Cesium.Entity | null>(null);
+  const replayCursorRef = useRef<Cesium.Entity | null>(null);
   const missionGizmoDragStateRef = useRef<MissionGizmoDragState | null>(null);
   const missionGizmoDragCameraStateRef = useRef<CameraControllerState | null>(null);
   const suppressNextMissionClickRef = useRef(false);
@@ -298,6 +303,7 @@ export default function MapComponent({
       for (const entity of missionGizmoEntitiesRef.current) {
         viewerRef.current.entities.remove(entity);
       }
+      clearReplayEntities(viewerRef.current, replayPathRef, replayCursorRef);
       fleetPointCollectionRef.current = null;
       fleetBillboardCollectionRef.current = null;
       fleetPolylineCollectionRef.current = null;
@@ -371,11 +377,22 @@ export default function MapComponent({
     initialCenteringRef.current = false;
     lastPathTimestampRef.current = null;
     clearMissionGizmoEntities(viewer, missionGizmoEntitiesRef);
+    clearReplayEntities(viewer, replayPathRef, replayCursorRef);
     onSelectMissionWaypoint(null);
   }, [viewer, selectedDrone, onSelectMissionWaypoint]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed() || !selectedDrone || !selectedDisplayTelemetry) {
+      return;
+    }
+
+    if (isReplayActive) {
+      if (selectedDroneRef.current) {
+        selectedDroneRef.current.show = false;
+      }
+      if (selectedPathRef.current) {
+        selectedPathRef.current.show = false;
+      }
       return;
     }
 
@@ -440,11 +457,79 @@ export default function MapComponent({
     isGeofenceModeEnabled,
     isMissionModeEnabled,
     showAllAssets,
+    isReplayActive,
     selectedDisplayTelemetry,
     selectedDrone,
     selectedLiveTelemetry,
     viewer,
   ]);
+
+  useEffect(() => {
+    if (!viewer || viewer.isDestroyed()) {
+      return;
+    }
+
+    clearReplayEntities(viewer, replayPathRef, replayCursorRef);
+    if (!selectedDrone || !isReplayActive || replayPathPoints.length === 0) {
+      viewer.scene.requestRender();
+      return;
+    }
+
+    if (selectedDroneRef.current) {
+      selectedDroneRef.current.show = false;
+    }
+    if (selectedPathRef.current) {
+      selectedPathRef.current.show = false;
+    }
+
+    const pathPositions = replayPathPoints.map((point) =>
+      Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, point.altitude),
+    );
+    replayPathRef.current = viewer.entities.add({
+      name: `replay-path-${selectedDrone}`,
+      polyline: {
+        positions: pathPositions,
+        width: 2,
+        material: new Cesium.PolylineGlowMaterialProperty({
+          glowPower: 0.2,
+          color: Cesium.Color.fromCssColorString('#FFB400').withAlpha(0.9),
+        }),
+        clampToGround: false,
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+
+    if (replayCursorPoint) {
+      replayCursorRef.current = viewer.entities.add({
+        name: `replay-cursor-${selectedDrone}`,
+        position: Cesium.Cartesian3.fromDegrees(
+          replayCursorPoint.longitude,
+          replayCursorPoint.latitude,
+          replayCursorPoint.altitude,
+        ),
+        point: {
+          pixelSize: 9,
+          color: Cesium.Color.fromCssColorString('#00FF41'),
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+        label: {
+          text: 'REPLAY',
+          font: '11px "JetBrains Mono", monospace',
+          fillColor: Cesium.Color.fromCssColorString('#00FF41'),
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          pixelOffset: new Cesium.Cartesian2(0, -18),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      });
+    }
+
+    viewer.scene.requestRender();
+  }, [isReplayActive, replayCursorPoint, replayPathPoints, selectedDrone, viewer]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) {
@@ -1026,6 +1111,7 @@ export default function MapComponent({
       clearDriverRouteEntities(viewer, driverRouteRef, driverWaypointEntitiesRef);
       clearMissionRouteEntities(viewer, missionRouteRef, missionWaypointEntitiesRef);
       clearMissionGizmoEntities(viewer, missionGizmoEntitiesRef);
+      clearReplayEntities(viewer, replayPathRef, replayCursorRef);
       clearGeofenceVisuals(viewer, geofenceVisualsRef);
       clearDraftGeofence(viewer, draftGeofenceVisualRef);
       geofenceDraftDragStateRef.current = null;
@@ -1090,6 +1176,21 @@ function clearMissionGizmoEntities(
     viewer.entities.remove(entity);
   }
   missionGizmoEntitiesRef.current = [];
+}
+
+function clearReplayEntities(
+  viewer: Cesium.Viewer,
+  replayPathRef: MutableRefObject<Cesium.Entity | null>,
+  replayCursorRef: MutableRefObject<Cesium.Entity | null>,
+) {
+  if (replayPathRef.current) {
+    viewer.entities.remove(replayPathRef.current);
+    replayPathRef.current = null;
+  }
+  if (replayCursorRef.current) {
+    viewer.entities.remove(replayCursorRef.current);
+    replayCursorRef.current = null;
+  }
 }
 
 function missionWaypointColor(status: MissionWaypoint['status']): Cesium.Color {

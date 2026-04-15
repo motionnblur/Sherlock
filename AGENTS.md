@@ -102,7 +102,7 @@ Extended fields (`roll`–`flightMode`) are null in the lite fleet stream and wh
 | STOMP selected stream    | `/topic/telemetry/{droneId}`                   |
 | STOMP fleet lite stream  | `/topic/telemetry/lite/fleet`                  |
 | STOMP command lifecycle  | `/topic/commands/{droneId}`                    |
-| REST history             | `GET /api/telemetry/history`                   |
+| REST history             | `GET /api/telemetry/history?droneId=X` (latest 150, desc) or `GET /api/telemetry/history?droneId=X&start=ISO&end=ISO` (range replay, asc, max 20,000 points; `400` on invalid/oversized range) |
 | REST bulk last-known     | `POST /api/telemetry/last-known`               |
 | REST stream URL          | `GET /api/drones/{droneId}/stream`             |
 | **C2 command**           | `POST /api/drones/{droneId}/command` — body: `{ commandType: "RTH" \| "ARM" \| "DISARM" \| "TAKEOFF" \| "GOTO", latitude?: number, longitude?: number, altitude?: number }`; response includes `CommandLifecycleDTO` with status `PENDING \| SENT \| ACKED \| REJECTED \| TIMEOUT \| FAILED` (`GOTO` altitude is accepted as AMSL from UI and converted to relative-home meters using live MAVLink snapshot; `409` when vehicle navigation readiness is not met) |

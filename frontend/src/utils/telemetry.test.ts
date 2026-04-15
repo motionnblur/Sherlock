@@ -5,6 +5,7 @@ import {
   parseGeofenceAlertMessage,
   parseGeofenceListResponse,
   parseGeofenceResponse,
+  parseTelemetryListPayload,
 } from './telemetry';
 
 describe('geofence parsing', () => {
@@ -112,5 +113,29 @@ describe('command lifecycle parsing', () => {
 
     expect(parsed).toHaveLength(1);
     expect(parsed[0]?.commandId).toBe('cmd-1');
+  });
+});
+
+describe('telemetry parsing', () => {
+  it('filters invalid telemetry items from payload arrays', () => {
+    const parsed = parseTelemetryListPayload([
+      {
+        droneId: 'SHERLOCK-01',
+        latitude: 37.1,
+        longitude: 23.1,
+        altitude: 1000,
+        speed: 120,
+        battery: 80,
+        heading: 180,
+        timestamp: '2026-04-15T00:00:00Z',
+      },
+      {
+        droneId: 'BROKEN',
+        latitude: 'bad',
+      },
+    ]);
+
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.droneId).toBe('SHERLOCK-01');
   });
 });

@@ -39,6 +39,7 @@ export default function Header({
   selectedNavigationDirection,
   isMissionModeEnabled,
   isGeofenceModeEnabled,
+  isReplayModeEnabled,
   onToggleFreeMode,
   onDeselect,
   onToggleLiveVideo,
@@ -46,6 +47,7 @@ export default function Header({
   onSelectNavigationDirection,
   onToggleMissionMode,
   onToggleGeofenceMode,
+  onToggleReplayMode,
   onLogout,
 }: HeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -201,6 +203,18 @@ export default function Header({
                           }`}
                         >
                           GEOFENCE DRAW: {isGeofenceModeEnabled ? 'ON' : 'OFF'}
+                        </button>
+                        <button
+                          id="flight-replay-mode-toggle-btn"
+                          type="button"
+                          onClick={onToggleReplayMode}
+                          className={`w-full text-left text-[9px] tracking-widest border px-2 py-1 transition-colors ${
+                            isReplayModeEnabled
+                              ? 'text-neon border-neon bg-elevated'
+                              : 'text-muted border-line hover:text-neon hover:border-neon hover:bg-elevated'
+                          }`}
+                        >
+                          FLIGHT REPLAY: {isReplayModeEnabled ? 'ON' : 'OFF'}
                         </button>
                       </>
                     )}

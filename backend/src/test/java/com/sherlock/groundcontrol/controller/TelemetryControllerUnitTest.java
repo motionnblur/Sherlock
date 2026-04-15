@@ -6,6 +6,7 @@ import com.sherlock.groundcontrol.dto.TelemetryDTO;
 import com.sherlock.groundcontrol.service.TelemetryService;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,7 +22,22 @@ class TelemetryControllerUnitTest {
         when(telemetryService.getRecentHistory("SHERLOCK-01"))
                 .thenReturn(List.of(TelemetryDTO.builder().droneId("SHERLOCK-01").build()));
 
-        var response = controller.getHistory("SHERLOCK-01");
+        var response = controller.getHistory("SHERLOCK-01", null, null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(1, response.getBody().size());
+    }
+
+    @Test
+    void getHistoryWithRangeDelegatesToRangeService() {
+        TelemetryService telemetryService = mock(TelemetryService.class);
+        TelemetryController controller = new TelemetryController(telemetryService);
+        Instant start = Instant.parse("2026-04-10T00:00:00Z");
+        Instant end = Instant.parse("2026-04-10T01:00:00Z");
+        when(telemetryService.getHistoryInRange("SHERLOCK-01", start, end))
+                .thenReturn(List.of(TelemetryDTO.builder().droneId("SHERLOCK-01").build()));
+
+        var response = controller.getHistory("SHERLOCK-01", start, end);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(1, response.getBody().size());

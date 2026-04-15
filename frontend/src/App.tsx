@@ -7,6 +7,7 @@ import { useGeofences } from './hooks/useGeofences';
 import { useCommand } from './hooks/useCommand';
 import { useDroneRegistry } from './hooks/useDroneRegistry';
 import { useMission } from './hooks/useMission';
+import { useFlightReplay } from './hooks/useFlightReplay';
 import {
   DRIVER_DEFAULT_ALTITUDE_METERS,
   DRIVER_REACHED_HORIZONTAL_METERS,
@@ -38,6 +39,7 @@ import LoginPage from './components/LoginPage';
 import AssetSelectionOverlay from './components/AssetSelectionOverlay';
 import LowBatteryWindow from './components/LowBatteryWindow';
 import GeofenceAlertWindow from './components/GeofenceAlertWindow';
+import FlightReplayWindow from './components/FlightReplayWindow';
 import type { DriverWaypoint, DroneId, NavigationDirection } from './interfaces/telemetry';
 import type { Geofence, GeofencePointInput } from './interfaces/geofence';
 import type { MissionGizmoAxis, MissionWaypoint, PlanningWaypoint } from './interfaces/mission';
@@ -75,6 +77,7 @@ export default function App() {
   const [selectedMissionWaypointLocalId, setSelectedMissionWaypointLocalId] = useState<number | null>(null);
   const planningWaypointIdRef = useRef(1);
   const [isGeofenceModeEnabled, setIsGeofenceModeEnabled] = useState(false);
+  const [isReplayModeEnabled, setIsReplayModeEnabled] = useState(false);
   const [geofenceEditorMode, setGeofenceEditorMode] = useState<'create' | 'edit'>('create');
   const [editingGeofenceId, setEditingGeofenceId] = useState<number | null>(null);
   const [geofenceDraftName, setGeofenceDraftName] = useState('');
@@ -107,6 +110,24 @@ export default function App() {
   const lastKnownTelemetry = useLastKnownTelemetry(droneIds, selectedDrone !== null);
   const { streamUrl, isFetching, fetchError, fetchStreamUrl, clearStreamUrl } = useStreamUrl();
   const { sendCommand, isSending: isCommandSending, commandError } = useCommand(selectedDrone, authToken);
+  const {
+    rangeStartLocal,
+    rangeEndLocal,
+    setRangeStartLocal,
+    setRangeEndLocal,
+    isLoading: isReplayLoading,
+    replayError,
+    replayPoints,
+    currentIndex: replayCurrentIndex,
+    currentPoint: replayCurrentPoint,
+    isPlaying: isReplayPlaying,
+    loadReplay,
+    togglePlayback,
+    seekToIndex,
+    clearReplay,
+    exportCsv,
+  } = useFlightReplay(selectedDrone, authToken);
+  const isReplayActive = isReplayModeEnabled && replayPoints.length > 0;
   const isDriverModeAvailable = Boolean(selectedDrone?.startsWith('MAVLINK-')) && !freeMode;
   const isMissionModeAvailable = Boolean(selectedDrone) && !freeMode;
   const isGeofenceModeAvailable = Boolean(selectedDrone) && !freeMode;
@@ -152,10 +173,12 @@ export default function App() {
       if (next) {
         setIsGeofenceModeEnabled(false);
         clearGeofenceDraft();
+        setIsReplayModeEnabled(false);
+        clearReplay();
       }
       return next;
     });
-  }, [clearGeofenceDraft, clearMissionPlanning, clearSavedMissionEdit, isMissionModeAvailable]);
+  }, [clearGeofenceDraft, clearMissionPlanning, clearReplay, clearSavedMissionEdit, isMissionModeAvailable]);
 
   const handleToggleGeofenceMode = useCallback(() => {
     if (!isGeofenceModeAvailable) {
@@ -169,10 +192,41 @@ export default function App() {
         setIsMissionModeEnabled(false);
         clearMissionPlanning();
         clearSavedMissionEdit();
+        setIsReplayModeEnabled(false);
+        clearReplay();
       }
       return next;
     });
-  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearSavedMissionEdit, isGeofenceModeAvailable]);
+  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearSavedMissionEdit, clearReplay, isGeofenceModeAvailable]);
+
+  const handleToggleReplayMode = useCallback(() => {
+    if (!selectedDrone || freeMode) {
+      return;
+    }
+    setIsReplayModeEnabled((current) => {
+      const next = !current;
+      if (!next) {
+        clearReplay();
+        return next;
+      }
+      setIsDriverModeEnabled(false);
+      clearDriverRoute();
+      setIsMissionModeEnabled(false);
+      clearMissionPlanning();
+      clearSavedMissionEdit();
+      setIsGeofenceModeEnabled(false);
+      clearGeofenceDraft();
+      return next;
+    });
+  }, [
+    clearDriverRoute,
+    clearGeofenceDraft,
+    clearMissionPlanning,
+    clearReplay,
+    clearSavedMissionEdit,
+    freeMode,
+    selectedDrone,
+  ]);
 
   const handleAddMissionWaypoint = useCallback((latitude: number, longitude: number) => {
     if (!isMissionModeEnabled || !selectedDrone || freeMode) return;
@@ -564,13 +618,15 @@ export default function App() {
         clearSavedMissionEdit();
         setIsGeofenceModeEnabled(false);
         clearGeofenceDraft();
+        setIsReplayModeEnabled(false);
+        clearReplay();
       } else {
         setShowAllAssets(false);
         resetNavigationDirection();
       }
       return nextFreeMode;
     });
-  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearSavedMissionEdit, clearStreamUrl, resetNavigationDirection]);
+  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearReplay, clearSavedMissionEdit, clearStreamUrl, resetNavigationDirection]);
 
   const handleToggleShowAllAssets = useCallback(() => {
     setShowAllAssets((current) => {
@@ -592,8 +648,10 @@ export default function App() {
     clearSavedMissionEdit();
     setIsGeofenceModeEnabled(false);
     clearGeofenceDraft();
+    setIsReplayModeEnabled(false);
+    clearReplay();
     resetNavigationDirection();
-  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearSavedMissionEdit, resetNavigationDirection]);
+  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearReplay, clearSavedMissionEdit, resetNavigationDirection]);
 
   const handleDeselect = useCallback(() => {
     setSelectedDrone(null);
@@ -608,8 +666,10 @@ export default function App() {
     clearMissionPlanning();
     clearSavedMissionEdit();
     clearGeofenceDraft();
+    setIsReplayModeEnabled(false);
+    clearReplay();
     resetNavigationDirection();
-  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearSavedMissionEdit, clearStreamUrl, resetNavigationDirection]);
+  }, [clearDriverRoute, clearGeofenceDraft, clearMissionPlanning, clearReplay, clearSavedMissionEdit, clearStreamUrl, resetNavigationDirection]);
 
   const handleToggleDriverMode = useCallback(() => {
     if (!isDriverModeAvailable) {
@@ -622,10 +682,12 @@ export default function App() {
       } else {
         setIsGeofenceModeEnabled(false);
         clearGeofenceDraft();
+        setIsReplayModeEnabled(false);
+        clearReplay();
       }
       return nextMode;
     });
-  }, [clearDriverRoute, clearGeofenceDraft, isDriverModeAvailable]);
+  }, [clearDriverRoute, clearGeofenceDraft, clearReplay, isDriverModeAvailable]);
 
   const resolveDriverWaypointAltitude = useCallback(() => {
     if (selectedDrone && telemetry?.droneId === selectedDrone) {
@@ -808,6 +870,7 @@ export default function App() {
         selectedNavigationDirection={selectedNavigationDirection}
         isMissionModeEnabled={isMissionModeEnabled}
         isGeofenceModeEnabled={isGeofenceModeEnabled}
+        isReplayModeEnabled={isReplayModeEnabled}
         onToggleFreeMode={handleToggleFreeMode}
         onDeselect={handleDeselect}
         onToggleLiveVideo={handleToggleLiveVideo}
@@ -815,6 +878,7 @@ export default function App() {
         onSelectNavigationDirection={setSelectedNavigationDirection}
         onToggleMissionMode={handleToggleMissionMode}
         onToggleGeofenceMode={handleToggleGeofenceMode}
+        onToggleReplayMode={handleToggleReplayMode}
         onLogout={handleLogout}
       />
 
@@ -853,6 +917,9 @@ export default function App() {
                 onAddMissionWaypoint={handleAddMissionWaypoint}
                 onSelectMissionWaypoint={handleSelectMissionWaypoint}
                 onMoveMissionWaypoint={handleMoveMissionWaypoint}
+                isReplayActive={isReplayActive}
+                replayPathPoints={replayPoints}
+                replayCursorPoint={replayCurrentPoint}
               />
 
               {!freeMode && isLiveVideoOpen && (
@@ -870,6 +937,27 @@ export default function App() {
 
               {freeMode && showAllAssets && filteredBatteryAlerts.length > 0 && (
                 <LowBatteryWindow alerts={filteredBatteryAlerts} />
+              )}
+
+              {!freeMode && isReplayModeEnabled && selectedDrone && (
+                <FlightReplayWindow
+                  selectedDrone={selectedDrone}
+                  rangeStartLocal={rangeStartLocal}
+                  rangeEndLocal={rangeEndLocal}
+                  isLoading={isReplayLoading}
+                  replayError={replayError}
+                  isPlaying={isReplayPlaying}
+                  replayPointCount={replayPoints.length}
+                  currentIndex={replayCurrentIndex}
+                  currentTimestamp={replayCurrentPoint?.timestamp ?? null}
+                  onChangeRangeStart={setRangeStartLocal}
+                  onChangeRangeEnd={setRangeEndLocal}
+                  onLoadReplay={loadReplay}
+                  onTogglePlayback={togglePlayback}
+                  onSeek={seekToIndex}
+                  onExportCsv={exportCsv}
+                  onClose={handleToggleReplayMode}
+                />
               )}
             </>
           ) : (

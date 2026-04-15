@@ -3,6 +3,7 @@ package com.sherlock.groundcontrol.service;
 import com.sherlock.groundcontrol.dto.LastKnownTelemetryDTO;
 import com.sherlock.groundcontrol.dto.TelemetryDTO;
 import com.sherlock.groundcontrol.entity.TelemetryEntity;
+import com.sherlock.groundcontrol.exception.TelemetryHistoryValidationException;
 import com.sherlock.groundcontrol.repository.TelemetryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
@@ -103,6 +104,65 @@ class TelemetryServiceTest {
         assertEquals("SHERLOCK-03", history.get(0).getDroneId());
         assertEquals(84, history.get(0).getRssi());
         assertEquals("AUTO", history.get(0).getFlightMode());
+    }
+
+    @Test
+    void getHistoryInRangeRejectsPartialRange() {
+        Instant start = Instant.parse("2026-04-09T12:00:00Z");
+
+        assertThrows(
+                TelemetryHistoryValidationException.class,
+                () -> telemetryService.getHistoryInRange("SHERLOCK-03", start, null)
+        );
+        assertThrows(
+                TelemetryHistoryValidationException.class,
+                () -> telemetryService.getHistoryInRange("SHERLOCK-03", null, start)
+        );
+    }
+
+    @Test
+    void getHistoryInRangeRejectsInvalidOrder() {
+        Instant timestamp = Instant.parse("2026-04-09T12:00:00Z");
+
+        assertThrows(
+                TelemetryHistoryValidationException.class,
+                () -> telemetryService.getHistoryInRange("SHERLOCK-03", timestamp, timestamp)
+        );
+    }
+
+    @Test
+    void getHistoryInRangeRejectsLargeRanges() {
+        Instant start = Instant.parse("2026-04-09T00:00:00Z");
+        Instant end = Instant.parse("2026-04-10T00:00:00Z");
+        when(telemetryRepository.countByDroneIdAndTimestampBetween("SHERLOCK-03", start, end))
+                .thenReturn(20_001L);
+
+        assertThrows(
+                TelemetryHistoryValidationException.class,
+                () -> telemetryService.getHistoryInRange("SHERLOCK-03", start, end)
+        );
+        verify(telemetryRepository, never()).findByDroneIdAndTimestampBetweenOrderByTimestampAsc("SHERLOCK-03", start, end);
+    }
+
+    @Test
+    void getHistoryInRangeReturnsAscOrderedTelemetry() {
+        Instant start = Instant.parse("2026-04-09T00:00:00Z");
+        Instant end = Instant.parse("2026-04-10T00:00:00Z");
+        Instant first = Instant.parse("2026-04-09T00:00:01Z");
+        Instant second = Instant.parse("2026-04-09T00:00:02Z");
+        when(telemetryRepository.countByDroneIdAndTimestampBetween("SHERLOCK-03", start, end))
+                .thenReturn(2L);
+        when(telemetryRepository.findByDroneIdAndTimestampBetweenOrderByTimestampAsc("SHERLOCK-03", start, end))
+                .thenReturn(List.of(
+                        telemetryEntity("SHERLOCK-03", first),
+                        telemetryEntity("SHERLOCK-03", second)
+                ));
+
+        List<TelemetryDTO> history = telemetryService.getHistoryInRange("SHERLOCK-03", start, end);
+
+        assertEquals(2, history.size());
+        assertEquals(first, history.get(0).getTimestamp());
+        assertEquals(second, history.get(1).getTimestamp());
     }
 
     @Test

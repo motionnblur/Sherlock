@@ -22,6 +22,7 @@ export interface HeaderProps {
   selectedNavigationDirection: NavigationDirection;
   isMissionModeEnabled: boolean;
   isGeofenceModeEnabled: boolean;
+  isReplayModeEnabled: boolean;
   onToggleFreeMode: () => void;
   onDeselect: () => void;
   onToggleLiveVideo: () => void;
@@ -29,6 +30,7 @@ export interface HeaderProps {
   onSelectNavigationDirection: (direction: NavigationDirection) => void;
   onToggleMissionMode: () => void;
   onToggleGeofenceMode: () => void;
+  onToggleReplayMode: () => void;
   onLogout: () => void;
 }
 
@@ -36,6 +38,25 @@ export interface LiveVideoWindowProps {
   streamUrl: string | null;
   isFetching: boolean;
   fetchError: string | null;
+  onClose: () => void;
+}
+
+export interface FlightReplayWindowProps {
+  selectedDrone: DroneId;
+  rangeStartLocal: string;
+  rangeEndLocal: string;
+  isLoading: boolean;
+  replayError: string | null;
+  isPlaying: boolean;
+  replayPointCount: number;
+  currentIndex: number;
+  currentTimestamp: string | null;
+  onChangeRangeStart: (value: string) => void;
+  onChangeRangeEnd: (value: string) => void;
+  onLoadReplay: () => void;
+  onTogglePlayback: () => void;
+  onSeek: (index: number) => void;
+  onExportCsv: () => void;
   onClose: () => void;
 }
 
@@ -73,6 +94,9 @@ export interface MapComponentProps {
   onAddMissionWaypoint: (latitude: number, longitude: number) => void;
   onSelectMissionWaypoint: (localId: number | null) => void;
   onMoveMissionWaypoint: (localId: number, position: MissionWaypointPosition) => void;
+  isReplayActive: boolean;
+  replayPathPoints: TelemetryPoint[];
+  replayCursorPoint: TelemetryPoint | null;
 }
 
 export interface MissionPlanningPanelProps {

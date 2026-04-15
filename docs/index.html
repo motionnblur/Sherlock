@@ -827,7 +827,7 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
         <tr><td>POST /api/auth/login</td><td>No</td><td>JWT token + username + expiry on valid credentials</td></tr>
         <tr><td>POST /api/auth/logout</td><td>Bearer token</td><td>204 No Content; blacklists the token server-side</td></tr>
         <tr><td>POST /api/telemetry/last-known</td><td>Bearer token</td><td>Bulk last-known telemetry for a supplied list of drone IDs</td></tr>
-        <tr><td>GET /api/telemetry/history</td><td>Bearer token</td><td>Last 150 telemetry points from the database</td></tr>
+        <tr><td>GET /api/telemetry/history</td><td>Bearer token</td><td>Either latest 150 points (<span class="inline-code">?droneId=...</span>) or ranged replay data in ascending order (<span class="inline-code">?droneId=...&amp;start=ISO&amp;end=ISO</span>, max 20,000 points)</td></tr>
         <tr><td>GET /api/drones/{droneId}/stream</td><td>Bearer token</td><td>JSON with <span class="inline-code">{ "streamUrl": "http://…/index.m3u8" }</span> — the HLS URL for the live camera</td></tr>
         <tr><td>POST /api/drones/{droneId}/command</td><td>Bearer token</td><td>Send C2 command (RTH / ARM / DISARM / TAKEOFF / GOTO). Response includes lifecycle entry with status: PENDING / SENT / ACKED / REJECTED / TIMEOUT / FAILED</td></tr>
         <tr><td>GET /api/drones/{droneId}/commands?limit=20</td><td>Bearer token</td><td>Returns recent command lifecycle entries for Command Log bootstrap</td></tr>
@@ -1079,7 +1079,7 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
         <tr><td>LOG OUT button</td><td>Blacklists the current token server-side and returns to the login screen</td></tr>
         <tr><td>LINK ACTIVE / CONNECTING…</td><td>Green = WebSocket connected; yellow blinking = reconnecting</td></tr>
         <tr><td>SHERLOCK-01</td><td>Selected drone name</td></tr>
-        <tr><td>SETTINGS button</td><td>Opens dropdown with FREE MODE, LIVE VIDEO, and MISSION PLAN toggles (last two only when a drone is selected and Free Mode is off)</td></tr>
+        <tr><td>SETTINGS button</td><td>Opens dropdown with FREE MODE, LIVE VIDEO, MISSION PLAN, and FLIGHT REPLAY toggles (last three only when a drone is selected and Free Mode is off)</td></tr>
         <tr><td>GEOFENCE DRAW toggle</td><td>Available when a drone is selected and Free Mode is off; opens the geofence drawing overlay on the globe</td></tr>
         <tr><td>✕ button</td><td>Deselects the drone, closes live video, resets all state</td></tr>
         <tr><td>◈ TRAINING MODE ◈</td><td>Reminder that all data is simulated</td></tr>
@@ -1097,7 +1097,9 @@ DEV_SEED_PASSWORD=sherlock</code></pre>
     <h3>Globe (centre)</h3>
     <p>
       Powered by CesiumJS. The drone icon tracks the live position. A glowing
-      polyline shows the flight path (last 200 points). Press <strong>D</strong>
+      polyline shows the flight path (last 200 points). In FLIGHT REPLAY mode,
+      the map renders the historical path and a replay cursor from the selected
+      time range instead of the live selected-drone path. Press <strong>D</strong>
       to dim the imagery for better contrast at night. Active geofences render as
       amber polygons with labels, while the in-progress draft fence renders green
       with a top-centre drawing toolbar. The camera auto-flies to the drone on first

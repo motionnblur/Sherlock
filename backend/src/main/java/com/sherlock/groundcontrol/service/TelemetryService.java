@@ -3,6 +3,7 @@ package com.sherlock.groundcontrol.service;
 import com.sherlock.groundcontrol.dto.LastKnownTelemetryDTO;
 import com.sherlock.groundcontrol.dto.TelemetryDTO;
 import com.sherlock.groundcontrol.entity.TelemetryEntity;
+import com.sherlock.groundcontrol.exception.TelemetryHistoryValidationException;
 import com.sherlock.groundcontrol.repository.TelemetryRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ public class TelemetryService {
 
     private static final int MIN_CACHE_SIZE = 1;
     private static final int MAX_BULK_LOOKUP_IDS = 5000;
+    private static final int MAX_HISTORY_RANGE_POINTS = 20_000;
 
     private final TelemetryRepository telemetryRepository;
     private final Map<String, TelemetryDTO> lastKnownCache;
@@ -57,6 +59,19 @@ public class TelemetryService {
 
     public List<TelemetryDTO> getRecentHistory(String droneId) {
         return telemetryRepository.findTop150ByDroneIdOrderByTimestampDesc(droneId)
+                .stream()
+                .map(this::toDTO)
+                .toList();
+    }
+
+    public List<TelemetryDTO> getHistoryInRange(String droneId, Instant start, Instant end) {
+        validateHistoryRange(droneId, start, end);
+        long pointCount = telemetryRepository.countByDroneIdAndTimestampBetween(droneId, start, end);
+        if (pointCount > MAX_HISTORY_RANGE_POINTS) {
+            throw new TelemetryHistoryValidationException("Selected range exceeds 20000 telemetry points");
+        }
+
+        return telemetryRepository.findByDroneIdAndTimestampBetweenOrderByTimestampAsc(droneId, start, end)
                 .stream()
                 .map(this::toDTO)
                 .toList();
@@ -185,5 +200,20 @@ public class TelemetryService {
 
     private static double orDefault(Double value, double fallback) {
         return value != null ? value : fallback;
+    }
+
+    private static void validateHistoryRange(String droneId, Instant start, Instant end) {
+        if (droneId == null || droneId.isBlank()) {
+            throw new TelemetryHistoryValidationException("droneId is required");
+        }
+        if ((start == null && end != null) || (start != null && end == null)) {
+            throw new TelemetryHistoryValidationException("start and end must be provided together");
+        }
+        if (start == null) {
+            throw new TelemetryHistoryValidationException("start is required");
+        }
+        if (!start.isBefore(end)) {
+            throw new TelemetryHistoryValidationException("start must be before end");
+        }
     }
 }

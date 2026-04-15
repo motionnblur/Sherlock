@@ -35,7 +35,7 @@ src/
 ├── interfaces/
 │   ├── auth.ts                  # LoginCredentials, AuthToken interfaces
 │   ├── command.ts               # Command lifecycle models (status + command log entry)
-│   ├── components.ts            # Component prop interfaces (HeaderProps includes mission/geofence toggles; MapComponentProps includes mission and geofence overlays)
+│   ├── components.ts            # Component prop interfaces (HeaderProps includes mission/geofence/replay toggles; MapComponentProps includes mission/geofence/replay overlays)
 │   ├── geofence.ts              # Geofence domain models, request shapes, alert payloads, hook return type
 │   ├── hooks.ts                 # Hook return interfaces
 │   ├── mission.ts               # Mission, MissionWaypoint, PlanningWaypoint, MissionStatus, WaypointStatus, UseMissionResult
@@ -48,10 +48,12 @@ src/
 │   ├── useLogin.ts              # Login form submission logic; calls POST /api/auth/login
 │   ├── useMission.ts            # Mission CRUD (create/update/delete) + execute/abort; polls GET /api/missions/{id} every 1s while ACTIVE; 401 → logout
 │   ├── useGeofences.ts          # CRUD hook for /api/geofences + activate/deactivate + geofence error handling
+│   ├── useFlightReplay.ts       # Range-based replay hook for GET /api/telemetry/history + playback cursor + CSV export + 401 logout
 │   ├── useTelemetry.ts          # STOMP client; selected stream + bounded fleet summary + command lifecycle log (REST bootstrap + STOMP updates)
 │   ├── useStreamUrl.ts          # Fetches HLS stream URL; JWT in Authorization header; 401 → logout
 │   └── useDroneRegistry.ts      # Polls GET /api/drones every 30s; 401 → logout
 ├── utils/
+│   ├── flightReplay.ts          # CSV serialization + replay export filename helpers
 │   ├── formatters.ts            # Shared UI formatting helpers for coordinates, UTC time, cardinal heading
 │   ├── geo.ts                   # Haversine distance helpers used by driver-mode waypoint tracking
 │   └── telemetry.ts             # Runtime parsing/validation helpers; extended fields are optional-passthrough
@@ -61,10 +63,11 @@ src/
     ├── AssetSelectionOverlay.tsx# Virtualized startup asset selector with last-known telemetry rows
     ├── AttitudeIndicator.tsx    # SVG artificial horizon; props: roll, pitch (degrees), size (px)
     ├── VirtualizedAssetList.tsx # Shared fixed-row virtualization primitive for large asset lists
-    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings incl. geofence draw toggle
+    ├── Header.tsx               # Top bar: branding, UTC clock, link/offline status, LOG OUT button, settings incl. mission/geofence/replay toggles
+    ├── FlightReplayWindow.tsx   # Floating replay controls: time range, load, play/pause, slider seek, CSV export
     ├── LiveVideoWindow.tsx      # Floating 240×240 HLS video window; uses hls.js; mounted inside <main> over the map
     ├── LoginPage.tsx            # Full-screen operator authentication form (shown when unauthenticated)
-    ├── MapComponent.tsx         # CesiumJS viewer shell + driver-mode route drawing + mission waypoint rendering + Unity-style X/Y/Z gizmo drag for editable mission nodes
+    ├── MapComponent.tsx         # CesiumJS viewer shell + driver/mission overlays + replay path/cursor rendering
     ├── FlightLogSection.tsx     # Extracted flight log sub-component; last 8 alt/speed entries from history
     ├── GeofenceAlertWindow.tsx   # Floating alert tray for `/topic/alerts/geofence` enter/exit events
     ├── GeofenceManagementPanel.tsx # Right sidebar geofence manager: DRAW + SAVED tabs with create/edit/delete/activate controls
@@ -231,6 +234,16 @@ const {
 - `geofenceError` surfaces backend validation, not-found, name-collision, or network failure states
 - 401 responses always trigger `logout()` and return the operator to `LoginPage`
 
+### useFlightReplay
+
+`src/hooks/useFlightReplay.ts` powers post-flight telemetry replay for the selected drone.
+
+- Loads replay data from `GET /api/telemetry/history?droneId={id}&start={ISO}&end={ISO}`
+- Expects ascending telemetry arrays (range mode) and drives a local playback cursor at 2 Hz (500 ms)
+- Exports loaded replay arrays to CSV (`timestamp` + full telemetry field set)
+- 401 responses always trigger `logout()` and return the operator to `LoginPage`
+- Does not open any additional STOMP connection (replay is REST + local timeline only)
+
 ---
 
 ## Authentication
@@ -261,7 +274,7 @@ STOMP connections pass it in `connectHeaders`:
 ```ts
 connectHeaders: { Authorization: `Bearer ${authToken.token}` }
 ```
-`useTelemetry`, `useStreamUrl`, `useLastKnownTelemetry`, `useDroneRegistry`, and `useCommand` already do this. Any new hook or service that calls the backend must follow the same pattern.
+`useTelemetry`, `useStreamUrl`, `useLastKnownTelemetry`, `useDroneRegistry`, `useCommand`, and `useFlightReplay` already do this. Any new hook or service that calls the backend must follow the same pattern.
 
 ### Handling 401 responses
 A 401 from any endpoint means the token has expired or been revoked. Always respond by calling `logout()` — do not show a retry loop. The user will be returned to `LoginPage` automatically.
@@ -288,6 +301,8 @@ Pass `authToken` as a prop from `App.tsx`, or call `useAuth()` in a hook that th
 Left-click on empty map adds vertices to the draft polygon. Clicking a draft vertex selects it; dragging a draft vertex moves it in-place. Draft geofences render green; active saved fences render amber; inactive saved fences render muted gray. While editing a saved geofence, the original saved polygon is hidden and only the draft overlay is shown. Geofence mode is mutually exclusive with Mission Planning and Driver Mode.
 
 **Driver Mode:** when enabled from `SystemPanel`, left-click on the map appends waypoints to a visible route polyline. Each new waypoint altitude is aligned to the selected drone's current altitude (live telemetry first, then fleet/last-known fallback). Click picking first intersects a camera ray with a plane at the drone altitude to avoid cursor/waypoint parallax drift. While driver mode is enabled, the map camera is locked (no rotate/pan/zoom/tilt) and forced into a top-down follow view centered on the selected drone. Waypoints are sent sequentially as backend `GOTO` commands; the frontend sends waypoint altitude in AMSL (same frame as telemetry), and backend converts it to relative-home before MAVLink dispatch. The next point is dispatched only after the active point is reached within configured horizontal/vertical thresholds.
+
+**Flight Replay Mode:** enabled via SETTINGS → FLIGHT REPLAY. It mounts `FlightReplayWindow` in the map area, loads telemetry by time range from the history REST endpoint, renders full replay path + moving replay cursor on Cesium, and allows play/pause/seek + CSV export. While replay path is active, selected drone live path/entity rendering is hidden on the map and resumes when replay mode turns off.
 
 **Imagery:** `UrlTemplateImageryProvider` (OpenStreetMap) is used by default — no Cesium Ion token required. If `VITE_CESIUM_TOKEN` is set in `.env`, Ion features (World Terrain, premium imagery) unlock automatically.
 

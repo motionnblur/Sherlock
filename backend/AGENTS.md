@@ -33,7 +33,7 @@ com.sherlock.groundcontrol
 │   ├── DroneCommandController.java # POST /api/drones/{droneId}/command + GET /api/drones/{droneId}/commands
 │   ├── GlobalExceptionHandler.java # @RestControllerAdvice — auth + generic errors
 │   ├── MissionController.java      # CRUD + execute/abort — POST/GET/PUT/DELETE /api/missions, /execute, /abort
-│   ├── TelemetryController.java    # REST: GET /api/telemetry/history + POST /api/telemetry/last-known
+│   ├── TelemetryController.java    # REST: GET /api/telemetry/history (latest or ranged) + POST /api/telemetry/last-known
 │   └── DroneStreamController.java  # REST: GET /api/drones/{droneId}/stream
 ├── dto/
 │   ├── CommandHistoryResponseDTO.java # Wire: { commands: CommandLifecycleDTO[] }
@@ -69,7 +69,8 @@ com.sherlock.groundcontrol
 │   ├── AuthenticationFailedException.java
 │   ├── GeofenceConflictException.java
 │   ├── GeofenceNotFoundException.java
-│   └── GeofenceValidationException.java
+│   ├── GeofenceValidationException.java
+│   └── TelemetryHistoryValidationException.java
 ├── mavlink/                        # Raw MAVLink parsing — no external library
 │   ├── DroneSnapshot.java          # Mutable merged state per MAVLink system ID
 │   ├── MavlinkFrame.java           # Parsed frame record (v1 or v2)
@@ -103,7 +104,7 @@ com.sherlock.groundcontrol
     ├── MissionExecutorService.java  # Server-side mission execution: finite-state waypoint progression, guarded arrival confirmation, timeout/retry fail-safe, STOMP progress publish
     ├── MissionService.java          # Mission CRUD + lifecycle transitions (PLANNED→ACTIVE→COMPLETED|ABORTED); no execution logic
     ├── OperatorCommandService.java  # Operator command orchestration + lifecycle tracking + simulator fake ACK path
-    ├── TelemetryService.java        # persistBatch() + getLastKnown(droneId) + history lookup + bounded last-known cache
+    ├── TelemetryService.java        # persistBatch() + getLastKnown(droneId) + recent/ranged history lookup + bounded last-known cache
     └── TelemetrySimulator.java      # @Scheduled 500ms fleet tick, per-drone full stream + fleet-lite summary + battery/geofence alerts
 ```
 
@@ -291,6 +292,18 @@ docker compose --profile dev --profile sitl up --build
 3. Add a `@GetMapping` / `@PostMapping` method to `TelemetryController`
 
 Spring Security already protects all endpoints except documented public routes. Keep new telemetry endpoints authenticated unless there is a documented exception.
+
+### Telemetry history endpoint modes
+
+`GET /api/telemetry/history` supports two modes:
+
+- Latest mode (legacy): `?droneId=SHERLOCK-01` returns latest 150 rows ordered by `timestamp DESC`
+- Range mode (flight replay): `?droneId=SHERLOCK-01&start=2026-04-15T08:00:00Z&end=2026-04-15T09:00:00Z` returns rows ordered by `timestamp ASC`
+
+Range mode guard rails enforced by `TelemetryService`:
+- `start` and `end` must be provided together
+- `start` must be strictly before `end`
+- result set is capped at 20,000 rows; larger ranges return `400 Bad Request`
 
 ### Mission update endpoint
 

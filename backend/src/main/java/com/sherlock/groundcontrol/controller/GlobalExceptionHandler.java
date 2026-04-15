@@ -5,6 +5,7 @@ import com.sherlock.groundcontrol.exception.AuthenticationFailedException;
 import com.sherlock.groundcontrol.exception.GeofenceConflictException;
 import com.sherlock.groundcontrol.exception.GeofenceNotFoundException;
 import com.sherlock.groundcontrol.exception.GeofenceValidationException;
+import com.sherlock.groundcontrol.exception.TelemetryHistoryValidationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -44,6 +45,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(GeofenceNotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public Map<String, String> handleGeofenceNotFound(GeofenceNotFoundException e) {
+        return Map.of("error", e.getMessage());
+    }
+
+    @ExceptionHandler(TelemetryHistoryValidationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, String> handleTelemetryHistoryValidation(TelemetryHistoryValidationException e) {
         return Map.of("error", e.getMessage());
     }
 
