@@ -7,6 +7,25 @@ import { useAuth } from './useAuth';
 
 const TELEMETRY_HISTORY_PATH = '/api/telemetry/history';
 const PLAYBACK_INTERVAL_MS = 500;
+const DEFAULT_REPLAY_WINDOW_HOURS = 1;
+
+function formatLocalDateTimeInput(date: Date): string {
+  const year = String(date.getFullYear()).padStart(4, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function getDefaultReplayWindow(): { start: string; end: string } {
+  const end = new Date();
+  const start = new Date(end.getTime() - DEFAULT_REPLAY_WINDOW_HOURS * 60 * 60 * 1000);
+  return {
+    start: formatLocalDateTimeInput(start),
+    end: formatLocalDateTimeInput(end),
+  };
+}
 
 function parseLocalDateToIso(localValue: string): string | null {
   if (!localValue) {
@@ -41,6 +60,9 @@ export function useFlightReplay(selectedDrone: string | null, authToken: AuthTok
     setCurrentIndex(0);
     setIsPlaying(false);
     setReplayError(null);
+    const defaults = getDefaultReplayWindow();
+    setRangeStartLocal(defaults.start);
+    setRangeEndLocal(defaults.end);
   }, [selectedDrone]);
 
   useEffect(() => {
