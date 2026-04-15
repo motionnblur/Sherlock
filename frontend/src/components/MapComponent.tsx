@@ -71,6 +71,7 @@ interface GeofenceDraftDragState {
 
 const DRIVER_CAMERA_MIN_HEIGHT_OFFSET_METERS = 80;
 const DRIVER_CAMERA_MAX_HEIGHT_OFFSET_METERS = 6000;
+const DRIVER_CAMERA_ZOOM_STEP_RATIO = 0.12;
 
 interface MapInteractionState {
   freeMode: boolean;
@@ -541,7 +542,6 @@ export default function MapComponent({
     }
     const cameraController = viewer.scene.screenSpaceCameraController;
     const shouldLockCamera = (isDriverModeEnabled || isMissionModeEnabled || isGeofenceModeEnabled) && !freeMode && Boolean(selectedDrone);
-    const shouldAllowDriverZoom = isDriverModeEnabled && !isMissionModeEnabled && !isGeofenceModeEnabled;
 
     if (shouldLockCamera) {
       if (!cameraControllerStateRef.current) {
@@ -555,7 +555,7 @@ export default function MapComponent({
       }
       cameraController.enableRotate = false;
       cameraController.enableTranslate = false;
-      cameraController.enableZoom = shouldAllowDriverZoom;
+      cameraController.enableZoom = false;
       cameraController.enableTilt = false;
       cameraController.enableLook = false;
       viewer.trackedEntity = undefined;
@@ -577,6 +577,56 @@ export default function MapComponent({
   }, [freeMode, isDriverModeEnabled, isGeofenceModeEnabled, isMissionModeEnabled, selectedDrone, viewer]);
 
   useEffect(() => {
+    if (!viewer || viewer.isDestroyed()) {
+      return;
+    }
+
+    const onWheel = (event: WheelEvent) => {
+      const interactionState = interactionStateRef.current;
+      if (!interactionState.isDriverModeEnabled || interactionState.freeMode || !interactionState.selectedDrone) {
+        return;
+      }
+      const displayTelemetry = interactionState.selectedDisplayTelemetry;
+      if (!displayTelemetry) {
+        return;
+      }
+      event.preventDefault();
+
+      const currentOffset = Number.isFinite(driverCameraHeightOffsetRef.current)
+        ? driverCameraHeightOffsetRef.current
+        : DRIVER_CAMERA_HEIGHT_OFFSET_METERS;
+      const zoomFactor = event.deltaY > 0
+        ? 1 + DRIVER_CAMERA_ZOOM_STEP_RATIO
+        : 1 - DRIVER_CAMERA_ZOOM_STEP_RATIO;
+      const nextOffset = Cesium.Math.clamp(
+        currentOffset * zoomFactor,
+        DRIVER_CAMERA_MIN_HEIGHT_OFFSET_METERS,
+        DRIVER_CAMERA_MAX_HEIGHT_OFFSET_METERS,
+      );
+      driverCameraHeightOffsetRef.current = nextOffset;
+
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(
+          displayTelemetry.longitude,
+          displayTelemetry.latitude,
+          displayTelemetry.altitude + nextOffset,
+        ),
+        orientation: {
+          heading: 0,
+          pitch: Cesium.Math.toRadians(DRIVER_CAMERA_TOPDOWN_PITCH_DEGREES),
+          roll: 0,
+        },
+      });
+      viewer.scene.requestRender();
+    };
+
+    viewer.canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      viewer.canvas.removeEventListener('wheel', onWheel);
+    };
+  }, [viewer]);
+
+  useEffect(() => {
     if (!isDriverModeEnabled || !selectedDrone || freeMode) {
       driverCameraHeightOffsetRef.current = DRIVER_CAMERA_HEIGHT_OFFSET_METERS;
     }
@@ -588,16 +638,6 @@ export default function MapComponent({
     }
     if (!isDriverModeEnabled || freeMode || !selectedDrone) {
       return;
-    }
-
-    const currentCameraHeight = viewer.camera.positionCartographic.height;
-    const cameraHeightOffset = currentCameraHeight - selectedDisplayTelemetry.altitude;
-    if (Number.isFinite(cameraHeightOffset)) {
-      driverCameraHeightOffsetRef.current = Cesium.Math.clamp(
-        cameraHeightOffset,
-        DRIVER_CAMERA_MIN_HEIGHT_OFFSET_METERS,
-        DRIVER_CAMERA_MAX_HEIGHT_OFFSET_METERS,
-      );
     }
 
     const lockedCameraAltitude = selectedDisplayTelemetry.altitude + driverCameraHeightOffsetRef.current;
