@@ -44,7 +44,7 @@ describe('StatusBar', () => {
     connected: true,
     selectedDrone: 'SHERLOCK-01',
     freeMode: false,
-    performanceStage: 0,
+    performanceStage: 0 as 0 | 1 | 2,
     onCyclePerformanceStage: vi.fn(),
   };
 
@@ -118,11 +118,11 @@ describe('StatusBar', () => {
   });
 
   it('shows low performance stage labels correctly', () => {
-    const { rerender } = render(<StatusBar {...defaultProps} performanceStage={1} />);
+    const { rerender } = render(<StatusBar {...defaultProps} performanceStage={1 as 0 | 1 | 2} />);
     
     expect(screen.getByText('LOW PERF LOW')).toBeInTheDocument();
     
-    rerender(<StatusBar {...defaultProps} performanceStage={2} />);
+    rerender(<StatusBar {...defaultProps} performanceStage={2 as 0 | 1 | 2} />);
     expect(screen.getByText('LOW PERF MINIMAL MAP')).toBeInTheDocument();
   });
 
@@ -192,16 +192,16 @@ describe('StatusBar', () => {
   });
 
   it('applies correct color classes to low performance button based on stage', () => {
-    const { rerender, container } = render(<StatusBar {...defaultProps} performanceStage={0} />);
+    const { rerender, container } = render(<StatusBar {...defaultProps} performanceStage={0 as 0 | 1 | 2} />);
     
     let button = screen.getByText('LOW PERF NORMAL');
     expect(button).toHaveClass('text-muted', 'hover:text-neon');
     
-    rerender(<StatusBar {...defaultProps} performanceStage={1} />);
+    rerender(<StatusBar {...defaultProps} performanceStage={1 as 0 | 1 | 2} />);
     button = screen.getByText('LOW PERF LOW');
     expect(button).toHaveClass('text-caution', 'bg-panel');
     
-    rerender(<StatusBar {...defaultProps} performanceStage={2} />);
+    rerender(<StatusBar {...defaultProps} performanceStage={2 as 0 | 1 | 2} />);
     button = screen.getByText('LOW PERF MINIMAL MAP');
     expect(button).toHaveClass('text-danger', 'bg-panel');
   });
